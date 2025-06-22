@@ -30,13 +30,14 @@ This project extracts structured information (e.g. **action fields**, **projects
 
 ```
 pip install fastapi uvicorn pymupdf python-multipart pytesseract pdf2image requests
-
+```
 Additional System Packages (macOS example)
 ```
 brew install tesseract poppler
+```
 
 ## 🚦 Run the API Server
 ```
 uvicorn main:app --reload
-
+```
 Url for local host: http://127.0.0.1:8000/docs#/default/upload_pdf_upload_post
