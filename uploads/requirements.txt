@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pymupdf
+python-multipart
+pytesseract
+pdf2image
+requests
