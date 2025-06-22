@@ -26,8 +26,7 @@ This project extracts structured information (e.g. **action fields**, **projects
 
 ---
 
-
--------------------------------------------
+## ⚙️ Environment set up
 
 ✅ Step 1: Check Your Python Installation
 Open a terminal (or Command Prompt on Windows), and type:
@@ -49,17 +48,17 @@ Navigate to your project folder, create virtual environment:
 python3 -m venv venv
 ```
 Activate it:
-On Mac/Linux: source venv/bin/activate
-On Windows: venv\Scripts\activate
+- On Mac/Linux: source venv/bin/activate
+- On Windows: venv\Scripts\activate
 
 ✅ Step 3: Install Required Libraries
-fastapi: API server
-uvicorn: for running the server
-pymupdf: PDF parser
-python-multipart: handling web form data, needed for FastAPI
-pytesseract: python OCR tool
-pdf2image: convert PDF to image
-requests: HTTP client in Python
+- fastapi: API server
+- uvicorn: for running the server
+- pymupdf: PDF parser
+- python-multipart: handling web form data, needed for FastAPI
+- pytesseract: python OCR tool
+- pdf2image: convert PDF to image
+- requests: HTTP client in Python
 ```
 pip install -r requirements.txt
 ```
@@ -67,7 +66,7 @@ Or, you can also install libraries manually:
 ```
 pip install fastapi uvicorn pymupdf python-multipart pytesseract pdf2image requests
 ```
-**Additional System Packages (macOS example)**
+**Additional System Packages (macOS example)**  
 Ollama -  a tool to easily run local LLMs like Mixtral
 ```
 Go to https://ollama.com and download the installer for your OS.
@@ -82,14 +81,14 @@ poppler - Needed by pdf2image
 brew install tesseract poppler
 ```
 On Windows:
-Install [Tesseract OCR for Windows](https://github.com/tesseract-ocr/tesseract)
-Install [Poppler for Windows](https://blog.alivate.com.au/poppler-windows/)
+- Install [Tesseract OCR for Windows](https://github.com/tesseract-ocr/tesseract)
+- Install [Poppler for Windows](https://blog.alivate.com.au/poppler-windows/) - 
 Add both to your PATH environment variable
 
 ✅ Step 4: Project Structure
-main.py            ← FastAPI server
-parser.py          ← PDF text extractor
-uploads/           ← Folder for uploaded PDFs
+- main.py            ← FastAPI server
+- parser.py          ← PDF text extractor
+- uploads/           ← Folder for uploaded PDFs
 
 ✅ Step 7: Run the Servers
 Manually run Ollama before starting FastAPI:
