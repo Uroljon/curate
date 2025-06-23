@@ -24,12 +24,23 @@ def embed_chunks(chunks: list[str], source_id: str) -> None:
     )
     print(f"✅ Stored {len(chunks)} chunks into ChromaDB as '{source_id}'")
 
-def query_chunks(query: str, top_k: int = 5) -> list[dict]:
+def query_chunks(query: str, top_k: int = 5, source_id: str = None) -> list[dict]:
     query_embedding = model.encode([query])[0].tolist()
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=top_k
-    )
+
+    if source_id:
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=top_k,
+            where={"source": source_id},
+            include=["documents", "distances", "metadatas"]
+        )
+    else:
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=top_k,
+            include=["documents", "distances", "metadatas"]
+        )
+
     return [
         {
             "text": doc,
