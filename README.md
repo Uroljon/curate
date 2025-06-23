@@ -15,7 +15,7 @@ This project extracts structured information (e.g. **action fields**, **projects
 
 ## 🛠️ Technologies Used
 
-| Component      | Library / Tool           |
+| Component      | Library / Tool            |
 |----------------|---------------------------|
 | API Server     | `FastAPI` + `Uvicorn`     |
 | PDF Parsing    | `PyMuPDF` (`fitz`)        |
@@ -23,6 +23,8 @@ This project extracts structured information (e.g. **action fields**, **projects
 | LLM Access     | [`Ollama`](https://ollama.com) running `llama3` |
 | File Uploads   | `python-multipart`        |
 | HTTP Requests  | `requests`                |
+| Embeddings     | `sentence-transformers`   |
+| Store embed.   | `chromadb`                |
 
 ---
 
@@ -52,19 +54,12 @@ Activate it:
 - On Windows: venv\Scripts\activate
 
 ✅ Step 3: Install Required Libraries
-- fastapi: API server
-- uvicorn: for running the server
-- pymupdf: PDF parser
-- python-multipart: handling web form data, needed for FastAPI
-- pytesseract: python OCR tool
-- pdf2image: convert PDF to image
-- requests: HTTP client in Python
 ```
 pip install -r requirements.txt
 ```
 Or, you can also install libraries manually:
 ```
-pip install fastapi uvicorn pymupdf python-multipart pytesseract pdf2image requests
+pip install fastapi uvicorn pymupdf python-multipart pytesseract pdf2image requests... (check full list in requirements.txt)
 ```
 **Additional System Packages (macOS example)**  
 Ollama -  a tool to easily run local LLMs like Mixtral

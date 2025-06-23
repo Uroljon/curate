@@ -4,32 +4,35 @@ from fastapi.responses import JSONResponse
 import os
 from parser import extract_text_with_ocr_fallback
 from llm import query_ollama
+from embedder import embed_chunks, query_chunks
+from semantic_chunker import smart_chunk
 
 app = FastAPI()
-
 UPLOAD_FOLDER = "uploads"
 
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-
     with open(file_path, "wb") as f:
         f.write(await file.read())
 
     extracted_text = extract_text_with_ocr_fallback(file_path)
-
-    # TESTING FOR NOW
-    from semantic_chunker import smart_chunk
-
-    # Inside upload_pdf() after text is extracted
     chunks = smart_chunk(extracted_text)
 
-    # Debug: print how many chunks we found
-    print(f"Chunked into {len(chunks)} sections")
+    # Store embeddings
+    embed_chunks(chunks, source_id=file.filename)
+    
+    # TESTING FOR NOW
+    # Basic query (optional placeholder)
+    matches = query_chunks("What is the main conclusion?")
+
+    for match in matches:
+        print(match["text"], f"(score: {match['score']})")
 
     # Optional: return chunks (shortened) in API response for now
     return JSONResponse(content={
-        "chunks": [c for c in chunks[:50]]
+        "chunks": [c for c in chunks[:5]],
+        "matches": matches
     })
 
 
