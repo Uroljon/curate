@@ -2,7 +2,6 @@
 
 from sentence_transformers import SentenceTransformer
 from chromadb import PersistentClient
-import os
 import uuid
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
