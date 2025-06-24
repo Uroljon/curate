@@ -11,6 +11,11 @@ client = PersistentClient(path=CHROMA_DIR)
 collection = client.get_or_create_collection(name="document_chunks")
 
 def embed_chunks(chunks: list[str], source_id: str) -> None:
+    # 🧼 Optional: delete old entries for the same source
+    existing = collection.get(where={"source": source_id})
+    if existing and existing['ids']:
+        collection.delete(ids=existing['ids'])
+        
     embeddings = model.encode(chunks).tolist()
     ids = [f"{source_id}_{i}_{uuid.uuid4().hex[:8]}" for i in range(len(chunks))]
     metadata = [{"source": source_id, "chunk_index": i} for i in range(len(chunks))]
