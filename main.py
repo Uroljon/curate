@@ -36,36 +36,61 @@ async def extract_structure(source_id: str, max_chars: int = 30000, min_chars: i
     chunks = query_chunks("irrelevant", top_k=1000, source_id=source_id)
     raw_texts = [c["text"] for c in chunks]
     optimized_chunks = prepare_llm_chunks(raw_texts, max_chars=max_chars, min_chars=min_chars)
-    results = []
+
+    raw_outputs = []
 
     for chunk in optimized_chunks:
         prompt = build_structure_prompt(chunk)
-
-        print(f"Processing chunk with {len(chunk)} length...")
-
+        print(f"Processing chunk with {len(chunk)} characters...")
         llm_response = query_ollama(prompt)
+        # Extract only the JSON array part using regex
+        match = re.search(r"{.*}", llm_response, re.DOTALL)
+        if match:
+            cleaned = match.group(0)
+            raw_outputs.append(cleaned)
+        else:
+            print("⚠️ No valid JSON array found in response:")
+            print(llm_response)
+        raw_outputs.append(llm_response)
 
-        try:
-            # Try raw first
-            data = json5.loads(llm_response)
-        except Exception:
-            # Try to extract the JSON array from noisy response
-            try:
-                match = re.search(r"\[.*\]", llm_response, re.DOTALL)
-                if match:
-                    json_part = match.group(0)
-                    data = json5.loads(json_part)
-                else:
-                    raise ValueError("No JSON array found in LLM response.")
-            except Exception as e:
-                print("❌ Parsing failed")
-                print("Raw LLM response:", llm_response)
-                print("Error:", e)
-                data = None
+    # Combine all raw outputs
+    combined_raw_json = "\n".join(raw_outputs)
 
-        # If valid structured data found
-        if isinstance(data, list) and data:
-            results.extend(data)
+    print(combined_raw_json)
 
-    return JSONResponse(content={"structures": results})
+    # Ask LLM to fix & deduplicate
+    final_prompt = f"""
+Below is a series of potentially malformed or partially valid JSON fragments extracted from a German municipality's strategic plan.
 
+Please:
+1. Merge all valid JSON fragments into a single **JSON array**.
+2. Fix any syntax issues (trailing commas, missing brackets, etc).
+3. Merge any duplicate `action_field` entries based on their name.
+4. Return only valid JSON — no extra commentary.
+
+Fragments:
+{combined_raw_json.strip()}
+"""
+
+    fixed_response = query_ollama(final_prompt)
+
+    # 🧹 Clean up extra text around JSON
+    match = re.search(r"\{.*\}", fixed_response, re.DOTALL)
+    if match:
+        cleaned_json = match.group(0)
+    else:
+        print("⚠️ Could not find valid JSON object in final response:")
+        print(fixed_response)
+        return JSONResponse(content={"structures": []}, status_code=500)
+
+    try:
+        final_data = json5.loads(cleaned_json)
+        if isinstance(final_data, list):
+            return JSONResponse(content={"structures": final_data})
+        else:
+            print("⚠️ Unexpected JSON structure (not a list):", final_data)
+            return JSONResponse(content={"structures": []}, status_code=500)
+    except Exception as e:
+        print("❌ Final JSON parsing failed:", e)
+        print("Cleaned JSON:", cleaned_json)
+        return JSONResponse(content={"structures": []}, status_code=500)

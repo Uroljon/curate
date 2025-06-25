@@ -13,7 +13,7 @@ def query_ollama(prompt: str, model: str = MODEL_NAME) -> str:
                 "prompt": prompt,
                 "stream": False  # Set to True if you want streamed responses
             },
-            timeout=60  # Adjust if prompts are long
+            timeout=180  # Adjust if prompts are long
         )
         response.raise_for_status()
         data = response.json()
