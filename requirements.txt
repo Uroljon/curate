@@ -9,3 +9,4 @@ sentence-transformers
 chromadb
 langdetect
 pyspellchecker
+json5
