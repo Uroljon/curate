@@ -55,17 +55,9 @@ def prepare_llm_chunks(chunks: list[str], max_chars: int = 30000, min_chars: int
 
 def build_structure_prompt(chunk_text: str) -> str:
     return f"""
-Respond ONLY with a **JSON array** of the following format. Do NOT include any explanation or additional text.
-If no relevant data is found, return an empty array: `[]`
-The following is a section of a German municipality's long-term strategic development plan.
-
-Please identify any of the following if present:
-- Action Field (e.g., "Klimaschutz")
-- Projects within that field (titles)
-- Measures under each project (if available)
-- Indicators used to measure progress (if available)
-
-Expected format:
+Antworten Sie AUSSCHLIESSLICH mit einem **JSON-Array** im folgenden Format. Fügen Sie KEINE Erläuterungen oder zusätzlichen Texte hinzu.
+Wenn keine relevanten Daten gefunden werden, geben Sie ein leeres Array zurück: `[]`
+Erwartetes Format:
 [
   {{
     "action_field": "Klimaschutz",
@@ -78,6 +70,12 @@ Expected format:
     ]
   }}
 ]
+Im Folgenden finden Sie einen Auszug aus dem langfristigen strategischen Entwicklungsplan einer deutschen Gemeinde.
+Bitte identifizieren Sie alle folgenden Elemente, sofern vorhanden:
+- Aktionsfeld (z. B. „Klimaschutz”)
+- Projekte innerhalb dieses Feldes (Titel)
+- Maßnahmen im Rahmen jedes Projekts (sofern verfügbar)
+- Indikatoren zur Messung des Fortschritts (sofern verfügbar)
 
 Text:
 \"\"\"

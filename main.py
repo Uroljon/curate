@@ -29,6 +29,7 @@ async def upload_pdf(file: UploadFile = File(...)):
 from structure_extractor import build_structure_prompt, prepare_llm_chunks
 from llm import query_ollama
 import json5
+import re
 
 @app.get("/extract_structure")
 async def extract_structure(source_id: str, max_chars: int = 30000, min_chars: int = 8000):
@@ -45,13 +46,26 @@ async def extract_structure(source_id: str, max_chars: int = 30000, min_chars: i
         llm_response = query_ollama(prompt)
 
         try:
-            data = json5.loads(llm_response)  # Use json5 here instead of json.loads
-            # Since your expected format is a JSON array, you may want to check accordingly:
-            if isinstance(data, list) and data:  # Non-empty list
-                results.extend(data)  # Append all items from this chunk's extraction
-        except Exception as e:
-            print("Invalid JSON from LLM:", llm_response)
-            print("Parsing error:", e)
+            # Try raw first
+            data = json5.loads(llm_response)
+        except Exception:
+            # Try to extract the JSON array from noisy response
+            try:
+                match = re.search(r"\[.*\]", llm_response, re.DOTALL)
+                if match:
+                    json_part = match.group(0)
+                    data = json5.loads(json_part)
+                else:
+                    raise ValueError("No JSON array found in LLM response.")
+            except Exception as e:
+                print("❌ Parsing failed")
+                print("Raw LLM response:", llm_response)
+                print("Error:", e)
+                data = None
+
+        # If valid structured data found
+        if isinstance(data, list) and data:
+            results.extend(data)
 
     return JSONResponse(content={"structures": results})
 
