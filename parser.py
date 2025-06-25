@@ -78,14 +78,15 @@ def extract_text_with_ocr_fallback(pdf_path: str) -> str:
     doc.close()
 
     if scanned_pages:
-        print(f"OCR needed for pages: {scanned_pages}")
+        # print(f"OCR needed for pages: {scanned_pages}")
         with tempfile.TemporaryDirectory() as tempdir:
             for i in scanned_pages:
                 images = convert_from_path(pdf_path, first_page=i + 1, last_page=i + 1, output_folder=tempdir)
                 if images:
                     ocr_raw = pytesseract.image_to_string(images[0])
                     ocr_cleaned = clean_ocr_text(ocr_raw)
-                    page_texts[i] = f"[OCR Page {i + 1}]\n{ocr_cleaned}"  # You can remove this tag later
+                    # page_texts[i] = f"[OCR Page {i + 1}]\n{ocr_cleaned}"  # You can remove this tag later
+                    page_texts[i] = ocr_cleaned
 
     combined_text = "\n\n".join(page_texts)
     return clean_text(combined_text)
