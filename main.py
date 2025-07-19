@@ -26,71 +26,61 @@ async def upload_pdf(file: UploadFile = File(...)):
         "chunks": len(chunks)
     })
 
-from structure_extractor import build_structure_prompt, prepare_llm_chunks
+from structure_extractor import build_structure_prompt, prepare_llm_chunks, extract_structures_with_retry
 from llm import query_ollama
 import json5
 import re
 
 @app.get("/extract_structure")
-async def extract_structure(source_id: str, max_chars: int = 30000, min_chars: int = 8000):
+async def extract_structure(source_id: str, max_chars: int = 30000, min_chars: int = 12000):
     chunks = query_chunks("irrelevant", top_k=1000, source_id=source_id)
     raw_texts = [c["text"] for c in chunks]
     optimized_chunks = prepare_llm_chunks(raw_texts, max_chars=max_chars, min_chars=min_chars)
 
-    raw_outputs = []
+    all_extracted_data = []
 
-    for chunk in optimized_chunks:
-        prompt = build_structure_prompt(chunk)
-        print(f"Processing chunk with {len(chunk)} characters...")
-        llm_response = query_ollama(prompt)
-        # Extract only the JSON array part using regex
-        match = re.search(r"{.*}", llm_response, re.DOTALL)
-        if match:
-            cleaned = match.group(0)
-            raw_outputs.append(cleaned)
+    for i, chunk in enumerate(optimized_chunks):
+        print(f"🔄 Processing chunk {i+1}/{len(optimized_chunks)} with {len(chunk)} characters...")
+        
+        # Use new retry-based extraction
+        chunk_data = extract_structures_with_retry(chunk)
+        
+        if chunk_data:
+            all_extracted_data.extend(chunk_data)
+            print(f"✅ Chunk {i+1} yielded {len(chunk_data)} action fields")
         else:
-            print("⚠️ No valid JSON array found in response:")
-            print(llm_response)
-        raw_outputs.append(llm_response)
+            print(f"⚠️ Chunk {i+1} yielded no valid data")
 
-    # Combine all raw outputs
-    combined_raw_json = "\n".join(raw_outputs)
-
-    print(combined_raw_json)
-
-    # Ask LLM to fix & deduplicate
-    final_prompt = f"""
-Below is a series of potentially malformed or partially valid JSON fragments extracted from a German municipality's strategic plan.
-
-Please:
-1. Merge all valid JSON fragments into a single **JSON array**.
-2. Fix any syntax issues (trailing commas, missing brackets, etc).
-3. Merge any duplicate `action_field` entries based on their name.
-4. Return only valid JSON — no extra commentary.
-
-Fragments:
-{combined_raw_json.strip()}
-"""
-
-    fixed_response = query_ollama(final_prompt)
-
-    # 🧹 Clean up extra text around JSON
-    match = re.search(r"\{.*\}", fixed_response, re.DOTALL)
-    if match:
-        cleaned_json = match.group(0)
-    else:
-        print("⚠️ Could not find valid JSON object in final response:")
-        print(fixed_response)
-        return JSONResponse(content={"structures": []}, status_code=500)
-
-    try:
-        final_data = json5.loads(cleaned_json)
-        if isinstance(final_data, list):
-            return JSONResponse(content={"structures": final_data})
+    print(f"📊 Total extracted data: {len(all_extracted_data)} action fields from {len(optimized_chunks)} chunks")
+    
+    if not all_extracted_data:
+        print("⚠️ No valid data extracted from any chunks")
+        return JSONResponse(content={"structures": []})
+    
+    # Deduplicate action fields by name (merge projects from same action field)
+    deduplicated_data = {}
+    
+    for item in all_extracted_data:
+        action_field = item["action_field"]
+        
+        if action_field in deduplicated_data:
+            # Merge projects from duplicate action fields
+            existing_projects = deduplicated_data[action_field]["projects"]
+            new_projects = item["projects"]
+            
+            # Simple deduplication by project title
+            existing_titles = {p["title"] for p in existing_projects}
+            for project in new_projects:
+                if project["title"] not in existing_titles:
+                    existing_projects.append(project)
         else:
-            print("⚠️ Unexpected JSON structure (not a list):", final_data)
-            return JSONResponse(content={"structures": []}, status_code=500)
-    except Exception as e:
-        print("❌ Final JSON parsing failed:", e)
-        print("Cleaned JSON:", cleaned_json)
-        return JSONResponse(content={"structures": []}, status_code=500)
+            deduplicated_data[action_field] = item
+    
+    # Convert back to list format
+    final_structures = list(deduplicated_data.values())
+    
+    print(f"✅ Final result: {len(final_structures)} unique action fields")
+    for structure in final_structures:
+        print(f"   📋 {structure['action_field']}: {len(structure['projects'])} projects")
+    
+    return JSONResponse(content={"structures": final_structures})
