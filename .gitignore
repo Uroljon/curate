@@ -1,3 +1,5 @@
 /uploads/*
 __pycache__/
 chroma_store/
+venv
+env
