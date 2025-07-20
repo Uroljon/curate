@@ -4,3 +4,4 @@ chroma_store/
 venv
 env
 CLAUDE.md
+outputs/*
