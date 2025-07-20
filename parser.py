@@ -6,8 +6,8 @@ import re
 from langdetect import detect
 from spellchecker import SpellChecker
 
-spell_de = SpellChecker(language='de')
-spell_en = SpellChecker(language='en')
+spell_de = SpellChecker(language="de")
+spell_en = SpellChecker(language="en")
 
 
 def clean_ocr_text(text: str) -> str:
@@ -33,7 +33,9 @@ def clean_ocr_text(text: str) -> str:
         # Filter out lines with mostly misspellings
         words = re.findall(r"\b\w+\b", line)
         if words:
-            misspelled = spell_de.unknown(words) if lang == "de" else spell_en.unknown(words)
+            misspelled = (
+                spell_de.unknown(words) if lang == "de" else spell_en.unknown(words)
+            )
             if len(misspelled) > len(words) * 0.6:
                 continue
 
@@ -44,7 +46,9 @@ def clean_ocr_text(text: str) -> str:
 
 def clean_text(text: str) -> str:
     # Remove page numbering lines
-    text = re.sub(r"^(Seite|Page)\s+\d+(\s+(von|of)\s+\d+)?\s*$", "", text, flags=re.MULTILINE)
+    text = re.sub(
+        r"^(Seite|Page)\s+\d+(\s+(von|of)\s+\d+)?\s*$", "", text, flags=re.MULTILINE
+    )
 
     # Merge hyphenated words split across lines
     text = re.sub(r"(\w+)-\n(\w+)", r"\1\2", text)
@@ -81,7 +85,9 @@ def extract_text_with_ocr_fallback(pdf_path: str) -> str:
         # print(f"OCR needed for pages: {scanned_pages}")
         with tempfile.TemporaryDirectory() as tempdir:
             for i in scanned_pages:
-                images = convert_from_path(pdf_path, first_page=i + 1, last_page=i + 1, output_folder=tempdir)
+                images = convert_from_path(
+                    pdf_path, first_page=i + 1, last_page=i + 1, output_folder=tempdir
+                )
                 if images:
                     ocr_raw = pytesseract.image_to_string(images[0])
                     ocr_cleaned = clean_ocr_text(ocr_raw)

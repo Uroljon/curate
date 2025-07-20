@@ -1,6 +1,7 @@
 import re
 from typing import List
 
+
 def is_heading(line: str) -> bool:
     """Heuristic: check if a line looks like a section heading."""
     line = line.strip()
@@ -13,6 +14,7 @@ def is_heading(line: str) -> bool:
     if re.match(r"^[A-ZÄÖÜ][a-zäöüß]+(\s+[A-ZÄÖÜ][a-zäöüß]+)*$", line):
         return True  # Title Case
     return False
+
 
 def split_by_heading(text: str) -> List[str]:
     """Split text by section headings, preserving OCR tags."""
@@ -39,6 +41,7 @@ def split_by_heading(text: str) -> List[str]:
 
     return chunks
 
+
 def merge_short_chunks(chunks: List[str], min_words=100, max_words=300) -> List[str]:
     """Merge small or overly long chunks to be LLM-friendly."""
     merged = []
@@ -63,6 +66,7 @@ def merge_short_chunks(chunks: List[str], min_words=100, max_words=300) -> List[
         merged.append(buffer.strip())
 
     return merged
+
 
 def smart_chunk(cleaned_text: str, max_words: int = 300) -> List[str]:
     chunks = split_by_heading(cleaned_text)
