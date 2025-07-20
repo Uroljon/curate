@@ -43,7 +43,7 @@ from structure_extractor import (
 
 @app.get("/extract_structure")
 async def extract_structure(
-    source_id: str, max_chars: int = 12000, min_chars: int = 8000
+    source_id: str, max_chars: int = 8000, min_chars: int = 6000
 ):
     chunks = query_chunks("irrelevant", top_k=1000, source_id=source_id)
     raw_texts = [c["text"] for c in chunks]

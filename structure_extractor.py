@@ -10,54 +10,139 @@ from schemas import ActionField, ExtractionResult, Project
 
 
 def prepare_llm_chunks(
-    chunks: list[str], max_chars: int = 12000, min_chars: int = 8000
+    chunks: list[str], max_chars: int = 8000, min_chars: int = 6000
 ) -> list[str]:
     """
     Merge small chunks and split large ones to optimize for LLM context size.
-    Operates on character count, but keeps paragraph integrity.
+    Operates on character count, but keeps paragraph integrity where possible.
+    Enforces hard limits to prevent oversized chunks.
     """
     merged_chunks = []
     current_chunk = []
     current_len = 0
+
+    def split_large_text(text: str, max_size: int) -> list[str]:
+        """Recursively split text that exceeds max_size."""
+        if len(text) <= max_size:
+            return [text]
+        
+        # Try to split by paragraphs first
+        paragraphs = text.split("\n\n")
+        if len(paragraphs) > 1:
+            result = []
+            current = []
+            current_size = 0
+            
+            for para in paragraphs:
+                para_size = len(para) + (2 if current else 0)  # Account for \n\n
+                
+                if para_size > max_size:
+                    # Single paragraph too large, need to split it
+                    if current:
+                        result.append("\n\n".join(current))
+                    # Split by sentences or hard split
+                    result.extend(split_large_text(para, max_size))
+                    current = []
+                    current_size = 0
+                elif current_size + para_size > max_size:
+                    result.append("\n\n".join(current))
+                    current = [para]
+                    current_size = len(para)
+                else:
+                    current.append(para)
+                    current_size += para_size
+                    
+            if current:
+                result.append("\n\n".join(current))
+            return result
+        
+        # If no paragraphs or single paragraph, try sentences
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        if len(sentences) > 1:
+            result = []
+            current = []
+            current_size = 0
+            
+            for sent in sentences:
+                sent_size = len(sent) + (1 if current else 0)  # Account for space
+                
+                if sent_size > max_size:
+                    # Single sentence too large, hard split
+                    if current:
+                        result.append(" ".join(current))
+                    # Hard split the sentence
+                    for i in range(0, len(sent), max_size):
+                        result.append(sent[i:i+max_size])
+                    current = []
+                    current_size = 0
+                elif current_size + sent_size > max_size:
+                    result.append(" ".join(current))
+                    current = [sent]
+                    current_size = len(sent)
+                else:
+                    current.append(sent)
+                    current_size += sent_size
+                    
+            if current:
+                result.append(" ".join(current))
+            return result
+        
+        # Last resort: hard split
+        return [text[i:i+max_size] for i in range(0, len(text), max_size)]
 
     for chunk in chunks:
         chunk = chunk.strip()
         if not chunk:
             continue
 
+        # If single chunk exceeds max, split it
         if len(chunk) > max_chars:
-            # Split this single chunk by paragraph if it's too big
-            paragraphs = chunk.split("\n\n")
-            paragraph_chunk = []
-            paragraph_len = 0
-            for para in paragraphs:
-                para_len = len(para)
-                if paragraph_len + para_len > max_chars:
-                    if paragraph_chunk:
-                        merged_chunks.append("\n\n".join(paragraph_chunk))
-                    paragraph_chunk = [para]
-                    paragraph_len = para_len
+            split_chunks = split_large_text(chunk, max_chars)
+            for split_chunk in split_chunks:
+                if current_chunk and current_len + len(split_chunk) + 2 > max_chars:
+                    merged_chunks.append("\n\n".join(current_chunk))
+                    current_chunk = []
+                    current_len = 0
+                
+                if len(split_chunk) <= max_chars:
+                    current_chunk.append(split_chunk)
+                    current_len += len(split_chunk) + (2 if current_len > 0 else 0)
                 else:
-                    paragraph_chunk.append(para)
-                    paragraph_len += para_len
-            if paragraph_chunk:
-                merged_chunks.append("\n\n".join(paragraph_chunk))
+                    # This should not happen with our split logic, but safety check
+                    print(f"⚠️ Warning: Chunk still too large after splitting: {len(split_chunk)} chars")
+                    merged_chunks.append(split_chunk[:max_chars])
             continue
 
-        if current_len + len(chunk) > max_chars:
+        # Normal merging logic
+        chunk_size = len(chunk) + (2 if current_chunk else 0)  # Account for \n\n separator
+        
+        if current_len + chunk_size > max_chars:
             if current_len >= min_chars:
                 merged_chunks.append("\n\n".join(current_chunk))
                 current_chunk = [chunk]
                 current_len = len(chunk)
             else:
+                # Try to reach min_chars but never exceed max_chars
                 current_chunk.append(chunk)
-                current_len += len(chunk)
+                current_len += chunk_size
+                if current_len >= min_chars:
+                    merged_chunks.append("\n\n".join(current_chunk))
+                    current_chunk = []
+                    current_len = 0
         else:
             current_chunk.append(chunk)
-            current_len += len(chunk)
+            current_len += chunk_size
 
     if current_chunk:
         merged_chunks.append("\n\n".join(current_chunk))
+
+    # Final validation
+    for i, chunk in enumerate(merged_chunks):
+        if len(chunk) > max_chars:
+            print(f"⚠️ Chunk {i+1} exceeds max_chars ({len(chunk)} > {max_chars}), force splitting...")
+            # Force split any remaining oversized chunks
+            split_chunks = split_large_text(chunk, max_chars)
+            merged_chunks[i:i+1] = split_chunks
 
     return merged_chunks
 
@@ -202,29 +287,40 @@ def extract_structures_with_retry(
     """
     system_message = """Extract German municipal action fields (Handlungsfelder) and their projects from the text.
 
-IMPORTANT: For each project, actively look for:
-- Maßnahmen (measures/actions): Specific steps, actions, or implementations mentioned
-- Indikatoren (indicators/KPIs): Percentages, targets, deadlines, metrics mentioned
+CRITICAL: You MUST actively search for and extract indicators/KPIs. These are NUMBERS, PERCENTAGES, DATES, and TARGETS.
 
-Example of correct extraction:
+Definitions:
+- Maßnahmen (measures): Concrete actions, steps, implementations (verbs like "errichten", "ausbauen", "fördern")
+- Indikatoren (indicators): QUANTITATIVE metrics, targets, deadlines, percentages, numbers
+
+INDICATOR PATTERNS TO FIND:
+- Percentages: "40% Reduktion", "um 30% reduzieren", "Anteil von 65%", "Quote von 25%"
+- Time targets: "bis 2030", "ab 2025", "innerhalb von 5 Jahren", "jährlich", "pro Jahr"
+- Quantities: "500 Ladepunkte", "18 km Streckenlänge", "1000 Wohneinheiten", "50 Hektar"
+- Reductions: "Reduzierung um 55%", "Senkung auf 20%", "Verringerung der Emissionen um 40%"
+- Increases: "Steigerung auf 70%", "Erhöhung um 25%", "Verdopplung bis 2030"
+- Ratios: "Modal Split 70/30", "Versiegelungsgrad max. 30%", "Grünflächenanteil min. 40%"
+
+Example with FULL indicator extraction:
 {
   "action_fields": [{
+    "action_field": "Klimaschutz",
+    "projects": [{
+      "title": "CO2-Neutralität",
+      "measures": ["Umstellung auf erneuerbare Energien", "Gebäudesanierung", "Ausbau Fernwärme"],
+      "indicators": ["CO2-Reduktion 55% bis 2030", "100% Ökostrom bis 2035", "Sanierungsquote 3% pro Jahr"]
+    }]
+  }, {
     "action_field": "Mobilität",
     "projects": [{
-      "title": "Stadtbahn Regensburg",
-      "measures": ["Errichtung des Kernnetzes", "Ausbau zu einem Gesamtnetz", "Einführung bis 2030"],
-      "indicators": ["Modal Split 70% bis 2040", "Reduzierung MIV um 30%", "18 km Streckenlänge"]
+      "title": "Verkehrswende",
+      "measures": ["Ausbau Radwegenetz", "Einführung Stadtbahn", "Park&Ride-Anlagen"],
+      "indicators": ["Modal Split 70% Umweltverbund", "500 neue Fahrradstellplätze jährlich", "30% weniger PKW-Verkehr bis 2030"]
     }]
   }]
 }
 
-Extract ALL details found in the text. Look for:
-- Action fields: Klimaschutz, Mobilität, Stadtentwicklung, Digitalisierung, Bildung, Ökologie, etc.
-- Project titles: Named initiatives, programs, or projects
-- Measures: Actions with verbs like "schaffen", "entwickeln", "fördern", "umsetzen", "ausbauen"
-- Indicators: Numbers, percentages, dates, targets like "bis 2030", "20%", "reduzieren um"
-
-Be comprehensive but only extract what's explicitly stated in the text."""
+REMEMBER: If you see ANY number, percentage, date target, or quantitative goal - it's an indicator!"""
 
     prompt = f"""Extract all action fields and their projects from this German municipal strategy text:
 
@@ -232,6 +328,11 @@ Be comprehensive but only extract what's explicitly stated in the text."""
 
 Extract action fields with their projects, measures, and indicators."""
 
+    # Validate chunk size
+    if len(chunk_text) > 10000:
+        print(f"⚠️ WARNING: Chunk size ({len(chunk_text)} chars) exceeds recommended limit of 10000 chars!")
+        print(f"   This may cause JSON parsing issues or incomplete responses.")
+    
     for attempt in range(max_retries):
         print(
             f"📝 Extraction attempt {attempt + 1}/{max_retries} for chunk ({len(chunk_text)} chars)"
@@ -314,24 +415,32 @@ def extract_with_accumulation(
         f"🔄 Progressive extraction for chunk {chunk_index + 1}/{total_chunks} ({len(chunk_text)} chars)"
     )
 
-    system_message = """You are enhancing an existing extraction with new information.
+    system_message = """You are enhancing an existing extraction with new information from German municipal strategy documents.
 
 CRITICAL RULES:
 1. PRESERVE all existing data - never remove anything
 2. ENHANCE existing projects with new measures/indicators if found
 3. MERGE duplicate projects (same title = same project, combine their data)
 4. ADD new action fields and projects not yet captured
-5. Maintain clean JSON structure
+5. ACTIVELY SEARCH for indicators that may have been missed
 
-When you find a project that already exists:
-- Add any new measures to the existing measures list
-- Add any new indicators to the existing indicators list
-- Don't duplicate measures/indicators that already exist
+SPECIAL FOCUS ON INDICATORS:
+Look for ANY quantitative information:
+- Numbers with units: "500 Ladepunkte", "18 km", "1000 Wohneinheiten"
+- Percentages: "40% Reduktion", "um 30% senken", "Anteil von 65%"
+- Time targets: "bis 2030", "ab 2025", "innerhalb 5 Jahren"
+- Frequencies: "jährlich", "pro Jahr", "monatlich"
+- Comparisons: "Verdopplung", "Halbierung", "30% weniger"
 
-Example of merging:
-Existing: {"title": "Stadtbahn", "measures": ["Bau Kernnetz"], "indicators": ["2030"]}
-New info: "Stadtbahn soll auch Ausbaunetz bekommen"
-Result: {"title": "Stadtbahn", "measures": ["Bau Kernnetz", "Ausbaunetz"], "indicators": ["2030"]}"""
+When merging projects:
+- Combine all unique measures
+- Combine all unique indicators
+- Look for indicators that relate to existing projects but weren't extracted before
+
+Example of enhanced extraction with found indicators:
+Existing: {"title": "Verkehrswende", "measures": ["Ausbau Radwegenetz"], "indicators": []}
+New text mentions: "Das Radwegenetz soll bis 2030 auf 500 km ausgebaut werden mit jährlich 50 km Neubau"
+Result: {"title": "Verkehrswende", "measures": ["Ausbau Radwegenetz"], "indicators": ["500 km Radwegenetz bis 2030", "50 km Neubau jährlich"]}"""
 
     prompt = f"""Current extraction state has {len(accumulated_data.get('action_fields', []))} action fields:
 
