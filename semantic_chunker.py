@@ -16,7 +16,7 @@ def is_heading(line: str) -> bool:
     return False
 
 
-def split_by_heading(text: str) -> List[str]:
+def split_by_heading(text: str) -> list[str]:
     """Split text by section headings, preserving OCR tags."""
     lines = text.splitlines()
     chunks = []
@@ -42,7 +42,7 @@ def split_by_heading(text: str) -> List[str]:
     return chunks
 
 
-def merge_short_chunks(chunks: List[str], min_words=100, max_words=300) -> List[str]:
+def merge_short_chunks(chunks: list[str], min_words=100, max_words=300) -> list[str]:
     """Merge small or overly long chunks to be LLM-friendly."""
     merged = []
     buffer = ""
@@ -68,7 +68,7 @@ def merge_short_chunks(chunks: List[str], min_words=100, max_words=300) -> List[
     return merged
 
 
-def smart_chunk(cleaned_text: str, max_words: int = 300) -> List[str]:
+def smart_chunk(cleaned_text: str, max_words: int = 300) -> list[str]:
     chunks = split_by_heading(cleaned_text)
     final_chunks = merge_short_chunks(chunks, max_words=max_words)
     return final_chunks

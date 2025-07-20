@@ -20,11 +20,13 @@ This project extracts structured information (e.g. **action fields**, **projects
 | API Server     | `FastAPI` + `Uvicorn`     |
 | PDF Parsing    | `PyMuPDF` (`fitz`)        |
 | OCR            | `pytesseract` + `pdf2image` |
-| LLM Access     | [`Ollama`](https://ollama.com) running `llama3` |
+| LLM Access     | [`Ollama`](https://ollama.com) running `qwen2.5:14b` |
 | File Uploads   | `python-multipart`        |
 | HTTP Requests  | `requests`                |
 | Embeddings     | `sentence-transformers`   |
-| Store embed.   | `chromadb`                |
+| Vector Store   | `chromadb`                |
+| Schemas        | `pydantic`                |
+| Code Quality   | `ruff`, `black`, `mypy`   |
 
 ---
 
@@ -56,6 +58,7 @@ Activate it:
 ✅ Step 3: Install Required Libraries
 ```
 pip install -r requirements.txt
+pip install -r requirements-dev.txt  # For development tools
 ```
 Or, you can also install libraries manually:
 ```
@@ -66,9 +69,9 @@ Ollama -  a tool to easily run local LLMs like Mixtral
 ```
 Go to https://ollama.com and download the installer for your OS.
 ```
-llama3:8b - lighter LLM model, supports up to 8,192 tokens
+qwen2.5:14b - Optimized for structured output and multilingual tasks
 ```
-ollama pull llama3:8b
+ollama pull qwen2.5:14b
 ```
 tesseract - OCR engine for scanned pages
 poppler - Needed by pdf2image
@@ -85,7 +88,15 @@ Add both to your PATH environment variable
 - parser.py          ← PDF text extractor
 - uploads/           ← Folder for uploaded PDFs
 
-✅ Step 7: Run the Servers
+✅ Step 5: Code Quality (Development)
+Format and lint your code:
+```bash
+black .              # Format code
+ruff check --fix .   # Fix linting issues
+mypy .              # Type checking
+```
+
+✅ Step 6: Run the Servers
 Manually run Ollama before starting FastAPI:
 (If you downloaded Ollama as a macOS app, just open the app, no need for the code)
 ```
@@ -93,7 +104,7 @@ ollama serve
 ```
 Keep this running — this is your local LLM server. Confirm it works:
 ```
-ollama run llama3:8b "Say hello"
+ollama run qwen2.5:14b "Say hello"
 ```
 Then in another terminal, you start FastAPI:
 ```

@@ -1,9 +1,11 @@
 # main.py
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import JSONResponse
 import os
-from parser import extract_text_with_ocr_fallback
+
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import JSONResponse
+
 from embedder import embed_chunks, query_chunks
+from parser import extract_text_with_ocr_fallback
 from semantic_chunker import smart_chunk
 
 app = FastAPI()
@@ -26,15 +28,17 @@ async def upload_pdf(file: UploadFile = File(...)):
     return JSONResponse(content={"chunks": len(chunks)})
 
 
+import re
+
+import json5
+
+from llm import query_ollama
 from structure_extractor import (
     build_structure_prompt,
-    prepare_llm_chunks,
     extract_structures_with_retry,
     extract_with_accumulation,
+    prepare_llm_chunks,
 )
-from llm import query_ollama
-import json5
-import re
 
 
 @app.get("/extract_structure")

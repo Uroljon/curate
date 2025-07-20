@@ -1,6 +1,7 @@
-from sentence_transformers import SentenceTransformer
-from chromadb import PersistentClient
 import uuid
+
+from chromadb import PersistentClient
+from sentence_transformers import SentenceTransformer
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -51,6 +52,9 @@ def query_chunks(query: str, top_k: int = 5, source_id: str = None) -> list[dict
             "source": meta.get("source"),
         }
         for doc, score, meta in zip(
-            results["documents"][0], results["distances"][0], results["metadatas"][0]
+            results["documents"][0],
+            results["distances"][0],
+            results["metadatas"][0],
+            strict=False,
         )
     ]

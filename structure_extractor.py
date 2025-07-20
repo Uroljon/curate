@@ -1,9 +1,11 @@
 import json
-import json5
 import re
-from typing import List, Dict, Any, Optional
-from llm import query_ollama, query_ollama_structured
+from typing import Any, Dict, List, Optional
+
+import json5
+
 from embedder import query_chunks
+from llm import query_ollama, query_ollama_structured
 from schemas import ActionField, ExtractionResult, Project
 
 
@@ -112,7 +114,7 @@ def validate_extraction_schema(data: Any) -> bool:
     return True
 
 
-def extract_json_from_response(response: str) -> Optional[List[Dict[str, Any]]]:
+def extract_json_from_response(response: str) -> list[dict[str, Any]] | None:
     """
     Extract and validate JSON from LLM response with aggressive cleaning.
     """
@@ -194,7 +196,7 @@ def extract_json_from_response(response: str) -> Optional[List[Dict[str, Any]]]:
 
 def extract_structures_with_retry(
     chunk_text: str, max_retries: int = 1
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Extract structures from text using Ollama structured output.
     """
@@ -264,7 +266,7 @@ Extract action fields with their projects, measures, and indicators."""
         else:
             print(f"❌ Attempt {attempt + 1} failed - structured output returned None")
             if attempt < max_retries - 1:
-                print(f"🔄 Retrying...")
+                print("🔄 Retrying...")
 
     print(f"⚠️ All {max_retries} attempts failed for chunk")
 
@@ -282,11 +284,11 @@ Extract action fields with their projects, measures, and indicators."""
 
 
 def extract_with_accumulation(
-    accumulated_data: Dict[str, Any],
+    accumulated_data: dict[str, Any],
     chunk_text: str,
     chunk_index: int,
     total_chunks: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Extract structures from text while enhancing previously accumulated results.
 
@@ -380,5 +382,5 @@ Remember: ENHANCE and ADD, never remove."""
 
         return result_dict
     else:
-        print(f"⚠️ Enhancement failed, keeping previous state")
+        print("⚠️ Enhancement failed, keeping previous state")
         return accumulated_data

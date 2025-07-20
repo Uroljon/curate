@@ -1,9 +1,10 @@
-import fitz  # PyMuPDF
-from pdf2image import convert_from_path
-import pytesseract
-import tempfile
 import re
+import tempfile
+
+import fitz  # PyMuPDF
+import pytesseract
 from langdetect import detect
+from pdf2image import convert_from_path
 from spellchecker import SpellChecker
 
 spell_de = SpellChecker(language="de")

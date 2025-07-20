@@ -1,6 +1,7 @@
 # llm.py
+from typing import Optional, Type, TypeVar
+
 import requests
-from typing import Type, TypeVar, Optional
 from pydantic import BaseModel
 
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
@@ -53,17 +54,17 @@ def query_ollama(
         data = response.json()
         return data.get("response", "").strip()
     except requests.RequestException as e:
-        print(f"❌ LLM API Error: {str(e)}")
-        return f"LLM API Error: {str(e)}"
+        print(f"❌ LLM API Error: {e!s}")
+        return f"LLM API Error: {e!s}"
 
 
 def query_ollama_structured(
     prompt: str,
-    response_model: Type[T],
+    response_model: type[T],
     model: str = MODEL_NAME,
     temperature: float = 0.0,
-    system_message: Optional[str] = None,
-) -> Optional[T]:
+    system_message: str | None = None,
+) -> T | None:
     """
     Query Ollama with structured output using Pydantic models.
 
@@ -110,7 +111,7 @@ def query_ollama_structured(
             try:
                 return response_model.model_validate_json(content)
             except Exception as e:
-                print(f"⚠️ JSON validation failed: {str(e)}")
+                print(f"⚠️ JSON validation failed: {e!s}")
 
                 # Try json-repair as fallback
                 try:
@@ -119,14 +120,14 @@ def query_ollama_structured(
                     repaired = repair_json(content)
                     return response_model.model_validate(repaired)
                 except Exception as repair_error:
-                    print(f"❌ JSON repair failed: {str(repair_error)}")
+                    print(f"❌ JSON repair failed: {repair_error!s}")
                     return None
 
         return None
 
     except requests.RequestException as e:
-        print(f"❌ LLM API Error: {str(e)}")
+        print(f"❌ LLM API Error: {e!s}")
         return None
     except Exception as e:
-        print(f"❌ Unexpected error: {str(e)}")
+        print(f"❌ Unexpected error: {e!s}")
         return None
