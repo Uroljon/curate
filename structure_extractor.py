@@ -177,11 +177,30 @@ def extract_structures_with_retry(chunk_text: str, max_retries: int = 1) -> List
     Extract structures from text using Ollama structured output.
     """
     system_message = """Extract German municipal action fields (Handlungsfelder) and their projects from the text.
-    
-Focus on:
-    - Action fields like: Klimaschutz, Mobilität, Stadtentwicklung, Digitalisierung, Bildung, etc.
-    - Specific projects, measures, and indicators within each field
-    - Be comprehensive but only extract what's explicitly mentioned in the text"""
+
+IMPORTANT: For each project, actively look for:
+- Maßnahmen (measures/actions): Specific steps, actions, or implementations mentioned
+- Indikatoren (indicators/KPIs): Percentages, targets, deadlines, metrics mentioned
+
+Example of correct extraction:
+{
+  "action_fields": [{
+    "action_field": "Mobilität",
+    "projects": [{
+      "title": "Stadtbahn Regensburg",
+      "measures": ["Errichtung des Kernnetzes", "Ausbau zu einem Gesamtnetz", "Einführung bis 2030"],
+      "indicators": ["Modal Split 70% bis 2040", "Reduzierung MIV um 30%", "18 km Streckenlänge"]
+    }]
+  }]
+}
+
+Extract ALL details found in the text. Look for:
+- Action fields: Klimaschutz, Mobilität, Stadtentwicklung, Digitalisierung, Bildung, Ökologie, etc.
+- Project titles: Named initiatives, programs, or projects
+- Measures: Actions with verbs like "schaffen", "entwickeln", "fördern", "umsetzen", "ausbauen"
+- Indicators: Numbers, percentages, dates, targets like "bis 2030", "20%", "reduzieren um"
+
+Be comprehensive but only extract what's explicitly stated in the text."""
     
     prompt = f"""Extract all action fields and their projects from this German municipal strategy text:
 
