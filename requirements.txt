@@ -10,3 +10,5 @@ chromadb
 langdetect
 pyspellchecker
 json5
+pydantic
+json-repair

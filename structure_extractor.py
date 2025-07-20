@@ -2,8 +2,9 @@ import json
 import json5
 import re
 from typing import List, Dict, Any, Optional
-from llm import query_ollama
+from llm import query_ollama, query_ollama_structured
 from embedder import query_chunks
+from schemas import ActionField, ExtractionResult, Project
 
 def prepare_llm_chunks(chunks: list[str], max_chars: int = 20000, min_chars: int = 8000) -> list[str]:
     """
@@ -173,33 +174,66 @@ def extract_json_from_response(response: str) -> Optional[List[Dict[str, Any]]]:
 
 def extract_structures_with_retry(chunk_text: str, max_retries: int = 1) -> List[Dict[str, Any]]:
     """
-    Extract structures from text with retry logic for failed JSON parsing.
+    Extract structures from text using Ollama structured output.
     """
-    system_message = """Complete this JSON array using ONLY this structure:
+    system_message = """Extract German municipal action fields (Handlungsfelder) and their projects from the text.
+    
+Focus on:
+    - Action fields like: Klimaschutz, Mobilität, Stadtentwicklung, Digitalisierung, Bildung, etc.
+    - Specific projects, measures, and indicators within each field
+    - Be comprehensive but only extract what's explicitly mentioned in the text"""
+    
+    prompt = f"""Extract all action fields and their projects from this German municipal strategy text:
 
-[{"action_field":"Klimaschutz","projects":[{"title":"Solaroffensive"}]}]
+{chunk_text.strip()}
 
-Replace "Klimaschutz" with German municipal topics (Handlungsfelder).
-Replace "Solaroffensive" with specific projects (Projekte).
-NEVER use "topic", "content", "summary" - only "action_field", "projects", "title"."""
+Extract action fields with their projects, measures, and indicators."""
     
     for attempt in range(max_retries):
         print(f"📝 Extraction attempt {attempt + 1}/{max_retries} for chunk ({len(chunk_text)} chars)")
         
-        prompt = build_structure_prompt(chunk_text)
-        raw_response = query_ollama(prompt, system_message=system_message)
+        # Use structured output with Pydantic model
+        result = query_ollama_structured(
+            prompt=prompt,
+            response_model=ExtractionResult,
+            system_message=system_message,
+            temperature=0.1  # Low temperature for consistent extraction
+        )
         
-        # Try to extract valid JSON
-        extracted_data = extract_json_from_response(raw_response)
-        
-        if extracted_data is not None:
+        if result is not None:
+            # Convert Pydantic model to dict format expected by rest of pipeline
+            extracted_data = []
+            for af in result.action_fields:
+                action_field_dict = {
+                    "action_field": af.action_field,
+                    "projects": []
+                }
+                for project in af.projects:
+                    project_dict = {"title": project.title}
+                    if project.measures:
+                        project_dict["measures"] = project.measures
+                    if project.indicators:
+                        project_dict["indicators"] = project.indicators
+                    action_field_dict["projects"].append(project_dict)
+                extracted_data.append(action_field_dict)
+            
             print(f"✅ Successfully extracted {len(extracted_data)} action fields on attempt {attempt + 1}")
             return extracted_data
         else:
-            print(f"❌ Attempt {attempt + 1} failed - invalid JSON or schema")
-            print(f"📄 Full raw response: '{raw_response}'")
+            print(f"❌ Attempt {attempt + 1} failed - structured output returned None")
             if attempt < max_retries - 1:
                 print(f"🔄 Retrying...")
     
     print(f"⚠️ All {max_retries} attempts failed for chunk")
+    
+    # Fallback to old method as last resort
+    print("🔄 Falling back to legacy extraction method...")
+    prompt = build_structure_prompt(chunk_text)
+    raw_response = query_ollama(prompt, system_message=system_message)
+    extracted_data = extract_json_from_response(raw_response)
+    
+    if extracted_data:
+        print(f"✅ Legacy method extracted {len(extracted_data)} action fields")
+        return extracted_data
+    
     return []
