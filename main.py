@@ -32,7 +32,7 @@ import json5
 import re
 
 @app.get("/extract_structure")
-async def extract_structure(source_id: str, max_chars: int = 30000, min_chars: int = 12000):
+async def extract_structure(source_id: str, max_chars: int = 12000, min_chars: int = 8000):
     chunks = query_chunks("irrelevant", top_k=1000, source_id=source_id)
     raw_texts = [c["text"] for c in chunks]
     optimized_chunks = prepare_llm_chunks(raw_texts, max_chars=max_chars, min_chars=min_chars)

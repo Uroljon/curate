@@ -6,7 +6,7 @@ from llm import query_ollama, query_ollama_structured
 from embedder import query_chunks
 from schemas import ActionField, ExtractionResult, Project
 
-def prepare_llm_chunks(chunks: list[str], max_chars: int = 20000, min_chars: int = 8000) -> list[str]:
+def prepare_llm_chunks(chunks: list[str], max_chars: int = 12000, min_chars: int = 8000) -> list[str]:
     """
     Merge small chunks and split large ones to optimize for LLM context size.
     Operates on character count, but keeps paragraph integrity.
@@ -197,7 +197,7 @@ Extract action fields with their projects, measures, and indicators."""
             prompt=prompt,
             response_model=ExtractionResult,
             system_message=system_message,
-            temperature=0.1  # Low temperature for consistent extraction
+            temperature=0.0  # Zero temperature for deterministic extraction
         )
         
         if result is not None:
