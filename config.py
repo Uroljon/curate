@@ -50,10 +50,14 @@ SPELL_CHECK_LANGUAGES = {"de": "de", "en": "en"}  # Language codes for spell che
 # ChromaDB Configuration
 CHROMA_DIR = "chroma_store"
 COLLECTION_NAME = "document_chunks"
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
 # Upload Configuration
 UPLOAD_FOLDER = "uploads"
+
+# Semantic Chunking Configuration
+SEMANTIC_CHUNK_MAX_CHARS = 5000  # Target size for initial chunks
+SEMANTIC_CHUNK_MIN_CHARS = 3000  # Minimum size before merging
 
 # Output Configuration
 OUTPUT_FOLDER = "outputs"

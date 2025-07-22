@@ -1,0 +1,229 @@
+# CURATE Improvement TODO List
+
+## Overview
+This document outlines the step-by-step improvements for the CURATE PDF extraction system, focusing on fixing the chunking and embedding issues that are currently limiting extraction quality.
+
+## Phase 1: Quick Wins (1-2 days)
+
+### 1.1 Fix Embedding Model
+- [ ] Replace English-only embedding model with multilingual/German model
+  - [ ] Update `config.py`: Change `EMBEDDING_MODEL = "all-MiniLM-L6-v2"` to `"paraphrase-multilingual-MiniLM-L12-v2"`
+  - [ ] Test embedding quality with sample German text
+  - [ ] Verify ChromaDB compatibility with new embeddings
+  - [ ] Document performance differences (speed/memory)
+
+### 1.2 Fix Retrieval Query
+- [ ] Replace hardcoded "irrelevant" query in extraction
+  - [ ] Update `main.py`: Change `query_chunks("irrelevant", ...)` to meaningful queries
+  - [ ] Implement query based on extraction stage:
+    - Stage 1: "Handlungsfelder action fields categories"
+    - Stage 2: Query with specific action field name
+    - Stage 3: Query with project name + "indicators measures"
+  - [ ] Test retrieval relevance improvements
+
+### 1.3 Increase Initial Chunk Size
+- [ ] Update `semantic_chunker.py` default chunk size
+  - [ ] Change from word-based (300 words) to character-based (5000 chars)
+  - [ ] Update `smart_chunk()` function signature: `max_chars: int = 5000`
+  - [ ] Modify `merge_short_chunks()` to use character counts
+  - [ ] Test with sample documents to verify chunk sizes
+
+## Phase 2: Core Improvements (3-4 days)
+
+### 2.1 Implement German-Aware Chunking
+- [ ] Enhance heading detection for German documents
+  ```python
+  # Add patterns like:
+  # - "Maßnahmen:", "Projekte:", "Ziele:"
+  # - "Kapitel", "Abschnitt", "Teil"
+  ```
+  - [ ] Add German-specific heading patterns to `is_heading()`
+  - [ ] Handle multi-line German headings
+  - [ ] Test with real municipal documents
+
+### 2.2 Implement Indicator-Aware Chunking
+- [ ] Add indicator detection to prevent splitting
+  - [ ] Create `contains_indicators()` function to detect:
+    - Numbers with units (km, m², MW, Euro)
+    - Percentages and reductions
+    - Time targets (bis 2030, ab 2025)
+  - [ ] Modify chunking logic to keep indicator-rich sections together
+  - [ ] Add configuration for max chunk size override when indicators present
+
+### 2.3 Optimize LLM Chunk Preparation
+- [ ] Align initial chunks with LLM requirements
+  - [ ] Set initial chunk target to 10-15K chars (not 300 words)
+  - [ ] Remove redundant re-chunking in `prepare_llm_chunks()`
+  - [ ] Implement sliding window overlap for context continuity
+  - [ ] Add chunk validation to ensure quality
+
+## Phase 3: Advanced Retrieval (2-3 days)
+
+### 3.1 Implement Hybrid Search
+- [ ] Add BM25 keyword search alongside vector search
+  - [ ] Install and configure BM25 library
+  - [ ] Create `hybrid_search()` function combining:
+    - Vector similarity for concepts
+    - BM25 for exact terms/numbers
+  - [ ] Weight and merge results appropriately
+  - [ ] Test with German municipal terminology
+
+### 3.2 Implement Smart Chunk Filtering
+- [ ] Add relevance filtering before LLM processing
+  - [ ] Create relevance scoring based on:
+    - Query-chunk similarity
+    - Presence of key terms
+    - Section type (heading/content/indicators)
+  - [ ] Implement configurable threshold (e.g., top 30% most relevant)
+  - [ ] Add logging for filtered vs. included chunks
+
+### 3.3 Add Chunk Context Preservation
+- [ ] Maintain document structure in retrieval
+  - [ ] Add parent/child relationships in chunk metadata
+  - [ ] Include previous/next chunk references
+  - [ ] Retrieve related chunks together (e.g., heading + content)
+  - [ ] Test with hierarchical documents
+
+## Phase 4: German Language Optimization (2-3 days)
+
+### 4.1 Integrate German NLP Tools
+- [ ] Add German-specific text processing
+  - [ ] Integrate SoMaJo tokenizer for German
+  - [ ] Add compound word handling
+  - [ ] Implement German lemmatization
+  - [ ] Test with technical municipal vocabulary
+
+### 4.2 Enhance OCR Processing for German
+- [ ] Improve German OCR quality
+  - [ ] Add German-specific OCR post-processing
+  - [ ] Create municipal terminology dictionary
+  - [ ] Implement fuzzy matching for common OCR errors
+  - [ ] Test with scanned German documents
+
+### 4.3 Fine-tune for Municipal Documents
+- [ ] Create domain-specific optimizations
+  - [ ] Build list of common Handlungsfelder
+  - [ ] Create pattern library for municipal indicators
+  - [ ] Add validation for expected document structures
+  - [ ] Test with diverse municipal strategies
+
+## Phase 5: Validation and Monitoring (2 days)
+
+### 5.1 Implement Extraction Confidence Scoring
+- [ ] Add confidence metrics to extraction
+  - [ ] Implement extraction confidence based on:
+    - LLM response consistency
+    - Chunk relevance scores
+    - Indicator pattern matches
+  - [ ] Add confidence thresholds for manual review
+  - [ ] Create confidence reporting in API response
+
+### 5.2 Add Quality Metrics and Logging
+- [ ] Implement comprehensive logging
+  - [ ] Log chunk sizes and distributions
+  - [ ] Track extraction success rates per stage
+  - [ ] Monitor indicator extraction completeness
+  - [ ] Create performance benchmarks
+
+### 5.3 Create Test Suite
+- [ ] Build automated testing
+  - [ ] Create test documents with known extractions
+  - [ ] Implement extraction accuracy metrics
+  - [ ] Add regression tests for each improvement
+  - [ ] Document expected vs. actual results
+
+## Phase 6: Production Optimization (1-2 days)
+
+### 6.1 Performance Tuning
+- [ ] Optimize for production workloads
+  - [ ] Implement caching for repeated extractions
+  - [ ] Add parallel processing where possible
+  - [ ] Optimize embedding batch sizes
+  - [ ] Profile and remove bottlenecks
+
+### 6.2 Configuration Management
+- [ ] Enhance configuration flexibility
+  - [ ] Add environment-specific configs
+  - [ ] Create configuration validation
+  - [ ] Document all configuration options
+  - [ ] Add configuration hot-reloading
+
+### 6.3 API Enhancements
+- [ ] Improve API usability
+  - [ ] Add extraction progress endpoints
+  - [ ] Implement partial results streaming
+  - [ ] Add extraction history/versioning
+  - [ ] Create better error messages
+
+## Bonus: Future Enhancements
+
+### Multi-Agent Architecture (if time permits)
+- [ ] Research multi-agent frameworks (CrewAI, AutoGen)
+- [ ] Design agent roles:
+  - Scanner Agent (find action fields)
+  - Project Agent (extract projects)
+  - Indicator Agent (extract numbers/dates)
+  - Validator Agent (check consistency)
+- [ ] Implement proof-of-concept
+- [ ] Benchmark against current approach
+
+### Advanced German Model Integration
+- [ ] Evaluate German-specific models:
+  - EM German (Llama2-based)
+  - GBERT variants
+  - German-finetuned Qwen
+- [ ] Test extraction quality improvements
+- [ ] Document resource requirements
+
+## Success Metrics
+
+Track these metrics before and after each phase:
+- [ ] Indicator extraction rate (target: >70%)
+- [ ] Project-indicator association accuracy (target: >85%)
+- [ ] Processing time per document (target: <30s)
+- [ ] False positive rate (target: <10%)
+- [ ] Memory usage (target: <4GB)
+
+## Implementation Notes
+
+1. **Always test with real German municipal documents**
+2. **Create backups before major changes**
+3. **Document configuration changes**
+4. **Monitor performance impacts**
+5. **Keep backwards compatibility where possible**
+
+## Priority Order
+
+1. **Critical** (Do First):
+   - Fix embedding model (1.1)
+   - Fix retrieval query (1.2)
+   - Increase chunk size (1.3)
+
+2. **High Impact**:
+   - German-aware chunking (2.1)
+   - Indicator preservation (2.2)
+   - Hybrid search (3.1)
+
+3. **Important**:
+   - Smart filtering (3.2)
+   - Confidence scoring (5.1)
+   - German NLP tools (4.1)
+
+4. **Nice to Have**:
+   - Multi-agent architecture
+   - Advanced monitoring
+   - API streaming
+
+## Getting Started
+
+1. Create a new branch: `git checkout -b improve-chunking-embedding`
+2. Start with Phase 1 tasks (highest impact, lowest effort)
+3. Test each change with sample documents
+4. Document results and move to next phase
+5. Regular commits with descriptive messages
+
+---
+
+**Estimated Total Time**: 10-15 days for all phases
+**Minimum Viable Improvement**: 2-3 days (Phase 1 only)
+**Recommended Initial Focus**: Phases 1-3 (6-9 days)

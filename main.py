@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from embedder import embed_chunks, query_chunks
 from parser import extract_text_with_ocr_fallback
 from semantic_chunker import smart_chunk
-from config import UPLOAD_FOLDER, CHUNK_MAX_CHARS, CHUNK_MIN_CHARS
+from config import UPLOAD_FOLDER, CHUNK_MAX_CHARS, CHUNK_MIN_CHARS, SEMANTIC_CHUNK_MAX_CHARS
 
 app = FastAPI()
 
@@ -19,7 +19,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         f.write(await file.read())
 
     extracted_text = extract_text_with_ocr_fallback(file_path)
-    chunks = smart_chunk(extracted_text)
+    chunks = smart_chunk(extracted_text, max_chars=SEMANTIC_CHUNK_MAX_CHARS)
 
     # Store embeddings
     embed_chunks(chunks, source_id=file.filename)

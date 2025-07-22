@@ -7,8 +7,8 @@ def is_heading(line: str) -> bool:
     line = line.strip()
     if len(line) > 100 or len(line) < 3:
         return False
-    if re.match(r"^\d{1,2}(\.\d{1,2})*\s+[A-ZÄÖÜ]", line):
-        return True  # e.g. "2.1 Maßnahmen"
+    if re.match(r"^\d{1,2}(\.\d{1,2})*\.?\s+\w", line):
+        return True  # e.g. "1. Klimaschutz" or "2.1 Maßnahmen"
     if line.isupper():
         return True
     if re.match(r"^[A-ZÄÖÜ][a-zäöüß]+(\s+[A-ZÄÖÜ][a-zäöüß]+)*$", line):
@@ -42,20 +42,20 @@ def split_by_heading(text: str) -> list[str]:
     return chunks
 
 
-def merge_short_chunks(chunks: list[str], min_words=100, max_words=300) -> list[str]:
-    """Merge small or overly long chunks to be LLM-friendly."""
+def merge_short_chunks(chunks: list[str], min_chars=3000, max_chars=5000) -> list[str]:
+    """Merge small chunks to optimize for embedding and LLM processing."""
     merged = []
     buffer = ""
 
-    def word_count(text):
-        return len(text.split())
+    def char_count(text):
+        return len(text)
 
     for chunk in chunks:
         if not chunk.strip():
             continue
 
         combined = buffer + "\n\n" + chunk if buffer else chunk
-        if word_count(combined) < max_words:
+        if char_count(combined) < max_chars:
             buffer = combined
         else:
             if buffer:
@@ -68,7 +68,7 @@ def merge_short_chunks(chunks: list[str], min_words=100, max_words=300) -> list[
     return merged
 
 
-def smart_chunk(cleaned_text: str, max_words: int = 300) -> list[str]:
+def smart_chunk(cleaned_text: str, max_chars: int = 5000) -> list[str]:
     chunks = split_by_heading(cleaned_text)
-    final_chunks = merge_short_chunks(chunks, max_words=max_words)
+    final_chunks = merge_short_chunks(chunks, max_chars=max_chars)
     return final_chunks
