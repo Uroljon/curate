@@ -69,5 +69,15 @@ FAST_EXTRACTION_ENABLED = True  # Enable fast single-pass extraction endpoint
 FAST_EXTRACTION_MAX_CHUNKS = 50  # Limit chunks for speed (0 = no limit)
 FAST_EXTRACTION_PARALLEL = False  # Future: enable parallel chunk processing
 
+# Retrieval Configuration
+RETRIEVAL_MODE = "all"  # Options: "all", "semantic", "hybrid"
+RETRIEVAL_MIN_SCORE = 0.3  # Minimum similarity score for semantic mode
+RETRIEVAL_TOP_K = 100  # Number of chunks to retrieve in semantic mode
+RETRIEVAL_QUERIES = [
+    "Handlungsfeld Handlungsfelder action field Maßnahmen Projekte",
+    "Klimaschutz Mobilität Energie Bildung Wirtschaft Nachhaltigkeit",
+    "Indikatoren indicators Kennzahlen metrics Ziele targets"
+]
+
 # Output Configuration
 OUTPUT_FOLDER = "outputs"

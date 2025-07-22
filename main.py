@@ -8,7 +8,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from fastapi import FastAPI, File, UploadFile, Request
 from fastapi.responses import JSONResponse
 
-from embedder import embed_chunks, query_chunks
+from embedder import embed_chunks, query_chunks, get_all_chunks_for_document
 from parser import extract_text_with_ocr_fallback
 from semantic_chunker import smart_chunk
 from monitoring import (
@@ -118,7 +118,8 @@ from structure_extractor import (
 async def extract_structure(
     source_id: str, max_chars: int = CHUNK_MAX_CHARS, min_chars: int = CHUNK_MIN_CHARS
 ):
-    chunks = query_chunks("irrelevant", top_k=1000, source_id=source_id)
+    # Get all chunks for comprehensive multi-stage extraction
+    chunks = get_all_chunks_for_document(source_id)
     raw_texts = [c["text"] for c in chunks]
     # Use semantic-aware chunking to preserve document structure
     from semantic_llm_chunker import prepare_semantic_llm_chunks
@@ -263,7 +264,8 @@ async def extract_structure_fast(
     try:
         # Stage 1: Chunk retrieval
         monitor.start_stage("chunk_retrieval", source_id=source_id)
-        chunks = query_chunks("irrelevant", top_k=1000, source_id=source_id)
+        # Get all chunks for fast but comprehensive extraction
+        chunks = get_all_chunks_for_document(source_id)
         raw_texts = [c["text"] for c in chunks]
         monitor.end_stage("chunk_retrieval", chunks_retrieved=len(raw_texts))
         
