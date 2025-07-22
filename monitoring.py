@@ -165,24 +165,22 @@ class ChunkQualityMonitor:
         if not chunks:
             return {"error": "No chunks provided"}
         
-        from semantic_chunker import is_heading
-        
         sizes = [len(chunk) for chunk in chunks]
         
-        # Analyze heading distribution
-        heading_stats = []
+        # Simple structural analysis (no complex heading detection)
+        structural_stats = []
         for i, chunk in enumerate(chunks):
-            headings_found = 0
             lines = chunk.split('\n')
-            for line in lines:
-                if is_heading(line.strip()):
-                    headings_found += 1
             
-            heading_stats.append({
+            # Basic structural markers
+            has_double_newline = '\n\n' in chunk
+            has_page_marker = '[OCR Page' in chunk
+            
+            structural_stats.append({
                 "chunk_index": i,
                 "size": sizes[i],
-                "heading_count": headings_found,
-                "starts_with_heading": is_heading(lines[0].strip()) if lines else False
+                "has_double_newline": has_double_newline,
+                "has_page_marker": has_page_marker
             })
         
         metrics = {
@@ -194,10 +192,10 @@ class ChunkQualityMonitor:
                 "avg": sum(sizes) / len(sizes),
                 "total": sum(sizes)
             },
-            "heading_stats": {
-                "chunks_with_headings": sum(1 for stat in heading_stats if stat["heading_count"] > 0),
-                "total_headings": sum(stat["heading_count"] for stat in heading_stats),
-                "chunks_starting_with_heading": sum(1 for stat in heading_stats if stat["starts_with_heading"])
+            "structural_stats": {
+                "chunks_with_paragraphs": sum(1 for stat in structural_stats if stat["has_double_newline"]),
+                "chunks_with_page_markers": sum(1 for stat in structural_stats if stat["has_page_marker"]),
+                "chunks_with_structure": sum(1 for stat in structural_stats if stat["has_double_newline"] or stat["has_page_marker"])
             },
             "size_distribution": {
                 "<1k": sum(1 for s in sizes if s < 1000),
@@ -207,7 +205,7 @@ class ChunkQualityMonitor:
                 "7.5k-10k": sum(1 for s in sizes if 7500 <= s < 10000),
                 ">10k": sum(1 for s in sizes if s >= 10000)
             },
-            "chunk_details": heading_stats
+            "chunk_details": structural_stats
         }
         
         # Log the analysis

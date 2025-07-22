@@ -78,7 +78,7 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
             "text_length": len(extracted_text),
             "chunk_quality": {
                 "avg_size": chunk_metrics["size_stats"]["avg"],
-                "with_headings": chunk_metrics["heading_stats"]["chunks_with_headings"]
+                "with_structure": chunk_metrics["structural_stats"]["chunks_with_structure"]
             }
         }
         
