@@ -47,14 +47,17 @@ This document outlines the step-by-step improvements for the CURATE PDF extracti
   - [x] Handle multi-line German headings
   - [x] Test with real municipal documents
 
-### 2.2 Implement Indicator-Aware Chunking
-- [ ] Add indicator detection to prevent splitting
-  - [ ] Create `contains_indicators()` function to detect:
+### 2.2 Implement Indicator-Aware Chunking ✅
+- [x] Add indicator detection to prevent splitting
+  - [x] Create `contains_indicator_context()` function to detect:
     - Numbers with units (km, m², MW, Euro)
-    - Percentages and reductions
+    - Percentages and reductions  
     - Time targets (bis 2030, ab 2025)
-  - [ ] Modify chunking logic to keep indicator-rich sections together
-  - [ ] Add configuration for max chunk size override when indicators present
+    - Rates (3% pro Jahr, 50 je Einwohner)
+  - [x] Modify chunking logic to keep indicator-rich sections together
+  - [x] Add safe split point detection to preserve context
+  - [x] Update both paragraph and line splitting functions
+  - [x] Add configuration options (INDICATOR_AWARE_CHUNKING, INDICATOR_WINDOW_SIZE)
 
 ### 2.3 Optimize LLM Chunk Preparation
 - [ ] Align initial chunks with LLM requirements
