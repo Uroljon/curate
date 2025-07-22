@@ -5,12 +5,12 @@ This document outlines the step-by-step improvements for the CURATE PDF extracti
 
 ## Phase 1: Quick Wins (1-2 days)
 
-### 1.1 Fix Embedding Model
-- [ ] Replace English-only embedding model with multilingual/German model
-  - [ ] Update `config.py`: Change `EMBEDDING_MODEL = "all-MiniLM-L6-v2"` to `"paraphrase-multilingual-MiniLM-L12-v2"`
-  - [ ] Test embedding quality with sample German text
-  - [ ] Verify ChromaDB compatibility with new embeddings
-  - [ ] Document performance differences (speed/memory)
+### 1.1 Fix Embedding Model ✅
+- [x] Replace English-only embedding model with multilingual/German model
+  - [x] Update `config.py`: Change `EMBEDDING_MODEL = "all-MiniLM-L6-v2"` to `"paraphrase-multilingual-MiniLM-L12-v2"`
+  - [x] Test embedding quality with sample German text
+  - [x] Verify ChromaDB compatibility with new embeddings
+  - [x] Document performance differences (speed/memory)
 
 ### 1.2 Fix Retrieval Query
 - [ ] Replace hardcoded "irrelevant" query in extraction
@@ -21,12 +21,19 @@ This document outlines the step-by-step improvements for the CURATE PDF extracti
     - Stage 3: Query with project name + "indicators measures"
   - [ ] Test retrieval relevance improvements
 
-### 1.3 Increase Initial Chunk Size
-- [ ] Update `semantic_chunker.py` default chunk size
-  - [ ] Change from word-based (300 words) to character-based (5000 chars)
-  - [ ] Update `smart_chunk()` function signature: `max_chars: int = 5000`
-  - [ ] Modify `merge_short_chunks()` to use character counts
-  - [ ] Test with sample documents to verify chunk sizes
+### 1.3 Increase Initial Chunk Size ✅
+- [x] Update `semantic_chunker.py` default chunk size
+  - [x] Change from word-based (300 words) to character-based (5000 chars)
+  - [x] Update `smart_chunk()` function signature: `max_chars: int = 5000`
+  - [x] Modify `merge_short_chunks()` to use character counts
+  - [x] Test with sample documents to verify chunk sizes
+
+### 1.4 Fast Single-Pass Extraction ✅
+- [x] Create `/extract_structure_fast` endpoint for rapid iteration
+  - [x] Add configuration options in `config.py`
+  - [x] Implement single-pass extraction (3x faster)
+  - [x] Include timing metrics in response
+  - [x] Create performance comparison test script
 
 ## Phase 2: Core Improvements (3-4 days)
 

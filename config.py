@@ -59,5 +59,10 @@ UPLOAD_FOLDER = "uploads"
 SEMANTIC_CHUNK_MAX_CHARS = 5000  # Target size for initial chunks
 SEMANTIC_CHUNK_MIN_CHARS = 3000  # Minimum size before merging
 
+# Fast Extraction Configuration
+FAST_EXTRACTION_ENABLED = True  # Enable fast single-pass extraction endpoint
+FAST_EXTRACTION_MAX_CHUNKS = 50  # Limit chunks for speed (0 = no limit)
+FAST_EXTRACTION_PARALLEL = False  # Future: enable parallel chunk processing
+
 # Output Configuration
 OUTPUT_FOLDER = "outputs"

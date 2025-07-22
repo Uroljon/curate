@@ -7,7 +7,14 @@ from fastapi.responses import JSONResponse
 from embedder import embed_chunks, query_chunks
 from parser import extract_text_with_ocr_fallback
 from semantic_chunker import smart_chunk
-from config import UPLOAD_FOLDER, CHUNK_MAX_CHARS, CHUNK_MIN_CHARS, SEMANTIC_CHUNK_MAX_CHARS
+from config import (
+    UPLOAD_FOLDER, 
+    CHUNK_MAX_CHARS, 
+    CHUNK_MIN_CHARS, 
+    SEMANTIC_CHUNK_MAX_CHARS,
+    FAST_EXTRACTION_ENABLED,
+    FAST_EXTRACTION_MAX_CHUNKS
+)
 
 app = FastAPI()
 
@@ -158,3 +165,102 @@ async def extract_structure(
         )
 
     return JSONResponse(content={"structures": final_structures})
+
+
+@app.get("/extract_structure_fast")
+async def extract_structure_fast(
+    source_id: str, max_chars: int = CHUNK_MAX_CHARS, min_chars: int = CHUNK_MIN_CHARS
+):
+    """Fast single-pass extraction endpoint for quicker iteration and testing."""
+    
+    if not FAST_EXTRACTION_ENABLED:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Fast extraction is disabled in configuration"}
+        )
+    
+    import time
+    start_time = time.time()
+    
+    # Get chunks (same as regular extraction)
+    chunks = query_chunks("irrelevant", top_k=1000, source_id=source_id)
+    raw_texts = [c["text"] for c in chunks]
+    optimized_chunks = prepare_llm_chunks(
+        raw_texts, max_chars=max_chars, min_chars=min_chars
+    )
+    
+    # Apply chunk limit if configured
+    if FAST_EXTRACTION_MAX_CHUNKS > 0:
+        optimized_chunks = optimized_chunks[:FAST_EXTRACTION_MAX_CHUNKS]
+        print(f"⚡ Fast mode: Processing only first {len(optimized_chunks)} chunks")
+    
+    print(f"\n🚀 Starting FAST single-pass extraction with {len(optimized_chunks)} chunks\n")
+    
+    # Single-pass extraction
+    all_extracted_data = []
+    
+    for i, chunk in enumerate(optimized_chunks):
+        print(f"⚡ Processing chunk {i+1}/{len(optimized_chunks)} ({len(chunk)} chars)")
+        
+        # Use the existing single-pass extraction function
+        chunk_data = extract_structures_with_retry(chunk)
+        
+        if chunk_data:
+            all_extracted_data.extend(chunk_data)
+            print(f"   ✅ Found {len(chunk_data)} action fields")
+        else:
+            print(f"   ⚠️ No data found")
+    
+    # Deduplicate action fields (same logic as multi-stage)
+    deduplicated_data = {}
+    
+    for item in all_extracted_data:
+        action_field = item["action_field"]
+        
+        if action_field in deduplicated_data:
+            # Merge projects from duplicate action fields
+            existing_projects = deduplicated_data[action_field]["projects"]
+            new_projects = item["projects"]
+            
+            # Simple deduplication by project title
+            existing_titles = {p["title"] for p in existing_projects}
+            for project in new_projects:
+                if project["title"] not in existing_titles:
+                    existing_projects.append(project)
+        else:
+            deduplicated_data[action_field] = item
+    
+    # Convert back to list format
+    final_structures = list(deduplicated_data.values())
+    
+    # Calculate extraction time
+    extraction_time = time.time() - start_time
+    
+    # Count statistics
+    total_projects = sum(len(af["projects"]) for af in final_structures)
+    measures_count = sum(
+        1 for af in final_structures for p in af["projects"] if p.get("measures")
+    )
+    indicators_count = sum(
+        1 for af in final_structures for p in af["projects"] if p.get("indicators")
+    )
+    
+    print(f"\n⏱️  Fast extraction completed in {extraction_time:.2f} seconds")
+    print(
+        f"✅ Results: {len(final_structures)} action fields, {total_projects} projects"
+    )
+    print(
+        f"📊 {measures_count} projects with measures, {indicators_count} projects with indicators"
+    )
+    
+    return JSONResponse(content={
+        "structures": final_structures,
+        "metadata": {
+            "extraction_time_seconds": round(extraction_time, 2),
+            "chunks_processed": len(optimized_chunks),
+            "action_fields_found": len(final_structures),
+            "total_projects": total_projects,
+            "projects_with_measures": measures_count,
+            "projects_with_indicators": indicators_count
+        }
+    })
