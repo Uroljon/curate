@@ -149,6 +149,101 @@ def is_heading(line: str) -> bool:
     return False
 
 
+def extract_chunk_topic(chunk: str) -> dict:
+    """
+    Extract the primary topic and subtopic from a chunk.
+    
+    Returns metadata about the chunk's semantic context:
+    - topic: Main Handlungsfeld or major section
+    - subtopic: Project, measure, or subsection
+    - level: Hierarchy level (1 for main topics, 2 for subtopics)
+    - confidence: How confident we are in the classification
+    """
+    lines = chunk.strip().split('\n')
+    topic = None
+    subtopic = None
+    level = 0
+    confidence = 0.0
+    
+    # Primary topic patterns (Handlungsfeld level)
+    primary_patterns = [
+        (r'Handlungsfeld:\s*(.+)', 'handlungsfeld'),
+        (r'Handlungsfelder:\s*(.+)', 'handlungsfeld'),
+        (r'^\d+\.\s+([A-ZÄÖÜ].+)$', 'numbered_section'),  # "1. Klimaschutz"
+        (r'^[IVX]+\.\s+(.+)$', 'roman_section'),  # "III. Mobilität"
+    ]
+    
+    # Subtopic patterns
+    subtopic_patterns = [
+        (r'Projekte?:\s*(.+)', 'project'),
+        (r'Maßnahmen?:\s*(.+)', 'measure'),
+        (r'Ziele?:\s*(.+)', 'goal'),
+        (r'Indikatoren?:\s*(.+)', 'indicator'),
+        (r'^\d+\.\d+\s+(.+)$', 'subsection'),  # "2.1 Unterpunkt"
+    ]
+    
+    # Check first 10 lines for topic indicators
+    for i, line in enumerate(lines[:10]):
+        line = line.strip()
+        
+        # Check for primary topics
+        for pattern, pattern_type in primary_patterns:
+            match = re.match(pattern, line, re.IGNORECASE)
+            if match:
+                topic = match.group(1).strip()
+                level = 1
+                confidence = 1.0 if pattern_type == 'handlungsfeld' else 0.9
+                
+                # Look for subtopic in next few lines
+                for j in range(i+1, min(i+5, len(lines))):
+                    subline = lines[j].strip()
+                    for subpattern, _ in subtopic_patterns:
+                        submatch = re.match(subpattern, subline, re.IGNORECASE)
+                        if submatch:
+                            subtopic = submatch.group(1).strip()
+                            break
+                    if subtopic:
+                        break
+                break
+        
+        # If no primary topic yet, check for subtopics
+        if not topic:
+            for pattern, pattern_type in subtopic_patterns:
+                match = re.match(pattern, line, re.IGNORECASE)
+                if match:
+                    subtopic = match.group(1).strip()
+                    level = 2
+                    confidence = 0.7
+                    break
+    
+    # If no explicit topic found, try to infer from content
+    if not topic and not subtopic:
+        # Check for topic keywords in the chunk
+        topic_keywords = {
+            'Klimaschutz': ['CO2', 'Emission', 'Klimawandel', 'Treibhausgas', 'erneuerbar'],
+            'Mobilität': ['Verkehr', 'ÖPNV', 'Radweg', 'Stadtbahn', 'Modal Split'],
+            'Stadtentwicklung': ['Quartier', 'Siedlung', 'Baukultur', 'Wohnen'],
+            'Digitalisierung': ['digital', 'IT', 'Smart City', 'Daten'],
+            'Freiräume': ['Grünfläche', 'Park', 'Biotop', 'ökologisch'],
+        }
+        
+        chunk_lower = chunk.lower()
+        for topic_name, keywords in topic_keywords.items():
+            keyword_count = sum(1 for kw in keywords if kw.lower() in chunk_lower)
+            if keyword_count >= 2:
+                topic = topic_name
+                confidence = min(0.6 + keyword_count * 0.1, 0.9)
+                level = 1
+                break
+    
+    return {
+        'topic': topic,
+        'subtopic': subtopic,
+        'level': level,
+        'confidence': confidence
+    }
+
+
 def split_by_heading(text: str) -> list[str]:
     """Split text by section headings, preserving OCR tags.
     

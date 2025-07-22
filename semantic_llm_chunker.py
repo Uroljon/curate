@@ -8,7 +8,7 @@ maintaining semantic boundaries identified during initial chunking.
 import re
 from typing import List, Tuple
 
-from semantic_chunker import is_heading
+from semantic_chunker import is_heading, extract_chunk_topic
 
 
 def chunk_starts_with_heading(chunk: str) -> bool:
@@ -177,10 +177,37 @@ def analyze_chunk_quality(chunks: List[str], stage: str = "unknown") -> dict:
     
     # Find mixed sections (multiple different Handlungsfelder in one chunk)
     mixed_sections = 0
+    topic_coherence_stats = {
+        "chunks_with_single_topic": 0,
+        "chunks_with_multiple_topics": 0,
+        "chunks_with_no_topic": 0,
+        "topics_found": set()
+    }
+    
     for chunk in chunks:
         handlungsfeld_count = chunk.count("Handlungsfeld:")
         if handlungsfeld_count > 1:
             mixed_sections += 1
+        
+        # Analyze topic coherence
+        chunk_topics = []
+        for line in chunk.split('\n'):
+            if "Handlungsfeld:" in line:
+                topic_match = re.search(r'Handlungsfeld:\s*(.+)', line)
+                if topic_match:
+                    topic = topic_match.group(1).strip()
+                    chunk_topics.append(topic)
+                    topic_coherence_stats["topics_found"].add(topic)
+        
+        if len(chunk_topics) == 0:
+            topic_coherence_stats["chunks_with_no_topic"] += 1
+        elif len(chunk_topics) == 1:
+            topic_coherence_stats["chunks_with_single_topic"] += 1
+        else:
+            topic_coherence_stats["chunks_with_multiple_topics"] += 1
+    
+    # Convert set to list for JSON serialization
+    topic_coherence_stats["topics_found"] = list(topic_coherence_stats["topics_found"])
     
     return {
         "stage": stage,
@@ -197,6 +224,7 @@ def analyze_chunk_quality(chunks: List[str], stage: str = "unknown") -> dict:
             "chunks_starting_with_heading": chunks_with_headings
         },
         "mixed_sections": mixed_sections,
+        "topic_coherence": topic_coherence_stats,
         "size_distribution": {
             "<10k": sum(1 for s in sizes if s < 10000),
             "10k-15k": sum(1 for s in sizes if 10000 <= s < 15000),
@@ -204,3 +232,180 @@ def analyze_chunk_quality(chunks: List[str], stage: str = "unknown") -> dict:
             ">20k": sum(1 for s in sizes if s > 20000),
         }
     }
+
+
+def prepare_semantic_llm_chunks_v2(
+    chunks: List[str], 
+    max_chars: int = 20000, 
+    min_chars: int = 15000
+) -> List[str]:
+    """
+    Prepare chunks for LLM processing with semantic-aware grouping.
+    
+    This version groups chunks by topic first, then merges within groups
+    to preserve semantic coherence. It prevents mixing different Handlungsfelder
+    in the same LLM chunk.
+    
+    Args:
+        chunks: List of semantically chunked text pieces
+        max_chars: Maximum characters per LLM chunk
+        min_chars: Minimum characters per LLM chunk (target)
+    
+    Returns:
+        List of semantically coherent chunks for LLM processing
+    """
+    if not chunks:
+        return []
+    
+    # Step 1: Extract topic metadata for each chunk
+    chunk_metadata = []
+    for i, chunk in enumerate(chunks):
+        metadata = extract_chunk_topic(chunk)
+        chunk_metadata.append({
+            'index': i,
+            'chunk': chunk.strip(),
+            'size': len(chunk.strip()),
+            'topic': metadata['topic'],
+            'subtopic': metadata['subtopic'],
+            'level': metadata['level'],
+            'confidence': metadata['confidence']
+        })
+    
+    # Step 2: Group consecutive chunks by topic
+    topic_groups = []
+    current_group = []
+    current_topic = None
+    
+    for metadata in chunk_metadata:
+        chunk_topic = metadata['topic']
+        
+        # If no topic detected, use previous topic if confidence is low
+        if not chunk_topic and current_topic and metadata['confidence'] < 0.5:
+            chunk_topic = current_topic
+        
+        # Start new group if topic changes
+        if current_topic and chunk_topic != current_topic:
+            if current_group:
+                topic_groups.append({
+                    'topic': current_topic,
+                    'chunks': current_group,
+                    'total_size': sum(m['size'] for m in current_group)
+                })
+            current_group = [metadata]
+            current_topic = chunk_topic
+        else:
+            current_group.append(metadata)
+            if not current_topic:
+                current_topic = chunk_topic
+    
+    # Don't forget the last group
+    if current_group:
+        topic_groups.append({
+            'topic': current_topic,
+            'chunks': current_group,
+            'total_size': sum(m['size'] for m in current_group)
+        })
+    
+    # Step 3: Process each topic group
+    result_chunks = []
+    
+    for group in topic_groups:
+        group_chunks = group['chunks']
+        group_size = group['total_size']
+        
+        # If entire group fits within max_chars, keep it together
+        if group_size <= max_chars:
+            merged_text = "\n\n".join(m['chunk'] for m in group_chunks)
+            result_chunks.append(merged_text)
+        
+        # If group is too large, split intelligently
+        else:
+            # Try to split by subtopics first
+            subtopic_groups = []
+            current_subtopic_chunks = []
+            current_subtopic = None
+            
+            for metadata in group_chunks:
+                if metadata['subtopic'] != current_subtopic and current_subtopic_chunks:
+                    subtopic_groups.append(current_subtopic_chunks)
+                    current_subtopic_chunks = [metadata]
+                    current_subtopic = metadata['subtopic']
+                else:
+                    current_subtopic_chunks.append(metadata)
+                    if not current_subtopic:
+                        current_subtopic = metadata['subtopic']
+            
+            if current_subtopic_chunks:
+                subtopic_groups.append(current_subtopic_chunks)
+            
+            # Merge subtopic groups respecting size limits
+            current_merge = []
+            current_merge_size = 0
+            
+            for subtopic_chunk_list in subtopic_groups:
+                subtopic_size = sum(m['size'] for m in subtopic_chunk_list)
+                
+                # If adding this subtopic would exceed max, flush current
+                if current_merge and current_merge_size + subtopic_size + 2 > max_chars:
+                    merged_text = "\n\n".join(m['chunk'] for m in current_merge)
+                    result_chunks.append(merged_text)
+                    current_merge = subtopic_chunk_list
+                    current_merge_size = subtopic_size
+                
+                # If single subtopic is too large, split it further
+                elif subtopic_size > max_chars:
+                    # Flush current merge first
+                    if current_merge:
+                        merged_text = "\n\n".join(m['chunk'] for m in current_merge)
+                        result_chunks.append(merged_text)
+                        current_merge = []
+                        current_merge_size = 0
+                    
+                    # Split large subtopic by chunks
+                    for metadata in subtopic_chunk_list:
+                        if current_merge_size + metadata['size'] + 2 > max_chars and current_merge:
+                            merged_text = "\n\n".join(m['chunk'] for m in current_merge)
+                            result_chunks.append(merged_text)
+                            current_merge = [metadata]
+                            current_merge_size = metadata['size']
+                        else:
+                            current_merge.append(metadata)
+                            current_merge_size += metadata['size'] + 2
+                
+                # Otherwise, add to current merge
+                else:
+                    current_merge.extend(subtopic_chunk_list)
+                    current_merge_size += subtopic_size + (2 if current_merge else 0)
+            
+            # Don't forget the last merge
+            if current_merge:
+                merged_text = "\n\n".join(m['chunk'] for m in current_merge)
+                result_chunks.append(merged_text)
+    
+    # Step 4: Post-process to ensure quality
+    final_chunks = []
+    for chunk in result_chunks:
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+            
+        # If chunk is very small and doesn't start with a heading, 
+        # try to merge with previous (but only within same topic)
+        if (len(chunk) < min_chars and 
+            not chunk_starts_with_heading(chunk) and 
+            final_chunks and 
+            len(final_chunks[-1]) + len(chunk) + 2 <= max_chars):
+            
+            # Extract topics to ensure they match
+            prev_topic = extract_chunk_topic(final_chunks[-1])['topic']
+            curr_topic = extract_chunk_topic(chunk)['topic']
+            
+            # Only merge if topics match or one is unknown
+            if prev_topic == curr_topic or not curr_topic or not prev_topic:
+                final_chunks[-1] = final_chunks[-1] + "\n\n" + chunk
+            else:
+                final_chunks.append(chunk)
+        else:
+            final_chunks.append(chunk)
+    
+    return final_chunks

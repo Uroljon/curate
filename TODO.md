@@ -279,6 +279,12 @@ Track these metrics before and after each phase:
 - ✅ Phase 2.2: Implemented indicator-aware chunking with pattern detection
 - ✅ Phase 5.2: Added quality metrics and comprehensive logging system
 - ❌ Phase 2.3: Reconsidered and skipped (current two-stage chunking is optimal)
+- ✅ **NEW**: Implemented semantic-aware LLM chunking to prevent topic mixing
+  - Added topic extraction to identify Handlungsfelder
+  - Created prepare_semantic_llm_chunks_v2() that groups by topic
+  - Prevents mixing different action fields in same LLM chunk
+  - Test shows 0 mixed topics (vs previous issue)
 
 ### Next Priority:
-- Phase 3.1: Implement Hybrid Search (BM25 + vector search)
+- Test with Regensburg PDF to verify >70% indicator extraction
+- If successful, skip Phase 3.1 (Hybrid Search not needed for this use case)

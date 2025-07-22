@@ -65,6 +65,8 @@ SEMANTIC_CHUNK_MAX_CHARS = 5000  # Target size for initial chunks
 SEMANTIC_CHUNK_MIN_CHARS = 3000  # Minimum size before merging
 INDICATOR_AWARE_CHUNKING = True  # Preserve indicators with their context
 INDICATOR_WINDOW_SIZE = 150  # Characters to check around split points
+SEMANTIC_AWARE_LLM_CHUNKING = True  # Group chunks by topic before merging for LLM
+TOPIC_COHERENCE_THRESHOLD = 0.8  # Confidence threshold for topic grouping
 
 # Fast Extraction Configuration
 FAST_EXTRACTION_ENABLED = True  # Enable fast single-pass extraction endpoint
