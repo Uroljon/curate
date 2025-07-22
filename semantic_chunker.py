@@ -109,20 +109,94 @@ def split_by_heading(text: str) -> list[str]:
     return chunks
 
 
+def split_large_chunk(text: str, max_chars: int) -> list[str]:
+    """Split a chunk that's too large into smaller pieces at natural boundaries."""
+    if len(text) <= max_chars:
+        return [text]
+    
+    # Try to split by double newlines (paragraphs) first
+    paragraphs = text.split('\n\n')
+    if len(paragraphs) > 1:
+        result = []
+        current = []
+        current_size = 0
+        
+        for para in paragraphs:
+            para_size = len(para) + (2 if current else 0)  # +2 for \n\n
+            
+            if current_size + para_size > max_chars and current:
+                # Current chunk is full, start new one
+                result.append('\n\n'.join(current))
+                current = [para]
+                current_size = len(para)
+            else:
+                current.append(para)
+                current_size += para_size
+        
+        if current:
+            result.append('\n\n'.join(current))
+        
+        # Recursively split any still-too-large chunks
+        final_result = []
+        for chunk in result:
+            if len(chunk) > max_chars:
+                # Try splitting by single newlines
+                final_result.extend(split_by_lines(chunk, max_chars))
+            else:
+                final_result.append(chunk)
+        
+        return final_result
+    
+    # If no paragraphs, try splitting by lines
+    return split_by_lines(text, max_chars)
+
+
+def split_by_lines(text: str, max_chars: int) -> list[str]:
+    """Split text by lines when paragraph splitting isn't enough."""
+    lines = text.split('\n')
+    result = []
+    current = []
+    current_size = 0
+    
+    for line in lines:
+        line_size = len(line) + (1 if current else 0)  # +1 for \n
+        
+        if current_size + line_size > max_chars and current:
+            result.append('\n'.join(current))
+            current = [line]
+            current_size = len(line)
+        else:
+            current.append(line)
+            current_size += line_size
+    
+    if current:
+        result.append('\n'.join(current))
+    
+    return result
+
+
 def merge_short_chunks(chunks: list[str], min_chars=3000, max_chars=5000) -> list[str]:
     """Merge small chunks to optimize for embedding and LLM processing."""
     merged = []
     buffer = ""
 
-    def char_count(text):
-        return len(text)
-
     for chunk in chunks:
         if not chunk.strip():
             continue
+        
+        # First check if chunk itself is too large
+        if len(chunk) > max_chars:
+            # Flush buffer first
+            if buffer:
+                merged.append(buffer.strip())
+                buffer = ""
+            # Split the large chunk
+            split_chunks = split_large_chunk(chunk, max_chars)
+            merged.extend(split_chunks)
+            continue
 
         combined = buffer + "\n\n" + chunk if buffer else chunk
-        if char_count(combined) < max_chars:
+        if len(combined) < max_chars:
             buffer = combined
         else:
             if buffer:
@@ -136,6 +210,13 @@ def merge_short_chunks(chunks: list[str], min_chars=3000, max_chars=5000) -> lis
 
 
 def smart_chunk(cleaned_text: str, max_chars: int = 5000) -> list[str]:
+    """Create semantic chunks respecting document structure and size limits."""
     chunks = split_by_heading(cleaned_text)
-    final_chunks = merge_short_chunks(chunks, max_chars=max_chars)
+    # Use configured min chars for semantic chunks
+    from config import SEMANTIC_CHUNK_MIN_CHARS
+    final_chunks = merge_short_chunks(
+        chunks, 
+        min_chars=SEMANTIC_CHUNK_MIN_CHARS,
+        max_chars=max_chars
+    )
     return final_chunks

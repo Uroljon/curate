@@ -14,9 +14,14 @@ OLLAMA_API_URL = "http://localhost:11434/api/generate"
 OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 
 # Chunk Configuration
-CHUNK_MAX_CHARS = 20000  # Maximum characters per chunk
-CHUNK_MIN_CHARS = 15000  # Minimum characters per chunk
+CHUNK_MAX_CHARS = 20000  # Maximum characters per chunk for LLM
+CHUNK_MIN_CHARS = 15000  # Minimum characters per chunk for LLM
 CHUNK_WARNING_THRESHOLD = 25000  # Warn if chunk exceeds this size
+
+# Semantic Chunk Configuration (for initial document chunking)
+SEMANTIC_CHUNK_MAX_CHARS = 7500  # Maximum characters per semantic chunk
+SEMANTIC_CHUNK_TARGET_CHARS = 5000  # Target size for semantic chunks
+SEMANTIC_CHUNK_MIN_CHARS = 1000  # Minimum characters per semantic chunk
 
 # LLM Generation Configuration
 GENERATION_OPTIONS = {

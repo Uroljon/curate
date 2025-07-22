@@ -8,6 +8,7 @@ from embedder import query_chunks
 from llm import query_ollama, query_ollama_structured
 from schemas import ActionField, ExtractionResult, Project, ActionFieldList, ProjectList, ProjectDetails
 from config import CHUNK_MAX_CHARS, CHUNK_MIN_CHARS, CHUNK_WARNING_THRESHOLD, EXTRACTION_MAX_RETRIES, MODEL_TEMPERATURE
+from semantic_llm_chunker import prepare_semantic_llm_chunks
 
 
 def prepare_llm_chunks(

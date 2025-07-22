@@ -1,4 +1,8 @@
+import os
 import uuid
+
+# Prevent tokenizer parallelism warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from chromadb import PersistentClient
 from sentence_transformers import SentenceTransformer
