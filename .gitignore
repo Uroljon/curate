@@ -5,3 +5,6 @@ venv
 env
 CLAUDE.md
 outputs/*
+logs/*
+logs/performance.jsonl
+logs/extraction.jsonl

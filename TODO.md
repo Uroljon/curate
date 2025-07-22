@@ -59,12 +59,20 @@ This document outlines the step-by-step improvements for the CURATE PDF extracti
   - [x] Update both paragraph and line splitting functions
   - [x] Add configuration options (INDICATOR_AWARE_CHUNKING, INDICATOR_WINDOW_SIZE)
 
-### 2.3 Optimize LLM Chunk Preparation
-- [ ] Align initial chunks with LLM requirements
-  - [ ] Set initial chunk target to 10-15K chars (not 300 words)
-  - [ ] Remove redundant re-chunking in `prepare_llm_chunks()`
-  - [ ] Implement sliding window overlap for context continuity
-  - [ ] Add chunk validation to ensure quality
+### 2.3 Optimize LLM Chunk Preparation ❌ RECONSIDERED
+- [ ] ~~Align initial chunks with LLM requirements~~ 
+  - [ ] ~~Set initial chunk target to 10-15K chars (not 300 words)~~
+  - [ ] ~~Remove redundant re-chunking in `prepare_llm_chunks()`~~
+  - [ ] ~~Implement sliding window overlap for context continuity~~
+  - [ ] ~~Add chunk validation to ensure quality~~
+
+**Decision**: After analysis, the current two-stage chunking is well-designed:
+- 5K chunks for embeddings provide good retrieval granularity
+- 15-20K LLM chunks maximize context for extraction
+- The "redundant" re-chunking actually serves different optimization goals
+- Changing this would hurt embedding quality and future semantic search
+
+**Status**: Skipped - current architecture is correct
 
 ## Phase 3: Advanced Retrieval (2-3 days)
 
@@ -263,3 +271,14 @@ Track these metrics before and after each phase:
 **Estimated Total Time**: 10-15 days for all phases
 **Minimum Viable Improvement**: 2-3 days (Phase 1 only)
 **Recommended Initial Focus**: Phases 1-3 (6-9 days)
+
+## Recent Progress (Updated: Today)
+
+### Completed Tasks:
+- ✅ Phase 1.2: Fixed retrieval query (replaced meaningless "irrelevant" search)
+- ✅ Phase 2.2: Implemented indicator-aware chunking with pattern detection
+- ✅ Phase 5.2: Added quality metrics and comprehensive logging system
+- ❌ Phase 2.3: Reconsidered and skipped (current two-stage chunking is optimal)
+
+### Next Priority:
+- Phase 3.1: Implement Hybrid Search (BM25 + vector search)
