@@ -328,6 +328,7 @@ def extract_structures_with_retry(
     system_message = """Extract German municipal action fields (Handlungsfelder) and their projects from the text.
 
 CRITICAL: You MUST actively search for and extract indicators/KPIs. These are NUMBERS, PERCENTAGES, DATES, and TARGETS.
+LANGUAGE: Always extract and return ALL content in GERMAN as it appears in the source text - do NOT translate to English.
 
 Definitions:
 - Maßnahmen (measures): Concrete actions, steps, implementations (verbs like "errichten", "ausbauen", "fördern")
@@ -463,6 +464,7 @@ CRITICAL RULES:
 3. MERGE duplicate projects (same title = same project, combine their data)
 4. ADD new action fields and projects not yet captured
 5. ACTIVELY SEARCH for indicators that may have been missed
+6. LANGUAGE: Always extract and return ALL content in GERMAN as it appears in the source text - do NOT translate to English
 
 SPECIAL FOCUS ON INDICATORS:
 Look for ANY quantitative information:

@@ -9,6 +9,7 @@ IMPORTANT:
 - This chunk may contain MULTIPLE action fields mixed together
 - Return ALL category names found, even if they appear briefly
 - Look for ANY thematic area, using various naming conventions:
+- LANGUAGE: Always extract and return content in GERMAN as it appears in the source text
   * Handlungsfeld/Handlungsfelder
   * Bereich/Bereiche
   * Themenfeld/Themenfelder  
@@ -42,6 +43,7 @@ CRITICAL INSTRUCTIONS:
 2. Focus ONLY on projects related to "{action_field}"
 3. IGNORE projects that belong to other action fields
 4. A project may be mentioned in a mixed context - extract it if it relates to "{action_field}"
+5. LANGUAGE: Always extract and return content in GERMAN as it appears in the source text
 
 WHAT ARE PROJECTS:
 - Named initiatives, programs, or specific efforts
@@ -70,6 +72,7 @@ CRITICAL CONTEXT AWARENESS:
 2. Focus ONLY on measures/indicators related to "{project_title}"
 3. Indicators may appear ANYWHERE in the chunk - before, after, or separated from the project mention
 4. Look for cross-references: "wie oben erwähnt", "siehe auch", "vgl."
+5. LANGUAGE: Always extract and return content in GERMAN as it appears in the source text - do NOT translate
 
 DEFINITIONS:
 - Maßnahmen (measures): Concrete actions, steps, implementations for THIS project
