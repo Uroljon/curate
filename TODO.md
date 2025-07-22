@@ -12,14 +12,13 @@ This document outlines the step-by-step improvements for the CURATE PDF extracti
   - [x] Verify ChromaDB compatibility with new embeddings
   - [x] Document performance differences (speed/memory)
 
-### 1.2 Fix Retrieval Query
-- [ ] Replace hardcoded "irrelevant" query in extraction
-  - [ ] Update `main.py`: Change `query_chunks("irrelevant", ...)` to meaningful queries
-  - [ ] Implement query based on extraction stage:
-    - Stage 1: "Handlungsfelder action fields categories"
-    - Stage 2: Query with specific action field name
-    - Stage 3: Query with project name + "indicators measures"
-  - [ ] Test retrieval relevance improvements
+### 1.2 Fix Retrieval Query ✅
+- [x] Replace hardcoded "irrelevant" query in extraction
+  - [x] Update `main.py`: Change `query_chunks("irrelevant", ...)` to `get_all_chunks_for_document()`
+  - [x] Create new retrieval function that gets all chunks without vector search
+  - [x] Maintain document order by sorting chunks by index
+  - [x] Add configuration for future semantic retrieval modes
+  - [x] Test retrieval improvements
 
 ### 1.3 Increase Initial Chunk Size ✅
 - [x] Update `semantic_chunker.py` default chunk size
@@ -125,18 +124,20 @@ This document outlines the step-by-step improvements for the CURATE PDF extracti
   - [ ] Add confidence thresholds for manual review
   - [ ] Create confidence reporting in API response
 
-### 5.2 Add Quality Metrics and Logging
-- [ ] Implement comprehensive logging
-  - [ ] Log chunk sizes and distributions
-  - [ ] Track extraction success rates per stage
-  - [ ] Monitor indicator extraction completeness
-  - [ ] Create performance benchmarks
+### 5.2 Add Quality Metrics and Logging ✅
+- [x] Implement comprehensive logging
+  - [x] Log chunk sizes and distributions (ChunkQualityMonitor)
+  - [x] Track extraction success rates per stage (ExtractionMonitor)
+  - [x] Monitor indicator extraction completeness (in extraction metadata)
+  - [x] Create performance benchmarks (benchmark_extraction.py)
 
-### 5.3 Create Test Suite
-- [ ] Build automated testing
+### 5.3 Create Test Suite (Partial) ✅
+- [x] Build automated testing
+  - [x] Create test suite for German chunking (test_german_chunking.py)
+  - [x] Create full pipeline test (test_full_pipeline.py)
+  - [x] Add integration tests (test_integration.py)
+  - [x] Create comprehensive PDF test suite (test_all_pdfs.py)
   - [ ] Create test documents with known extractions
-  - [ ] Implement extraction accuracy metrics
-  - [ ] Add regression tests for each improvement
   - [ ] Document expected vs. actual results
 
 ## Phase 6: Production Optimization (1-2 days)
