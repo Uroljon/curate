@@ -6,11 +6,12 @@ import json5
 
 from embedder import query_chunks
 from llm import query_ollama, query_ollama_structured
-from schemas import ActionField, ExtractionResult, Project
+from schemas import ActionField, ExtractionResult, Project, ActionFieldList, ProjectList, ProjectDetails
+from config import CHUNK_MAX_CHARS, CHUNK_MIN_CHARS, CHUNK_WARNING_THRESHOLD, EXTRACTION_MAX_RETRIES, MODEL_TEMPERATURE
 
 
 def prepare_llm_chunks(
-    chunks: list[str], max_chars: int = 8000, min_chars: int = 6000
+    chunks: list[str], max_chars: int = CHUNK_MAX_CHARS, min_chars: int = CHUNK_MIN_CHARS
 ) -> list[str]:
     """
     Merge small chunks and split large ones to optimize for LLM context size.
@@ -147,6 +148,261 @@ def prepare_llm_chunks(
     return merged_chunks
 
 
+def extract_action_fields_only(chunks: List[str]) -> List[str]:
+    """
+    Stage 1: Extract just action field names from all chunks.
+    
+    This is a lightweight extraction that only identifies the main categories
+    (Handlungsfelder) without extracting projects or details.
+    """
+    all_action_fields = set()  # Use set to automatically deduplicate
+    
+    system_message = """Extract ONLY the names of action fields (Handlungsfelder) from German municipal strategy documents.
+
+IMPORTANT: 
+- Return ONLY the category names, no projects or details
+- Look for main thematic areas like: Klimaschutz, Mobilität, Stadtentwicklung, Digitalisierung, etc.
+- Do NOT include project names, measures, or indicators
+- Do NOT include numbered items or bullet points that are sub-items
+
+Examples of action fields:
+- Klimaschutz
+- Mobilität
+- Stadtentwicklung
+- Digitalisierung
+- Wirtschaft und Wissenschaft
+- Soziales und Gesellschaft
+- Umwelt und Natur
+- Energie
+- Wohnen
+
+Return a simple list of action field names found in the text."""
+
+    for i, chunk in enumerate(chunks):
+        if not chunk.strip():
+            continue
+            
+        print(f"🔍 Stage 1: Scanning chunk {i+1}/{len(chunks)} for action fields ({len(chunk)} chars)")
+        
+        prompt = f"""Find all action fields (Handlungsfelder) in this German municipal text:
+
+{chunk.strip()}
+
+Return ONLY the main category names, not projects or details."""
+
+        result = query_ollama_structured(
+            prompt=prompt,
+            response_model=ActionFieldList,
+            system_message=system_message,
+            temperature=MODEL_TEMPERATURE
+        )
+        
+        if result and result.action_fields:
+            found_fields = set(result.action_fields)
+            print(f"   ✓ Found {len(found_fields)} action fields: {', '.join(sorted(found_fields))}")
+            all_action_fields.update(found_fields)
+        else:
+            print(f"   ✗ No action fields found in chunk {i+1}")
+    
+    # Convert to sorted list and merge similar fields
+    merged_fields = merge_similar_action_fields(list(all_action_fields))
+    
+    print(f"\n📊 Stage 1 Complete: Found {len(merged_fields)} unique action fields")
+    for field in merged_fields:
+        print(f"   • {field}")
+    
+    return merged_fields
+
+
+def merge_similar_action_fields(fields: List[str]) -> List[str]:
+    """
+    Merge similar action field names to avoid duplication.
+    
+    Examples:
+    - "Klimaschutz" and "Klimaschutz und Energie" → "Klimaschutz und Energie"
+    - "Mobilität" and "Mobilität und Verkehr" → "Mobilität und Verkehr"
+    """
+    if not fields:
+        return []
+    
+    # Sort by length (longer names often contain more context)
+    sorted_fields = sorted(fields, key=len, reverse=True)
+    merged = []
+    
+    for field in sorted_fields:
+        field_lower = field.lower()
+        is_subset = False
+        
+        # Check if this field is a subset of any already merged field
+        for merged_field in merged:
+            merged_lower = merged_field.lower()
+            # Check if one contains the other
+            if field_lower in merged_lower or merged_lower in field_lower:
+                is_subset = True
+                break
+        
+        if not is_subset:
+            merged.append(field)
+    
+    return sorted(merged)  # Return alphabetically sorted
+
+
+def extract_projects_for_field(chunks: List[str], action_field: str) -> List[str]:
+    """
+    Stage 2: Extract project names for a specific action field.
+    
+    Given an action field (e.g., "Klimaschutz"), find all projects
+    that belong to this category across all chunks.
+    """
+    all_projects = set()
+    
+    system_message = f"""Extract ONLY project names that belong to the action field "{action_field}".
+
+IMPORTANT:
+- Return ONLY project titles/names, not measures or descriptions
+- Projects are specific initiatives, programs, or named efforts
+- Do NOT include general statements or goals
+- Do NOT include measures, actions, or indicators
+
+Examples of projects:
+- "Stadtbahn Regensburg"
+- "Zero Waste Initiative"
+- "Masterplan Biodiversität"
+- "Energieeffizienz in kommunalen Gebäuden"
+- "Digitales Rathaus"
+
+Look for projects specifically related to: {action_field}"""
+
+    for i, chunk in enumerate(chunks):
+        if not chunk.strip():
+            continue
+            
+        # Quick check if this chunk might contain relevant content
+        if action_field.lower() not in chunk.lower():
+            continue
+            
+        print(f"🔎 Stage 2: Searching chunk {i+1}/{len(chunks)} for {action_field} projects")
+        
+        prompt = f"""Find all projects related to the action field "{action_field}" in this text:
+
+{chunk.strip()}
+
+Return ONLY the project names that belong to {action_field}."""
+
+        result = query_ollama_structured(
+            prompt=prompt,
+            response_model=ProjectList,
+            system_message=system_message,
+            temperature=MODEL_TEMPERATURE
+        )
+        
+        if result and result.projects:
+            found_projects = set(result.projects)
+            print(f"   ✓ Found {len(found_projects)} projects")
+            all_projects.update(found_projects)
+    
+    # Remove duplicates and sort
+    unique_projects = sorted(list(all_projects))
+    
+    print(f"   📋 Total {len(unique_projects)} projects for {action_field}")
+    
+    return unique_projects
+
+
+def extract_project_details(chunks: List[str], action_field: str, project_title: str) -> ProjectDetails:
+    """
+    Stage 3: Extract measures and indicators for a specific project.
+    
+    This is the most focused extraction, looking for specific details
+    about a single project within an action field.
+    """
+    all_measures = set()
+    all_indicators = set()
+    
+    system_message = f"""Extract measures and indicators for the project "{project_title}" in the action field "{action_field}".
+
+DEFINITIONS:
+- Maßnahmen (measures): Concrete actions, steps, implementations
+- Indikatoren (indicators): Numbers, percentages, dates, targets, KPIs
+
+CRITICAL: Focus on finding INDICATORS - these are quantitative metrics!
+
+INDICATOR PATTERNS:
+- Percentages: "40% Reduktion", "um 30% reduzieren", "Anteil von 65%"
+- Time targets: "bis 2030", "ab 2025", "innerhalb von 5 Jahren"
+- Quantities: "500 Ladepunkte", "18 km Streckenlänge", "1000 Wohneinheiten"
+- Frequencies: "jährlich", "pro Jahr", "monatlich"
+- Comparisons: "Verdopplung", "Halbierung", "30% weniger"
+
+Example for a project "Stadtbahn":
+Measures:
+- "Planung der Trassenführung"
+- "Bau der Haltestellen"
+- "Integration in bestehenden ÖPNV"
+
+Indicators:
+- "18 km Streckenlänge"
+- "24 Haltestellen"
+- "Inbetriebnahme bis 2028"
+- "Modal Split Erhöhung um 15%"
+
+Look ONLY for information about: {project_title}"""
+
+    # Search in chunks that mention both the action field and project
+    relevant_chunks = []
+    for i, chunk in enumerate(chunks):
+        if not chunk.strip():
+            continue
+            
+        chunk_lower = chunk.lower()
+        # Check if chunk contains project name (fuzzy match)
+        project_words = project_title.lower().split()
+        if any(word in chunk_lower for word in project_words if len(word) > 3):
+            relevant_chunks.append((i, chunk))
+    
+    if not relevant_chunks:
+        print(f"   ⚠️ No chunks found mentioning project: {project_title}")
+        return ProjectDetails()
+    
+    print(f"🔬 Stage 3: Analyzing {len(relevant_chunks)} chunks for {project_title} details")
+    
+    for i, chunk in relevant_chunks:
+        prompt = f"""Extract measures and indicators for the project "{project_title}" from this text:
+
+{chunk.strip()}
+
+Focus on finding:
+1. Maßnahmen (measures) - what will be done
+2. Indikatoren (indicators) - numbers, targets, dates, percentages
+
+Return ONLY information directly related to {project_title}."""
+
+        result = query_ollama_structured(
+            prompt=prompt,
+            response_model=ProjectDetails,
+            system_message=system_message,
+            temperature=MODEL_TEMPERATURE
+        )
+        
+        if result:
+            if result.measures:
+                all_measures.update(result.measures)
+                print(f"   ✓ Chunk {i+1}: Found {len(result.measures)} measures")
+            if result.indicators:
+                all_indicators.update(result.indicators)
+                print(f"   ✓ Chunk {i+1}: Found {len(result.indicators)} indicators")
+    
+    # Create final result
+    details = ProjectDetails(
+        measures=sorted(list(all_measures)),
+        indicators=sorted(list(all_indicators))
+    )
+    
+    print(f"   📊 Total: {len(details.measures)} measures, {len(details.indicators)} indicators")
+    
+    return details
+
+
 def build_structure_prompt(chunk_text: str) -> str:
     return f"""Extract from this German text and output JSON:
 
@@ -280,7 +536,7 @@ def extract_json_from_response(response: str) -> list[dict[str, Any]] | None:
 
 
 def extract_structures_with_retry(
-    chunk_text: str, max_retries: int = 1
+    chunk_text: str, max_retries: int = EXTRACTION_MAX_RETRIES
 ) -> list[dict[str, Any]]:
     """
     Extract structures from text using Ollama structured output.
@@ -329,8 +585,8 @@ REMEMBER: If you see ANY number, percentage, date target, or quantitative goal -
 Extract action fields with their projects, measures, and indicators."""
 
     # Validate chunk size
-    if len(chunk_text) > 10000:
-        print(f"⚠️ WARNING: Chunk size ({len(chunk_text)} chars) exceeds recommended limit of 10000 chars!")
+    if len(chunk_text) > CHUNK_WARNING_THRESHOLD:
+        print(f"⚠️ WARNING: Chunk size ({len(chunk_text)} chars) exceeds recommended limit of {CHUNK_WARNING_THRESHOLD} chars!")
         print(f"   This may cause JSON parsing issues or incomplete responses.")
     
     for attempt in range(max_retries):
@@ -343,7 +599,7 @@ Extract action fields with their projects, measures, and indicators."""
             prompt=prompt,
             response_model=ExtractionResult,
             system_message=system_message,
-            temperature=0.0,  # Zero temperature for deterministic extraction
+            temperature=MODEL_TEMPERATURE,  # Zero temperature for deterministic extraction
         )
 
         if result is not None:
@@ -458,7 +714,7 @@ Remember: ENHANCE and ADD, never remove."""
         prompt=prompt,
         response_model=ExtractionResult,
         system_message=system_message,
-        temperature=0.0,
+        temperature=MODEL_TEMPERATURE,
     )
 
     if enhanced_result:

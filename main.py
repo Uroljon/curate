@@ -7,9 +7,9 @@ from fastapi.responses import JSONResponse
 from embedder import embed_chunks, query_chunks
 from parser import extract_text_with_ocr_fallback
 from semantic_chunker import smart_chunk
+from config import UPLOAD_FOLDER, CHUNK_MAX_CHARS, CHUNK_MIN_CHARS
 
 app = FastAPI()
-UPLOAD_FOLDER = "uploads"
 
 
 @app.post("/upload")
@@ -38,12 +38,15 @@ from structure_extractor import (
     extract_structures_with_retry,
     extract_with_accumulation,
     prepare_llm_chunks,
+    extract_action_fields_only,
+    extract_projects_for_field,
+    extract_project_details,
 )
 
 
 @app.get("/extract_structure")
 async def extract_structure(
-    source_id: str, max_chars: int = 8000, min_chars: int = 6000
+    source_id: str, max_chars: int = CHUNK_MAX_CHARS, min_chars: int = CHUNK_MIN_CHARS
 ):
     chunks = query_chunks("irrelevant", top_k=1000, source_id=source_id)
     raw_texts = [c["text"] for c in chunks]
@@ -51,19 +54,57 @@ async def extract_structure(
         raw_texts, max_chars=max_chars, min_chars=min_chars
     )
 
-    # Use progressive extraction with accumulation
-    accumulated_data = {"action_fields": []}
-
-    for i, chunk in enumerate(optimized_chunks):
-        # Progressive extraction that builds on previous results
-        accumulated_data = extract_with_accumulation(
-            accumulated_data=accumulated_data,
-            chunk_text=chunk,
-            chunk_index=i,
-            total_chunks=len(optimized_chunks),
-        )
-
-    all_extracted_data = accumulated_data.get("action_fields", [])
+    # Multi-stage extraction approach
+    print(f"\n🚀 Starting multi-stage extraction with {len(optimized_chunks)} chunks\n")
+    
+    # Stage 1: Extract action fields
+    print("=" * 60)
+    print("STAGE 1: DISCOVERING ACTION FIELDS")
+    print("=" * 60)
+    action_fields = extract_action_fields_only(optimized_chunks)
+    
+    if not action_fields:
+        print("⚠️ No action fields found in Stage 1")
+        return JSONResponse(content={"structures": []})
+    
+    # Stage 2 & 3: Extract projects and details for each action field
+    all_extracted_data = []
+    
+    for field_idx, action_field in enumerate(action_fields):
+        print(f"\n{'=' * 60}")
+        print(f"STAGE 2: EXTRACTING PROJECTS FOR '{action_field}' ({field_idx + 1}/{len(action_fields)})")
+        print("=" * 60)
+        
+        projects = extract_projects_for_field(optimized_chunks, action_field)
+        
+        if not projects:
+            print(f"   ⚠️ No projects found for {action_field}")
+            continue
+        
+        # Stage 3: Extract details for each project
+        action_field_data = {
+            "action_field": action_field,
+            "projects": []
+        }
+        
+        print(f"\n{'=' * 60}")
+        print(f"STAGE 3: EXTRACTING DETAILS FOR {len(projects)} PROJECTS")
+        print("=" * 60)
+        
+        for proj_idx, project_title in enumerate(projects):
+            print(f"\n📁 Project {proj_idx + 1}/{len(projects)}: {project_title}")
+            
+            details = extract_project_details(optimized_chunks, action_field, project_title)
+            
+            project_data = {"title": project_title}
+            if details.measures:
+                project_data["measures"] = details.measures
+            if details.indicators:
+                project_data["indicators"] = details.indicators
+                
+            action_field_data["projects"].append(project_data)
+        
+        all_extracted_data.append(action_field_data)
 
     print(
         f"📊 Final extraction result: {len(all_extracted_data)} unique action fields from {len(optimized_chunks)} chunks"

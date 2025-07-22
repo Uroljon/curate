@@ -31,3 +31,30 @@ class ExtractionResult(BaseModel):
     action_fields: list[ActionField] = Field(
         ..., description="List of all extracted action fields"
     )
+
+
+class ActionFieldList(BaseModel):
+    """Simple list of action field names for Stage 1 extraction."""
+    
+    action_fields: list[str] = Field(
+        ..., description="List of action field names (Handlungsfelder)"
+    )
+
+
+class ProjectList(BaseModel):
+    """List of project titles for Stage 2 extraction."""
+    
+    projects: list[str] = Field(
+        ..., description="List of project titles"
+    )
+
+
+class ProjectDetails(BaseModel):
+    """Detailed project information for Stage 3 extraction."""
+    
+    measures: list[str] = Field(
+        default_factory=list, description="List of measures/actions"
+    )
+    indicators: list[str] = Field(
+        default_factory=list, description="List of indicators/KPIs"
+    )

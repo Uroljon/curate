@@ -7,8 +7,19 @@ from langdetect import detect
 from pdf2image import convert_from_path
 from spellchecker import SpellChecker
 
-spell_de = SpellChecker(language="de")
-spell_en = SpellChecker(language="en")
+from config import (
+    MIN_CHARS_FOR_VALID_PAGE,
+    SPELL_CHECK_THRESHOLD,
+    SYMBOL_FILTER_THRESHOLD,
+    SUPPORTED_LANGUAGES,
+    SPELL_CHECK_LANGUAGES,
+)
+
+# Initialize spell checkers based on config
+spell_checkers = {
+    lang: SpellChecker(language=spell_lang) 
+    for lang, spell_lang in SPELL_CHECK_LANGUAGES.items()
+}
 
 
 def clean_ocr_text(text: str) -> str:
@@ -21,23 +32,21 @@ def clean_ocr_text(text: str) -> str:
             continue
 
         # Skip lines that are mostly symbols or garbage
-        if len(re.findall(r"[A-Za-z]", line)) < len(line) * 0.3:
+        if len(re.findall(r"[A-Za-z]", line)) < len(line) * SYMBOL_FILTER_THRESHOLD:
             continue
 
         try:
             lang = detect(line)
-            if lang not in ("en", "de"):
+            if lang not in SUPPORTED_LANGUAGES:
                 continue
         except:
             continue
 
         # Filter out lines with mostly misspellings
         words = re.findall(r"\b\w+\b", line)
-        if words:
-            misspelled = (
-                spell_de.unknown(words) if lang == "de" else spell_en.unknown(words)
-            )
-            if len(misspelled) > len(words) * 0.6:
+        if words and lang in spell_checkers:
+            misspelled = spell_checkers[lang].unknown(words)
+            if len(misspelled) > len(words) * SPELL_CHECK_THRESHOLD:
                 continue
 
         cleaned.append(line)
@@ -76,7 +85,7 @@ def extract_text_with_ocr_fallback(pdf_path: str) -> str:
 
     for i, page in enumerate(doc):
         text = page.get_text().strip()
-        if len(text) > 10:
+        if len(text) > MIN_CHARS_FOR_VALID_PAGE:
             page_texts[i] = text
         else:
             scanned_pages.append(i)

@@ -3,11 +3,12 @@ import uuid
 from chromadb import PersistentClient
 from sentence_transformers import SentenceTransformer
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
+from config import CHROMA_DIR, COLLECTION_NAME, EMBEDDING_MODEL
 
-CHROMA_DIR = "chroma_store"
+model = SentenceTransformer(EMBEDDING_MODEL)
+
 client = PersistentClient(path=CHROMA_DIR)
-collection = client.get_or_create_collection(name="document_chunks")
+collection = client.get_or_create_collection(name=COLLECTION_NAME)
 
 
 def embed_chunks(chunks: list[str], source_id: str) -> None:

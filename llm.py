@@ -4,9 +4,15 @@ from typing import Optional, Type, TypeVar
 import requests
 from pydantic import BaseModel
 
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
-OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
-MODEL_NAME = "qwen2.5:14b"  # Qwen2.5 14B - specialized for structured output and multilingual tasks
+from config import (
+    OLLAMA_API_URL,
+    OLLAMA_CHAT_URL,
+    MODEL_NAME,
+    MODEL_TEMPERATURE,
+    MODEL_TIMEOUT,
+    GENERATION_OPTIONS,
+    STRUCTURED_OUTPUT_OPTIONS,
+)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -31,25 +37,22 @@ def query_ollama(
     """
     try:
         # Build request body
+        options = GENERATION_OPTIONS.copy()
+        if temperature is not None:
+            options["temperature"] = temperature
+            
         request_body = {
             "model": model,
             "prompt": prompt,
             "stream": False,
-            "options": {
-                "temperature": 0.3,  # Faster sampling
-                "top_p": 0.9,  # More vocabulary options
-                "top_k": 40,  # Balanced vocabulary
-                "repeat_penalty": 1.05,  # Light repetition control
-                "num_predict": 800,  # Shorter for speed
-                "stop": ["```", "</json>"],
-            },
+            "options": options,
         }
 
         # Add system message if provided
         if system_message:
             request_body["system"] = system_message
 
-        response = requests.post(OLLAMA_API_URL, json=request_body, timeout=180)
+        response = requests.post(OLLAMA_API_URL, json=request_body, timeout=MODEL_TIMEOUT)
         response.raise_for_status()
         data = response.json()
         return data.get("response", "").strip()
@@ -62,7 +65,7 @@ def query_ollama_structured(
     prompt: str,
     response_model: type[T],
     model: str = MODEL_NAME,
-    temperature: float = 0.0,
+    temperature: float = MODEL_TEMPERATURE,
     system_message: str | None = None,
 ) -> T | None:
     """
@@ -72,7 +75,7 @@ def query_ollama_structured(
         prompt: The input prompt
         response_model: Pydantic model class for the expected response structure
         model: Model name to use
-        temperature: Controls randomness (0.0 = deterministic)
+        temperature: Controls randomness (defaults to MODEL_TEMPERATURE)
         system_message: Optional system message for role definition
 
     Returns:
@@ -86,20 +89,18 @@ def query_ollama_structured(
 
         messages.append({"role": "user", "content": prompt})
 
+        options = STRUCTURED_OUTPUT_OPTIONS.copy()
+        options["temperature"] = temperature
+
         request_body = {
             "model": model,
             "messages": messages,
             "stream": False,
             "format": response_model.model_json_schema(),
-            "options": {
-                "temperature": temperature,
-                "top_p": 0.9,
-                "num_predict": 2000,  # Increased for structured output
-                "stop": ["</json>", "```"],
-            },
+            "options": options,
         }
 
-        response = requests.post(OLLAMA_CHAT_URL, json=request_body, timeout=180)
+        response = requests.post(OLLAMA_CHAT_URL, json=request_body, timeout=MODEL_TIMEOUT)
         response.raise_for_status()
 
         data = response.json()
