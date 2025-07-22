@@ -325,59 +325,24 @@ def extract_structures_with_retry(
     """
     Extract structures from text using Ollama structured output.
     """
-    system_message = """Extract German municipal action fields (Handlungsfelder) and their projects from the text.
+    system_message = """Extrahiere Handlungsfelder und deren Projekte aus kommunalen Strategiedokumenten.
 
-CRITICAL: You MUST actively search for and extract indicators/KPIs. These are NUMBERS, PERCENTAGES, DATES, and TARGETS.
+Jedes Handlungsfeld enthält Projekte. Für jedes Projekt extrahiere:
+- Titel
+- Maßnahmen (konkrete Aktionen, Umsetzungsschritte)
+- Indikatoren (ALLE Zahlen, Prozentsätze, Zielwerte, Termine)
 
-LANGUAGE REQUIREMENT:
-- Keep all extracted content in German (do NOT translate to English)
-- Extract the FULL content: action fields, projects, measures, AND indicators
-- For indicators: Find ALL quantitative metrics, percentages, targets in the text
-- Example: "CO2-Reduktion um 55% bis 2030" NOT "55% CO2 reduction by 2030"
+WICHTIG: Finde ALLE quantitativen Angaben als Indikatoren:
+- Prozentangaben: "55% Reduktion", "um 30% steigern"
+- Zeitangaben: "bis 2030", "ab 2025", "jährlich"
+- Mengenangaben: "500 Ladepunkte", "18 km", "1000 Wohneinheiten"
+- Vergleiche: "Verdopplung", "Halbierung", "30% weniger"
 
-Definitions:
-- Maßnahmen (measures): Concrete actions, steps, implementations (verbs like "errichten", "ausbauen", "fördern")
-- Indikatoren (indicators): QUANTITATIVE metrics, targets, deadlines, percentages, numbers
+Extrahiere den kompletten Inhalt auf Deutsch."""
 
-INDICATOR PATTERNS TO FIND:
-- Percentages: "40% Reduktion", "um 30% reduzieren", "Anteil von 65%", "Quote von 25%"
-- Time targets: "bis 2030", "ab 2025", "innerhalb von 5 Jahren", "jährlich", "pro Jahr"
-- Quantities: "500 Ladepunkte", "18 km Streckenlänge", "1000 Wohneinheiten", "50 Hektar"
-- Reductions: "Reduzierung um 55%", "Senkung auf 20%", "Verringerung der Emissionen um 40%"
-- Increases: "Steigerung auf 70%", "Erhöhung um 25%", "Verdopplung bis 2030"
-- Ratios: "Modal Split 70/30", "Versiegelungsgrad max. 30%", "Grünflächenanteil min. 40%"
+    prompt = f"""Extrahiere alle Handlungsfelder und deren Projekte aus diesem kommunalen Strategietext:
 
-Example with FULL indicator extraction:
-{
-  "action_fields": [{
-    "action_field": "Klimaschutz",
-    "projects": [{
-      "title": "CO2-Neutralität",
-      "measures": ["Umstellung auf erneuerbare Energien", "Gebäudesanierung", "Ausbau Fernwärme"],
-      "indicators": ["CO2-Reduktion 55% bis 2030", "100% Ökostrom bis 2035", "Sanierungsquote 3% pro Jahr"]
-    }]
-  }, {
-    "action_field": "Mobilität",
-    "projects": [{
-      "title": "Verkehrswende",
-      "measures": ["Ausbau Radwegenetz", "Einführung Stadtbahn", "Park&Ride-Anlagen"],
-      "indicators": ["Modal Split 70% Umweltverbund", "500 neue Fahrradstellplätze jährlich", "30% weniger PKW-Verkehr bis 2030"]
-    }]
-  }]
-}
-
-REMEMBER: If you see ANY number, percentage, date target, or quantitative goal - it's an indicator!"""
-
-    prompt = f"""Extract all action fields and their projects from this German municipal strategy text:
-
-{chunk_text.strip()}
-
-IMPORTANT: Extract ALL information for each project:
-- Project title (Projekttitel)
-- Measures (Maßnahmen) - the concrete actions/implementations
-- Indicators (Indikatoren) - ALL numbers, percentages, targets, deadlines
-
-Keep everything in German, but make sure to find and extract ALL content, not just titles!"""
+{chunk_text.strip()}"""
 
     # Validate chunk size
     if len(chunk_text) > CHUNK_WARNING_THRESHOLD:
@@ -466,33 +431,23 @@ def extract_with_accumulation(
         f"🔄 Progressive extraction for chunk {chunk_index + 1}/{total_chunks} ({len(chunk_text)} chars)"
     )
 
-    system_message = """You are enhancing an existing extraction with new information from German municipal strategy documents.
+    system_message = """Erweitere die bestehende Extraktion mit neuen Informationen aus dem kommunalen Strategiedokument.
 
-CRITICAL RULES:
-1. PRESERVE all existing data - never remove anything
-2. ENHANCE existing projects with new measures/indicators if found
-3. MERGE duplicate projects (same title = same project, combine their data)
-4. ADD new action fields and projects not yet captured
-5. ACTIVELY SEARCH for indicators that may have been missed
-6. LANGUAGE: Always extract and return ALL content in GERMAN as it appears in the source text - do NOT translate to English
+WICHTIGE REGELN:
+1. BEHALTE alle bestehenden Daten - entferne nichts
+2. ERGÄNZE bestehende Projekte mit neuen Maßnahmen/Indikatoren
+3. VERSCHMELZE doppelte Projekte (gleicher Titel = gleiches Projekt)
+4. FÜGE neue Handlungsfelder und Projekte hinzu
+5. SUCHE aktiv nach übersehenen Indikatoren
 
-SPECIAL FOCUS ON INDICATORS:
-Look for ANY quantitative information:
-- Numbers with units: "500 Ladepunkte", "18 km", "1000 Wohneinheiten"
-- Percentages: "40% Reduktion", "um 30% senken", "Anteil von 65%"
-- Time targets: "bis 2030", "ab 2025", "innerhalb 5 Jahren"
-- Frequencies: "jährlich", "pro Jahr", "monatlich"
-- Comparisons: "Verdopplung", "Halbierung", "30% weniger"
+BESONDERER FOKUS auf Indikatoren - finde ALLE quantitativen Informationen:
+- Zahlen mit Einheiten: "500 Ladepunkte", "18 km", "1000 Wohneinheiten"
+- Prozentangaben: "40% Reduktion", "um 30% senken"
+- Zeitziele: "bis 2030", "ab 2025", "innerhalb 5 Jahren"
+- Häufigkeiten: "jährlich", "pro Jahr", "monatlich"
+- Vergleiche: "Verdopplung", "Halbierung", "30% weniger"
 
-When merging projects:
-- Combine all unique measures
-- Combine all unique indicators
-- Look for indicators that relate to existing projects but weren't extracted before
-
-Example of enhanced extraction with found indicators:
-Existing: {"title": "Verkehrswende", "measures": ["Ausbau Radwegenetz"], "indicators": []}
-New text mentions: "Das Radwegenetz soll bis 2030 auf 500 km ausgebaut werden mit jährlich 50 km Neubau"
-Result: {"title": "Verkehrswende", "measures": ["Ausbau Radwegenetz"], "indicators": ["500 km Radwegenetz bis 2030", "50 km Neubau jährlich"]}"""
+Alles auf Deutsch extrahieren."""
 
     prompt = f"""Current extraction state has {len(accumulated_data.get('action_fields', []))} action fields:
 
