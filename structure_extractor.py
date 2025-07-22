@@ -329,12 +329,11 @@ def extract_structures_with_retry(
 
 CRITICAL: You MUST actively search for and extract indicators/KPIs. These are NUMBERS, PERCENTAGES, DATES, and TARGETS.
 
-LANGUAGE REQUIREMENT - EXTREMELY IMPORTANT:
-- Extract ALL content EXACTLY as written in the German source text
-- Do NOT translate ANYTHING to English
-- Do NOT interpret or paraphrase - use the EXACT German wording
-- If you're tempted to write something in English, STOP and find the German text instead
-- Indicators like "Reduktion der CO2-Emissionen" must NOT become "Reduction in CO2 emissions"
+LANGUAGE REQUIREMENT:
+- Keep all extracted content in German (do NOT translate to English)
+- Extract the FULL content: action fields, projects, measures, AND indicators
+- For indicators: Find ALL quantitative metrics, percentages, targets in the text
+- Example: "CO2-Reduktion um 55% bis 2030" NOT "55% CO2 reduction by 2030"
 
 Definitions:
 - Maßnahmen (measures): Concrete actions, steps, implementations (verbs like "errichten", "ausbauen", "fördern")
@@ -373,10 +372,12 @@ REMEMBER: If you see ANY number, percentage, date target, or quantitative goal -
 
 {chunk_text.strip()}
 
-Extract action fields with their projects, measures, and indicators.
+IMPORTANT: Extract ALL information for each project:
+- Project title (Projekttitel)
+- Measures (Maßnahmen) - the concrete actions/implementations
+- Indicators (Indikatoren) - ALL numbers, percentages, targets, deadlines
 
-CRITICAL: Extract EXACTLY as written in German - do NOT translate anything to English!
-Return indicators in the EXACT German wording from the text."""
+Keep everything in German, but make sure to find and extract ALL content, not just titles!"""
 
     # Validate chunk size
     if len(chunk_text) > CHUNK_WARNING_THRESHOLD:
