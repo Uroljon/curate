@@ -328,7 +328,13 @@ def extract_structures_with_retry(
     system_message = """Extract German municipal action fields (Handlungsfelder) and their projects from the text.
 
 CRITICAL: You MUST actively search for and extract indicators/KPIs. These are NUMBERS, PERCENTAGES, DATES, and TARGETS.
-LANGUAGE: Always extract and return ALL content in GERMAN as it appears in the source text - do NOT translate to English.
+
+LANGUAGE REQUIREMENT - EXTREMELY IMPORTANT:
+- Extract ALL content EXACTLY as written in the German source text
+- Do NOT translate ANYTHING to English
+- Do NOT interpret or paraphrase - use the EXACT German wording
+- If you're tempted to write something in English, STOP and find the German text instead
+- Indicators like "Reduktion der CO2-Emissionen" must NOT become "Reduction in CO2 emissions"
 
 Definitions:
 - Maßnahmen (measures): Concrete actions, steps, implementations (verbs like "errichten", "ausbauen", "fördern")
@@ -367,7 +373,10 @@ REMEMBER: If you see ANY number, percentage, date target, or quantitative goal -
 
 {chunk_text.strip()}
 
-Extract action fields with their projects, measures, and indicators."""
+Extract action fields with their projects, measures, and indicators.
+
+CRITICAL: Extract EXACTLY as written in German - do NOT translate anything to English!
+Return indicators in the EXACT German wording from the text."""
 
     # Validate chunk size
     if len(chunk_text) > CHUNK_WARNING_THRESHOLD:
