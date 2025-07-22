@@ -37,16 +37,16 @@ This document outlines the step-by-step improvements for the CURATE PDF extracti
 
 ## Phase 2: Core Improvements (3-4 days)
 
-### 2.1 Implement German-Aware Chunking
-- [ ] Enhance heading detection for German documents
+### 2.1 Implement German-Aware Chunking ✅
+- [x] Enhance heading detection for German documents
   ```python
   # Add patterns like:
   # - "Maßnahmen:", "Projekte:", "Ziele:"
   # - "Kapitel", "Abschnitt", "Teil"
   ```
-  - [ ] Add German-specific heading patterns to `is_heading()`
-  - [ ] Handle multi-line German headings
-  - [ ] Test with real municipal documents
+  - [x] Add German-specific heading patterns to `is_heading()`
+  - [x] Handle multi-line German headings
+  - [x] Test with real municipal documents
 
 ### 2.2 Implement Indicator-Aware Chunking
 - [ ] Add indicator detection to prevent splitting
@@ -161,6 +161,31 @@ This document outlines the step-by-step improvements for the CURATE PDF extracti
   - [ ] Implement partial results streaming
   - [ ] Add extraction history/versioning
   - [ ] Create better error messages
+
+## Project Cleanup (Technical Debt)
+
+### Code Organization
+- [ ] Restructure project into proper modules:
+  - [ ] Create `src/api/` for FastAPI endpoints
+  - [ ] Create `src/extraction/` for extraction logic
+  - [ ] Create `src/storage/` for embeddings and parsing
+  - [ ] Create `src/core/` for config, schemas, LLM
+- [ ] Extract extraction logic from `main.py` (currently 267 lines)
+- [ ] Separate API routes from business logic
+- [ ] Move test scripts to proper test directory
+
+### Code Quality
+- [ ] Add proper error handling and logging
+- [ ] Add type hints to all functions
+- [ ] Create proper exception classes
+- [ ] Add docstrings to all modules
+- [ ] Remove duplicate code between multi-stage and fast extraction
+
+### Configuration
+- [ ] Create environment-specific config files
+- [ ] Add validation for all config parameters
+- [ ] Document all configuration options
+- [ ] Consider using pydantic for config management
 
 ## Bonus: Future Enhancements
 
