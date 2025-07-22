@@ -8,145 +8,15 @@ from embedder import query_chunks
 from llm import query_ollama, query_ollama_structured
 from schemas import ActionField, ExtractionResult, Project, ActionFieldList, ProjectList, ProjectDetails
 from config import CHUNK_MAX_CHARS, CHUNK_MIN_CHARS, CHUNK_WARNING_THRESHOLD, EXTRACTION_MAX_RETRIES, MODEL_TEMPERATURE
-from semantic_llm_chunker import prepare_semantic_llm_chunks
+from semantic_llm_chunker import prepare_llm_chunks
+from enhanced_prompts import (
+    STAGE1_SYSTEM_MESSAGE, get_stage1_prompt,
+    get_stage2_system_message, get_stage2_prompt,
+    get_stage3_system_message, get_stage3_prompt
+)
 
 
-def prepare_llm_chunks(
-    chunks: list[str], max_chars: int = CHUNK_MAX_CHARS, min_chars: int = CHUNK_MIN_CHARS
-) -> list[str]:
-    """
-    Merge small chunks and split large ones to optimize for LLM context size.
-    Operates on character count, but keeps paragraph integrity where possible.
-    Enforces hard limits to prevent oversized chunks.
-    """
-    merged_chunks = []
-    current_chunk = []
-    current_len = 0
-
-    def split_large_text(text: str, max_size: int) -> list[str]:
-        """Recursively split text that exceeds max_size."""
-        if len(text) <= max_size:
-            return [text]
-        
-        # Try to split by paragraphs first
-        paragraphs = text.split("\n\n")
-        if len(paragraphs) > 1:
-            result = []
-            current = []
-            current_size = 0
-            
-            for para in paragraphs:
-                para_size = len(para) + (2 if current else 0)  # Account for \n\n
-                
-                if para_size > max_size:
-                    # Single paragraph too large, need to split it
-                    if current:
-                        result.append("\n\n".join(current))
-                    # Split by sentences or hard split
-                    result.extend(split_large_text(para, max_size))
-                    current = []
-                    current_size = 0
-                elif current_size + para_size > max_size:
-                    result.append("\n\n".join(current))
-                    current = [para]
-                    current_size = len(para)
-                else:
-                    current.append(para)
-                    current_size += para_size
-                    
-            if current:
-                result.append("\n\n".join(current))
-            return result
-        
-        # If no paragraphs or single paragraph, try sentences
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        if len(sentences) > 1:
-            result = []
-            current = []
-            current_size = 0
-            
-            for sent in sentences:
-                sent_size = len(sent) + (1 if current else 0)  # Account for space
-                
-                if sent_size > max_size:
-                    # Single sentence too large, hard split
-                    if current:
-                        result.append(" ".join(current))
-                    # Hard split the sentence
-                    for i in range(0, len(sent), max_size):
-                        result.append(sent[i:i+max_size])
-                    current = []
-                    current_size = 0
-                elif current_size + sent_size > max_size:
-                    result.append(" ".join(current))
-                    current = [sent]
-                    current_size = len(sent)
-                else:
-                    current.append(sent)
-                    current_size += sent_size
-                    
-            if current:
-                result.append(" ".join(current))
-            return result
-        
-        # Last resort: hard split
-        return [text[i:i+max_size] for i in range(0, len(text), max_size)]
-
-    for chunk in chunks:
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-
-        # If single chunk exceeds max, split it
-        if len(chunk) > max_chars:
-            split_chunks = split_large_text(chunk, max_chars)
-            for split_chunk in split_chunks:
-                if current_chunk and current_len + len(split_chunk) + 2 > max_chars:
-                    merged_chunks.append("\n\n".join(current_chunk))
-                    current_chunk = []
-                    current_len = 0
-                
-                if len(split_chunk) <= max_chars:
-                    current_chunk.append(split_chunk)
-                    current_len += len(split_chunk) + (2 if current_len > 0 else 0)
-                else:
-                    # This should not happen with our split logic, but safety check
-                    print(f"⚠️ Warning: Chunk still too large after splitting: {len(split_chunk)} chars")
-                    merged_chunks.append(split_chunk[:max_chars])
-            continue
-
-        # Normal merging logic
-        chunk_size = len(chunk) + (2 if current_chunk else 0)  # Account for \n\n separator
-        
-        if current_len + chunk_size > max_chars:
-            if current_len >= min_chars:
-                merged_chunks.append("\n\n".join(current_chunk))
-                current_chunk = [chunk]
-                current_len = len(chunk)
-            else:
-                # Try to reach min_chars but never exceed max_chars
-                current_chunk.append(chunk)
-                current_len += chunk_size
-                if current_len >= min_chars:
-                    merged_chunks.append("\n\n".join(current_chunk))
-                    current_chunk = []
-                    current_len = 0
-        else:
-            current_chunk.append(chunk)
-            current_len += chunk_size
-
-    if current_chunk:
-        merged_chunks.append("\n\n".join(current_chunk))
-
-    # Final validation
-    for i, chunk in enumerate(merged_chunks):
-        if len(chunk) > max_chars:
-            print(f"⚠️ Chunk {i+1} exceeds max_chars ({len(chunk)} > {max_chars}), force splitting...")
-            # Force split any remaining oversized chunks
-            split_chunks = split_large_text(chunk, max_chars)
-            merged_chunks[i:i+1] = split_chunks
-
-    return merged_chunks
+# prepare_llm_chunks is imported from semantic_llm_chunker
 
 
 def extract_action_fields_only(chunks: List[str]) -> List[str]:
@@ -158,26 +28,8 @@ def extract_action_fields_only(chunks: List[str]) -> List[str]:
     """
     all_action_fields = set()  # Use set to automatically deduplicate
     
-    system_message = """Extract ONLY the names of action fields (Handlungsfelder) from German municipal strategy documents.
-
-IMPORTANT: 
-- Return ONLY the category names, no projects or details
-- Look for main thematic areas like: Klimaschutz, Mobilität, Stadtentwicklung, Digitalisierung, etc.
-- Do NOT include project names, measures, or indicators
-- Do NOT include numbered items or bullet points that are sub-items
-
-Examples of action fields:
-- Klimaschutz
-- Mobilität
-- Stadtentwicklung
-- Digitalisierung
-- Wirtschaft und Wissenschaft
-- Soziales und Gesellschaft
-- Umwelt und Natur
-- Energie
-- Wohnen
-
-Return a simple list of action field names found in the text."""
+    # Use enhanced prompt for mixed-topic robustness
+    system_message = STAGE1_SYSTEM_MESSAGE
 
     for i, chunk in enumerate(chunks):
         if not chunk.strip():
@@ -185,11 +37,7 @@ Return a simple list of action field names found in the text."""
             
         print(f"🔍 Stage 1: Scanning chunk {i+1}/{len(chunks)} for action fields ({len(chunk)} chars)")
         
-        prompt = f"""Find all action fields (Handlungsfelder) in this German municipal text:
-
-{chunk.strip()}
-
-Return ONLY the main category names, not projects or details."""
+        prompt = get_stage1_prompt(chunk)
 
         result = query_ollama_structured(
             prompt=prompt,
@@ -257,38 +105,18 @@ def extract_projects_for_field(chunks: List[str], action_field: str) -> List[str
     """
     all_projects = set()
     
-    system_message = f"""Extract ONLY project names that belong to the action field "{action_field}".
-
-IMPORTANT:
-- Return ONLY project titles/names, not measures or descriptions
-- Projects are specific initiatives, programs, or named efforts
-- Do NOT include general statements or goals
-- Do NOT include measures, actions, or indicators
-
-Examples of projects:
-- "Stadtbahn Regensburg"
-- "Zero Waste Initiative"
-- "Masterplan Biodiversität"
-- "Energieeffizienz in kommunalen Gebäuden"
-- "Digitales Rathaus"
-
-Look for projects specifically related to: {action_field}"""
+    # Use enhanced prompt for mixed-topic robustness
+    system_message = get_stage2_system_message(action_field)
 
     for i, chunk in enumerate(chunks):
         if not chunk.strip():
             continue
             
-        # Quick check if this chunk might contain relevant content
-        if action_field.lower() not in chunk.lower():
-            continue
+        # Remove quick check - with mixed topics, action field might not be explicitly mentioned
             
         print(f"🔎 Stage 2: Searching chunk {i+1}/{len(chunks)} for {action_field} projects")
         
-        prompt = f"""Find all projects related to the action field "{action_field}" in this text:
-
-{chunk.strip()}
-
-Return ONLY the project names that belong to {action_field}."""
+        prompt = get_stage2_prompt(chunk, action_field)
 
         result = query_ollama_structured(
             prompt=prompt,
@@ -320,63 +148,18 @@ def extract_project_details(chunks: List[str], action_field: str, project_title:
     all_measures = set()
     all_indicators = set()
     
-    system_message = f"""Extract measures and indicators for the project "{project_title}" in the action field "{action_field}".
+    # Use enhanced prompt for mixed-topic robustness
+    system_message = get_stage3_system_message(action_field, project_title)
 
-DEFINITIONS:
-- Maßnahmen (measures): Concrete actions, steps, implementations
-- Indikatoren (indicators): Numbers, percentages, dates, targets, KPIs
-
-CRITICAL: Focus on finding INDICATORS - these are quantitative metrics!
-
-INDICATOR PATTERNS:
-- Percentages: "40% Reduktion", "um 30% reduzieren", "Anteil von 65%"
-- Time targets: "bis 2030", "ab 2025", "innerhalb von 5 Jahren"
-- Quantities: "500 Ladepunkte", "18 km Streckenlänge", "1000 Wohneinheiten"
-- Frequencies: "jährlich", "pro Jahr", "monatlich"
-- Comparisons: "Verdopplung", "Halbierung", "30% weniger"
-
-Example for a project "Stadtbahn":
-Measures:
-- "Planung der Trassenführung"
-- "Bau der Haltestellen"
-- "Integration in bestehenden ÖPNV"
-
-Indicators:
-- "18 km Streckenlänge"
-- "24 Haltestellen"
-- "Inbetriebnahme bis 2028"
-- "Modal Split Erhöhung um 15%"
-
-Look ONLY for information about: {project_title}"""
-
-    # Search in chunks that mention both the action field and project
-    relevant_chunks = []
+    # Process ALL chunks - indicators might be separated from project mentions
+    # in mixed-topic chunks
+    print(f"🔬 Stage 3: Analyzing ALL {len(chunks)} chunks for {project_title} details")
+    
     for i, chunk in enumerate(chunks):
         if not chunk.strip():
             continue
             
-        chunk_lower = chunk.lower()
-        # Check if chunk contains project name (fuzzy match)
-        project_words = project_title.lower().split()
-        if any(word in chunk_lower for word in project_words if len(word) > 3):
-            relevant_chunks.append((i, chunk))
-    
-    if not relevant_chunks:
-        print(f"   ⚠️ No chunks found mentioning project: {project_title}")
-        return ProjectDetails()
-    
-    print(f"🔬 Stage 3: Analyzing {len(relevant_chunks)} chunks for {project_title} details")
-    
-    for i, chunk in relevant_chunks:
-        prompt = f"""Extract measures and indicators for the project "{project_title}" from this text:
-
-{chunk.strip()}
-
-Focus on finding:
-1. Maßnahmen (measures) - what will be done
-2. Indikatoren (indicators) - numbers, targets, dates, percentages
-
-Return ONLY information directly related to {project_title}."""
+        prompt = get_stage3_prompt(chunk, action_field, project_title)
 
         result = query_ollama_structured(
             prompt=prompt,

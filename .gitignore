@@ -8,3 +8,4 @@ outputs/*
 logs/*
 logs/performance.jsonl
 logs/extraction.jsonl
+*_backup.py

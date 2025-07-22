@@ -24,8 +24,7 @@ from config import (
     CHUNK_MIN_CHARS, 
     SEMANTIC_CHUNK_MAX_CHARS,
     FAST_EXTRACTION_ENABLED,
-    FAST_EXTRACTION_MAX_CHUNKS,
-    SEMANTIC_AWARE_LLM_CHUNKING
+    FAST_EXTRACTION_MAX_CHUNKS
 )
 
 app = FastAPI()
@@ -122,17 +121,11 @@ async def extract_structure(
     # Get all chunks for comprehensive multi-stage extraction
     chunks = get_all_chunks_for_document(source_id)
     raw_texts = [c["text"] for c in chunks]
-    # Use semantic-aware chunking to preserve document structure
-    if SEMANTIC_AWARE_LLM_CHUNKING:
-        from semantic_llm_chunker import prepare_semantic_llm_chunks_v2
-        optimized_chunks = prepare_semantic_llm_chunks_v2(
-            raw_texts, max_chars=max_chars, min_chars=min_chars
-        )
-    else:
-        from semantic_llm_chunker import prepare_semantic_llm_chunks
-        optimized_chunks = prepare_semantic_llm_chunks(
-            raw_texts, max_chars=max_chars, min_chars=min_chars
-        )
+    # Use simple size-based chunking
+    from semantic_llm_chunker import prepare_llm_chunks
+    optimized_chunks = prepare_llm_chunks(
+        raw_texts, max_chars=max_chars, min_chars=min_chars
+    )
 
     # Multi-stage extraction approach
     print(f"\n🚀 Starting multi-stage extraction with {len(optimized_chunks)} chunks\n")
@@ -278,17 +271,11 @@ async def extract_structure_fast(
         
         # Stage 2: LLM chunk preparation
         monitor.start_stage("llm_chunk_preparation")
-        # Use semantic-aware chunking to preserve document structure
-        if SEMANTIC_AWARE_LLM_CHUNKING:
-            from semantic_llm_chunker import prepare_semantic_llm_chunks_v2
-            optimized_chunks = prepare_semantic_llm_chunks_v2(
-                raw_texts, max_chars=max_chars, min_chars=min_chars
-            )
-        else:
-            from semantic_llm_chunker import prepare_semantic_llm_chunks
-            optimized_chunks = prepare_semantic_llm_chunks(
-                raw_texts, max_chars=max_chars, min_chars=min_chars
-            )
+        # Use simple size-based chunking
+        from semantic_llm_chunker import prepare_llm_chunks
+        optimized_chunks = prepare_llm_chunks(
+            raw_texts, max_chars=max_chars, min_chars=min_chars
+        )
         
         # Analyze LLM chunk quality
         llm_chunk_metrics = ChunkQualityMonitor.analyze_chunks(optimized_chunks, "llm")

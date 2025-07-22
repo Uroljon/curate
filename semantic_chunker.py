@@ -101,221 +101,40 @@ def find_safe_split_point(text: str, target_pos: int, max_chars: int) -> int:
     return target_pos
 
 
-def is_heading(line: str) -> bool:
-    """Heuristic: check if a line looks like a section heading.
-    
-    Enhanced for German municipal documents with common heading patterns.
-    """
-    line = line.strip()
-    if len(line) > 100 or len(line) < 3:
-        return False
-    
-    # Numbered sections (e.g. "1. Klimaschutz", "2.1 Maßnahmen", "III. Ziele")
-    if re.match(r"^\d{1,2}(\.\d{1,2})*\.?\s+\w", line):
-        return True
-    if re.match(r"^[IVX]+\.\s+\w", line):  # Roman numerals
-        return True
-    if re.match(r"^[a-z]\)\s+\w", line):  # Letter enumeration "a) Ziel"
-        return True
-    
-    # German document structure keywords
-    german_structure_keywords = [
-        "Kapitel", "Abschnitt", "Teil", "Anlage", "Anhang",
-        "Maßnahmen:", "Projekte:", "Ziele:", "Indikatoren:",
-        "Handlungsfeld:", "Handlungsfelder:", "Zielstellung:",
-        "Ausgangslage:", "Umsetzung:", "Zeitplan:", "Monitoring:"
-    ]
-    for keyword in german_structure_keywords:
-        if line.startswith(keyword):
-            return True
-    
-    # All uppercase (common for main sections)
-    if line.isupper() and len(line.split()) <= 8 and len(line) > 3:
-        return True
-    
-    # Title Case (allowing German characters and common prepositions)
-    # Allow lowercase words like "für", "und", "der", etc. in the middle
-    if re.match(r"^[A-ZÄÖÜ][a-zäöüß]+(\s+([A-ZÄÖÜ\-][a-zäöüß]+|für|und|der|die|das|von|zu|mit|in|auf))*$", line):
-        # Extra check: should be relatively short and not a regular sentence
-        word_count = len(line.split())
-        # Must have at least 2 words or be longer than 10 chars for single words
-        if (word_count >= 2 or len(line) > 10) and word_count <= 6 and not line.endswith(('.', ',', ';')):
-            return True
-    
-    # Lines ending with colon (often introduce sections)
-    if line.endswith(':') and 3 < len(line) < 50:
-        return True
-    
-    return False
-
-
-def extract_chunk_topic(chunk: str) -> dict:
-    """
-    Extract the primary topic and subtopic from a chunk.
-    
-    Returns metadata about the chunk's semantic context:
-    - topic: Main Handlungsfeld or major section
-    - subtopic: Project, measure, or subsection
-    - level: Hierarchy level (1 for main topics, 2 for subtopics)
-    - confidence: How confident we are in the classification
-    """
-    lines = chunk.strip().split('\n')
-    topic = None
-    subtopic = None
-    level = 0
-    confidence = 0.0
-    
-    # Primary topic patterns (Handlungsfeld level)
-    primary_patterns = [
-        (r'Handlungsfeld:\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+(?:und|&)\s+[A-ZÄÖÜ][a-zäöüß]+)*)', 'handlungsfeld'),  # Match topic words only
-        (r'Handlungsfelder:\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+(?:und|&)\s+[A-ZÄÖÜ][a-zäöüß]+)*)', 'handlungsfeld'),
-        (r'^\d+\.\s+([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*)', 'numbered_section'),  # "1. Klimaschutz"
-        (r'^[IVX]+\.\s+([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*)', 'roman_section'),  # "III. Mobilität"
-    ]
-    
-    # Subtopic patterns
-    subtopic_patterns = [
-        (r'Projekte?:\s*(.+)', 'project'),
-        (r'Maßnahmen?:\s*(.+)', 'measure'),
-        (r'Ziele?:\s*(.+)', 'goal'),
-        (r'Indikatoren?:\s*(.+)', 'indicator'),
-        (r'^\d+\.\d+\s+(.+)$', 'subsection'),  # "2.1 Unterpunkt"
-    ]
-    
-    # Check entire chunk for topic indicators, but prioritize early occurrences
-    for i, line in enumerate(lines):
-        line = line.strip()
-        
-        # Check for primary topics
-        for pattern, pattern_type in primary_patterns:
-            match = re.match(pattern, line, re.IGNORECASE)
-            if match:
-                topic = match.group(1).strip()
-                level = 1
-                confidence = 1.0 if pattern_type == 'handlungsfeld' else 0.9
-                
-                # Look for subtopic in next few lines
-                for j in range(i+1, min(i+5, len(lines))):
-                    subline = lines[j].strip()
-                    for subpattern, _ in subtopic_patterns:
-                        submatch = re.match(subpattern, subline, re.IGNORECASE)
-                        if submatch:
-                            subtopic = submatch.group(1).strip()
-                            break
-                    if subtopic:
-                        break
-                # Found primary topic - reduce confidence if found late in chunk
-                if i > 10:
-                    confidence = confidence * 0.8  # Reduce confidence for late finds
-                return {
-                    'topic': topic,
-                    'subtopic': subtopic,
-                    'level': level,
-                    'confidence': confidence
-                }
-        
-        # If no primary topic yet, check for subtopics
-        if not topic:
-            for pattern, pattern_type in subtopic_patterns:
-                match = re.match(pattern, line, re.IGNORECASE)
-                if match:
-                    subtopic = match.group(1).strip()
-                    level = 2
-                    confidence = 0.7
-                    break
-    
-    # If no explicit topic found, try to infer from content
-    if not topic and not subtopic:
-        # Check for topic keywords in the chunk
-        topic_keywords = {
-            'Klimaschutz': ['CO2', 'Emission', 'Klimawandel', 'Treibhausgas', 'erneuerbar'],
-            'Mobilität': ['Verkehr', 'ÖPNV', 'Radweg', 'Stadtbahn', 'Modal Split'],
-            'Stadtentwicklung': ['Quartier', 'Siedlung', 'Baukultur', 'Wohnen'],
-            'Digitalisierung': ['digital', 'IT', 'Smart City', 'Daten'],
-            'Freiräume': ['Grünfläche', 'Park', 'Biotop', 'ökologisch'],
-        }
-        
-        # Only apply keyword fallback to substantial chunks
-        if len(chunk) > 500:
-            chunk_lower = chunk.lower()
-            chunk_length = len(chunk)
-            
-            for topic_name, keywords in topic_keywords.items():
-                keyword_count = sum(1 for kw in keywords if kw.lower() in chunk_lower)
-                # Require at least 3 keywords OR high keyword density
-                keyword_density = (keyword_count * 1000) / chunk_length  # keywords per 1000 chars
-                
-                if keyword_count >= 3 or (keyword_count >= 2 and keyword_density > 2.0):
-                    topic = topic_name
-                    # Lower confidence for keyword-based assignment
-                    confidence = min(0.5 + keyword_count * 0.05, 0.7)
-                    level = 1
-                    break
-    
-    return {
-        'topic': topic,
-        'subtopic': subtopic,
-        'level': level,
-        'confidence': confidence
-    }
-
-
-def split_by_heading(text: str) -> list[str]:
-    """Split text by section headings, preserving OCR tags.
-    
-    Handles multi-line German headings by checking if consecutive lines
-    form a heading pattern together.
-    """
-    lines = text.splitlines()
+def split_by_structure(text: str) -> list[str]:
+    """Split text by structural boundaries only (double newlines, page markers)."""
+    # First split by OCR page markers
     chunks = []
-    current = []
+    current_chunk = []
+    
+    lines = text.splitlines()
     i = 0
-
+    
     while i < len(lines):
         line = lines[i]
         
-        # Handle OCR page markers
+        # Handle OCR page markers as boundaries
         if re.match(r"\[OCR Page \d+\]", line):
-            if current:
-                chunks.append("\n".join(current).strip())
-                current = []
-            current.append(line)
-            i += 1
-            continue
-
-        # Check for multi-line headings (common in German documents)
-        is_multiline_heading = False
-        if i + 1 < len(lines):
-            next_line = lines[i + 1].strip()
-            # Check if current + next line form a heading pattern
-            # e.g., "Handlungsfeld 1:" on one line, "Klimaschutz" on next
-            if (line.strip().endswith(':') and len(line.strip()) < 30 and 
-                next_line and len(next_line) < 50 and 
-                next_line and not (next_line[0].islower() if next_line else False)):
-                is_multiline_heading = True
-            # Check for numbered heading continuing on next line
-            elif (re.match(r"^\d{1,2}(\.\d{1,2})*\.?\s*$", line.strip()) and
-                  next_line and not (next_line[0].islower() if next_line else False)):
-                is_multiline_heading = True
-
-        if is_heading(line) and current:
-            chunks.append("\n".join(current).strip())
-            current = [line]
-            if is_multiline_heading:
-                i += 1
-                current.append(lines[i])
-        elif is_multiline_heading and current:
-            chunks.append("\n".join(current).strip())
-            current = [line, lines[i + 1]]
-            i += 1
-        else:
-            current.append(line)
+            if current_chunk:
+                chunks.append("\n".join(current_chunk).strip())
+                current_chunk = []
+        
+        current_chunk.append(line)
+        
+        # Check for double newline (paragraph boundary)
+        if i + 1 < len(lines) and line.strip() == "" and lines[i + 1].strip() == "":
+            if len("\n".join(current_chunk)) > 500:  # Only split if chunk is substantial
+                chunks.append("\n".join(current_chunk).strip())
+                current_chunk = []
         
         i += 1
-
-    if current:
-        chunks.append("\n".join(current).strip())
-
+    
+    if current_chunk:
+        chunks.append("\n".join(current_chunk).strip())
+    
+    # Filter out empty chunks
+    chunks = [c for c in chunks if c.strip()]
+    
     return chunks
 
 
@@ -480,12 +299,15 @@ def merge_short_chunks(chunks: list[str], min_chars=3000, max_chars=5000) -> lis
 
 def smart_chunk(cleaned_text: str, max_chars: int = 5000) -> list[str]:
     """Create semantic chunks respecting document structure and size limits."""
-    chunks = split_by_heading(cleaned_text)
-    # Use configured min chars for semantic chunks
+    # Simple structural splitting
+    chunks = split_by_structure(cleaned_text)
+    
+    # Merge short chunks while respecting max size
     from config import SEMANTIC_CHUNK_MIN_CHARS
     final_chunks = merge_short_chunks(
         chunks, 
         min_chars=SEMANTIC_CHUNK_MIN_CHARS,
         max_chars=max_chars
     )
+    
     return final_chunks
