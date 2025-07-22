@@ -167,10 +167,10 @@ def extract_chunk_topic(chunk: str) -> dict:
     
     # Primary topic patterns (Handlungsfeld level)
     primary_patterns = [
-        (r'Handlungsfeld:\s*(.+)', 'handlungsfeld'),
-        (r'Handlungsfelder:\s*(.+)', 'handlungsfeld'),
-        (r'^\d+\.\s+([A-ZÄÖÜ].+)$', 'numbered_section'),  # "1. Klimaschutz"
-        (r'^[IVX]+\.\s+(.+)$', 'roman_section'),  # "III. Mobilität"
+        (r'Handlungsfeld:\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+(?:und|&)\s+[A-ZÄÖÜ][a-zäöüß]+)*)', 'handlungsfeld'),  # Match topic words only
+        (r'Handlungsfelder:\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+(?:und|&)\s+[A-ZÄÖÜ][a-zäöüß]+)*)', 'handlungsfeld'),
+        (r'^\d+\.\s+([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*)', 'numbered_section'),  # "1. Klimaschutz"
+        (r'^[IVX]+\.\s+([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*)', 'roman_section'),  # "III. Mobilität"
     ]
     
     # Subtopic patterns
@@ -182,8 +182,8 @@ def extract_chunk_topic(chunk: str) -> dict:
         (r'^\d+\.\d+\s+(.+)$', 'subsection'),  # "2.1 Unterpunkt"
     ]
     
-    # Check first 10 lines for topic indicators
-    for i, line in enumerate(lines[:10]):
+    # Check entire chunk for topic indicators, but prioritize early occurrences
+    for i, line in enumerate(lines):
         line = line.strip()
         
         # Check for primary topics
@@ -204,7 +204,15 @@ def extract_chunk_topic(chunk: str) -> dict:
                             break
                     if subtopic:
                         break
-                break
+                # Found primary topic - reduce confidence if found late in chunk
+                if i > 10:
+                    confidence = confidence * 0.8  # Reduce confidence for late finds
+                return {
+                    'topic': topic,
+                    'subtopic': subtopic,
+                    'level': level,
+                    'confidence': confidence
+                }
         
         # If no primary topic yet, check for subtopics
         if not topic:
@@ -227,14 +235,22 @@ def extract_chunk_topic(chunk: str) -> dict:
             'Freiräume': ['Grünfläche', 'Park', 'Biotop', 'ökologisch'],
         }
         
-        chunk_lower = chunk.lower()
-        for topic_name, keywords in topic_keywords.items():
-            keyword_count = sum(1 for kw in keywords if kw.lower() in chunk_lower)
-            if keyword_count >= 2:
-                topic = topic_name
-                confidence = min(0.6 + keyword_count * 0.1, 0.9)
-                level = 1
-                break
+        # Only apply keyword fallback to substantial chunks
+        if len(chunk) > 500:
+            chunk_lower = chunk.lower()
+            chunk_length = len(chunk)
+            
+            for topic_name, keywords in topic_keywords.items():
+                keyword_count = sum(1 for kw in keywords if kw.lower() in chunk_lower)
+                # Require at least 3 keywords OR high keyword density
+                keyword_density = (keyword_count * 1000) / chunk_length  # keywords per 1000 chars
+                
+                if keyword_count >= 3 or (keyword_count >= 2 and keyword_density > 2.0):
+                    topic = topic_name
+                    # Lower confidence for keyword-based assignment
+                    confidence = min(0.5 + keyword_count * 0.05, 0.7)
+                    level = 1
+                    break
     
     return {
         'topic': topic,

@@ -279,8 +279,8 @@ def prepare_semantic_llm_chunks_v2(
     for metadata in chunk_metadata:
         chunk_topic = metadata['topic']
         
-        # If no topic detected, use previous topic if confidence is low
-        if not chunk_topic and current_topic and metadata['confidence'] < 0.5:
+        # If no topic detected, use previous topic if confidence is 0
+        if not chunk_topic and current_topic and metadata['confidence'] == 0.0:
             chunk_topic = current_topic
         
         # Start new group if topic changes
@@ -400,8 +400,8 @@ def prepare_semantic_llm_chunks_v2(
             prev_topic = extract_chunk_topic(final_chunks[-1])['topic']
             curr_topic = extract_chunk_topic(chunk)['topic']
             
-            # Only merge if topics match or one is unknown
-            if prev_topic == curr_topic or not curr_topic or not prev_topic:
+            # Only merge if topics match and no boundary detected
+            if prev_topic == curr_topic or (not curr_topic and not has_topic_boundary(final_chunks[-1], chunk)):
                 final_chunks[-1] = final_chunks[-1] + "\n\n" + chunk
             else:
                 final_chunks.append(chunk)
@@ -409,3 +409,30 @@ def prepare_semantic_llm_chunks_v2(
             final_chunks.append(chunk)
     
     return final_chunks
+
+
+def has_topic_boundary(chunk1: str, chunk2: str) -> bool:
+    """
+    Check if chunk2 starts with a different topic than chunk1.
+    This helps prevent merging chunks across topic boundaries.
+    """
+    # Extract topic from end of chunk1
+    topic1 = extract_chunk_topic(chunk1)['topic']
+    
+    # Check first 5 lines of chunk2 for topic marker
+    lines = chunk2.strip().split('\n')[:5]
+    for line in lines:
+        # Look for explicit Handlungsfeld marker
+        if 'Handlungsfeld:' in line:
+            # Extract the topic name using same pattern as in extract_chunk_topic
+            match = re.search(r'Handlungsfeld:\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+(?:und|&)\s+[A-ZÄÖÜ][a-zäöüß]+)*)', line)
+            if match:
+                topic2 = match.group(1).strip()
+                # If topics differ, there's a boundary
+                if topic1 and topic2 and topic1 != topic2:
+                    return True
+                # Even if topic1 is unknown, a new Handlungsfeld marks a boundary
+                elif not topic1 and topic2:
+                    return True
+    
+    return False
