@@ -9,15 +9,15 @@ from spellchecker import SpellChecker
 
 from src.core import (
     MIN_CHARS_FOR_VALID_PAGE,
-    SPELL_CHECK_THRESHOLD,
-    SYMBOL_FILTER_THRESHOLD,
-    SUPPORTED_LANGUAGES,
     SPELL_CHECK_LANGUAGES,
+    SPELL_CHECK_THRESHOLD,
+    SUPPORTED_LANGUAGES,
+    SYMBOL_FILTER_THRESHOLD,
 )
 
 # Initialize spell checkers based on config
 spell_checkers = {
-    lang: SpellChecker(language=spell_lang) 
+    lang: SpellChecker(language=spell_lang)
     for lang, spell_lang in SPELL_CHECK_LANGUAGES.items()
 }
 
@@ -77,7 +77,7 @@ def clean_text(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def extract_text_with_ocr_fallback(pdf_path: str) -> str:
+def extract_text_with_ocr_fallback(pdf_path: str) -> tuple[str, dict]:
     doc = fitz.open(pdf_path)
     total_pages = len(doc)
     page_texts = [""] * total_pages
@@ -101,8 +101,29 @@ def extract_text_with_ocr_fallback(pdf_path: str) -> str:
                 if images:
                     ocr_raw = pytesseract.image_to_string(images[0])
                     ocr_cleaned = clean_ocr_text(ocr_raw)
-                    # page_texts[i] = f"[OCR Page {i + 1}]\n{ocr_cleaned}"  # You can remove this tag later
                     page_texts[i] = ocr_cleaned
 
     combined_text = "\n\n".join(page_texts)
-    return clean_text(combined_text)
+    cleaned_text = clean_text(combined_text)
+
+    # Prepare metadata
+    metadata = {
+        "total_pages": total_pages,
+        "ocr_pages": len(scanned_pages),
+        "native_pages": total_pages - len(scanned_pages),
+        "ocr_page_numbers": [
+            p + 1 for p in scanned_pages
+        ],  # 1-based for human readability
+        "extraction_method_ratio": {
+            "ocr_percentage": (
+                (len(scanned_pages) / total_pages * 100) if total_pages > 0 else 0
+            ),
+            "native_percentage": (
+                ((total_pages - len(scanned_pages)) / total_pages * 100)
+                if total_pages > 0
+                else 0
+            ),
+        },
+    }
+
+    return cleaned_text, metadata

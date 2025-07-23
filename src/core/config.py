@@ -45,7 +45,9 @@ STRUCTURED_OUTPUT_OPTIONS = {
 EXTRACTION_MAX_RETRIES = 1  # Number of retry attempts for failed extractions
 
 # Text Processing Configuration
-MIN_CHARS_FOR_VALID_PAGE = 10  # Minimum characters to consider page as text (not scanned)
+MIN_CHARS_FOR_VALID_PAGE = (
+    10  # Minimum characters to consider page as text (not scanned)
+)
 OCR_LANGUAGE = "deu"  # Tesseract language code for German
 SPELL_CHECK_THRESHOLD = 0.6  # Ratio of misspelled words to filter OCR noise
 SYMBOL_FILTER_THRESHOLD = 0.3  # Minimum ratio of letters in a line to keep it
@@ -60,7 +62,7 @@ EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 # Upload Configuration
 UPLOAD_FOLDER = "data/uploads"
 
-# Indicator Configuration  
+# Indicator Configuration
 INDICATOR_AWARE_CHUNKING = True  # Preserve indicators with their context
 INDICATOR_WINDOW_SIZE = 150  # Characters to check around split points
 
@@ -76,7 +78,7 @@ RETRIEVAL_TOP_K = 100  # Number of chunks to retrieve in semantic mode
 RETRIEVAL_QUERIES = [
     "Handlungsfeld Handlungsfelder action field Maßnahmen Projekte",
     "Klimaschutz Mobilität Energie Bildung Wirtschaft Nachhaltigkeit",
-    "Indikatoren indicators Kennzahlen metrics Ziele targets"
+    "Indikatoren indicators Kennzahlen metrics Ziele targets",
 ]
 
 # Output Configuration

@@ -35,7 +35,7 @@ class ExtractionResult(BaseModel):
 
 class ActionFieldList(BaseModel):
     """Simple list of action field names for Stage 1 extraction."""
-    
+
     action_fields: list[str] = Field(
         ..., description="List of action field names (Handlungsfelder)"
     )
@@ -43,15 +43,13 @@ class ActionFieldList(BaseModel):
 
 class ProjectList(BaseModel):
     """List of project titles for Stage 2 extraction."""
-    
-    projects: list[str] = Field(
-        ..., description="List of project titles"
-    )
+
+    projects: list[str] = Field(..., description="List of project titles")
 
 
 class ProjectDetails(BaseModel):
     """Detailed project information for Stage 3 extraction."""
-    
+
     measures: list[str] = Field(
         default_factory=list, description="List of measures/actions"
     )

@@ -39,25 +39,26 @@ def get_all_chunks_for_document(source_id: str) -> list[dict]:
     """
     # Get all chunks for the source document
     results = collection.get(
-        where={"source": source_id},
-        include=["documents", "metadatas"]
+        where={"source": source_id}, include=["documents", "metadatas"]
     )
-    
+
     if not results or not results["documents"]:
         return []
-    
+
     # Create list of chunks with metadata
     chunks = []
-    for doc, meta in zip(results["documents"], results["metadatas"]):
-        chunks.append({
-            "text": doc,
-            "chunk_index": meta.get("chunk_index", 0),
-            "source": meta.get("source"),
-        })
-    
+    for doc, meta in zip(results["documents"], results["metadatas"], strict=False):
+        chunks.append(
+            {
+                "text": doc,
+                "chunk_index": meta.get("chunk_index", 0),
+                "source": meta.get("source"),
+            }
+        )
+
     # Sort by chunk_index to maintain document order
     chunks.sort(key=lambda x: x["chunk_index"])
-    
+
     return chunks
 
 

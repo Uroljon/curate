@@ -5,12 +5,12 @@ import requests
 from pydantic import BaseModel
 
 from .config import (
-    OLLAMA_API_URL,
-    OLLAMA_CHAT_URL,
+    GENERATION_OPTIONS,
     MODEL_NAME,
     MODEL_TEMPERATURE,
     MODEL_TIMEOUT,
-    GENERATION_OPTIONS,
+    OLLAMA_API_URL,
+    OLLAMA_CHAT_URL,
     STRUCTURED_OUTPUT_OPTIONS,
 )
 
@@ -40,7 +40,7 @@ def query_ollama(
         options = GENERATION_OPTIONS.copy()
         if temperature is not None:
             options["temperature"] = temperature
-            
+
         request_body = {
             "model": model,
             "prompt": prompt,
@@ -52,7 +52,9 @@ def query_ollama(
         if system_message:
             request_body["system"] = system_message
 
-        response = requests.post(OLLAMA_API_URL, json=request_body, timeout=MODEL_TIMEOUT)
+        response = requests.post(
+            OLLAMA_API_URL, json=request_body, timeout=MODEL_TIMEOUT
+        )
         response.raise_for_status()
         data = response.json()
         return data.get("response", "").strip()
@@ -100,7 +102,9 @@ def query_ollama_structured(
             "options": options,
         }
 
-        response = requests.post(OLLAMA_CHAT_URL, json=request_body, timeout=MODEL_TIMEOUT)
+        response = requests.post(
+            OLLAMA_CHAT_URL, json=request_body, timeout=MODEL_TIMEOUT
+        )
         response.raise_for_status()
 
         data = response.json()

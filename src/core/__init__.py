@@ -52,7 +52,7 @@ __all__ = [
     "query_ollama_structured",
     # Schema exports
     "ActionField",
-    "ActionFieldList", 
+    "ActionFieldList",
     "ExtractionResult",
     "Project",
     "ProjectDetails",

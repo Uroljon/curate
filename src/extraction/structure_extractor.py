@@ -4,8 +4,23 @@ from typing import Any, Optional
 
 import json5
 
-from src.core import CHUNK_MAX_CHARS, CHUNK_MIN_CHARS, CHUNK_WARNING_THRESHOLD, EXTRACTION_MAX_RETRIES, MODEL_TEMPERATURE
-from src.processing import query_chunks
+from src.core import (
+    CHUNK_MAX_CHARS,
+    CHUNK_MIN_CHARS,
+    CHUNK_WARNING_THRESHOLD,
+    EXTRACTION_MAX_RETRIES,
+    MODEL_TEMPERATURE,
+    ActionField,
+    ActionFieldList,
+    ExtractionResult,
+    Project,
+    ProjectDetails,
+    ProjectList,
+    query_ollama,
+    query_ollama_structured,
+)
+from src.processing import prepare_llm_chunks, query_chunks
+
 from .prompts import (
     STAGE1_SYSTEM_MESSAGE,
     get_stage1_prompt,
@@ -14,9 +29,6 @@ from .prompts import (
     get_stage3_prompt,
     get_stage3_system_message,
 )
-from src.core import query_ollama, query_ollama_structured
-from src.core import ActionField, ActionFieldList, ExtractionResult, Project, ProjectDetails, ProjectList
-from src.processing import prepare_llm_chunks
 
 # prepare_llm_chunks is imported from semantic_llm_chunker
 
@@ -37,7 +49,9 @@ def extract_action_fields_only(chunks: list[str]) -> list[str]:
         if not chunk.strip():
             continue
 
-        print(f"🔍 Stage 1: Scanning chunk {i+1}/{len(chunks)} for action fields ({len(chunk)} chars)")
+        print(
+            f"🔍 Stage 1: Scanning chunk {i+1}/{len(chunks)} for action fields ({len(chunk)} chars)"
+        )
 
         prompt = get_stage1_prompt(chunk)
 
@@ -45,12 +59,14 @@ def extract_action_fields_only(chunks: list[str]) -> list[str]:
             prompt=prompt,
             response_model=ActionFieldList,
             system_message=system_message,
-            temperature=MODEL_TEMPERATURE
+            temperature=MODEL_TEMPERATURE,
         )
 
         if result and result.action_fields:
             found_fields = set(result.action_fields)
-            print(f"   ✓ Found {len(found_fields)} action fields: {', '.join(sorted(found_fields))}")
+            print(
+                f"   ✓ Found {len(found_fields)} action fields: {', '.join(sorted(found_fields))}"
+            )
             all_action_fields.update(found_fields)
         else:
             print(f"   ✗ No action fields found in chunk {i+1}")
@@ -116,7 +132,9 @@ def extract_projects_for_field(chunks: list[str], action_field: str) -> list[str
 
         # Remove quick check - with mixed topics, action field might not be explicitly mentioned
 
-        print(f"🔎 Stage 2: Searching chunk {i+1}/{len(chunks)} for {action_field} projects")
+        print(
+            f"🔎 Stage 2: Searching chunk {i+1}/{len(chunks)} for {action_field} projects"
+        )
 
         prompt = get_stage2_prompt(chunk, action_field)
 
@@ -124,7 +142,7 @@ def extract_projects_for_field(chunks: list[str], action_field: str) -> list[str
             prompt=prompt,
             response_model=ProjectList,
             system_message=system_message,
-            temperature=MODEL_TEMPERATURE
+            temperature=MODEL_TEMPERATURE,
         )
 
         if result and result.projects:
@@ -140,7 +158,9 @@ def extract_projects_for_field(chunks: list[str], action_field: str) -> list[str
     return unique_projects
 
 
-def extract_project_details(chunks: list[str], action_field: str, project_title: str) -> ProjectDetails:
+def extract_project_details(
+    chunks: list[str], action_field: str, project_title: str
+) -> ProjectDetails:
     """
     Stage 3: Extract measures and indicators for a specific project.
 
@@ -167,7 +187,7 @@ def extract_project_details(chunks: list[str], action_field: str, project_title:
             prompt=prompt,
             response_model=ProjectDetails,
             system_message=system_message,
-            temperature=MODEL_TEMPERATURE
+            temperature=MODEL_TEMPERATURE,
         )
 
         if result:
@@ -180,11 +200,12 @@ def extract_project_details(chunks: list[str], action_field: str, project_title:
 
     # Create final result
     details = ProjectDetails(
-        measures=sorted(all_measures),
-        indicators=sorted(all_indicators)
+        measures=sorted(all_measures), indicators=sorted(all_indicators)
     )
 
-    print(f"   📊 Total: {len(details.measures)} measures, {len(details.indicators)} indicators")
+    print(
+        f"   📊 Total: {len(details.measures)} measures, {len(details.indicators)} indicators"
+    )
 
     return details
 
@@ -209,8 +230,14 @@ def validate_extraction_schema(data: Any) -> bool:
 
     # English terms that should not appear in German extraction
     english_terms = [
-        'Development', 'Enhancement', 'Support', 'Promotion',
-        'Implementation', 'Management', 'Strategy', 'Initiative'
+        "Development",
+        "Enhancement",
+        "Support",
+        "Promotion",
+        "Implementation",
+        "Management",
+        "Strategy",
+        "Initiative",
     ]
 
     for item in data:
@@ -338,14 +365,25 @@ def extract_json_from_response(response: str) -> list[dict[str, Any]] | None:
     return None
 
 
-def filter_english_content(extracted_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def filter_english_content(
+    extracted_data: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """
     Filter out action fields and projects containing English terms.
     """
     english_terms = [
-        'Development', 'Enhancement', 'Support', 'Promotion',
-        'Implementation', 'Management', 'Strategy', 'Initiative',
-        'Renewable', 'Energy', 'Smart', 'City'
+        "Development",
+        "Enhancement",
+        "Support",
+        "Promotion",
+        "Implementation",
+        "Management",
+        "Strategy",
+        "Initiative",
+        "Renewable",
+        "Energy",
+        "Smart",
+        "City",
     ]
 
     filtered_data = []
@@ -373,7 +411,9 @@ def filter_english_content(extracted_data: list[dict[str, Any]]) -> list[dict[st
     return filtered_data
 
 
-def reclassify_measures_to_indicators(extracted_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def reclassify_measures_to_indicators(
+    extracted_data: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """
     Post-process extracted data to move quantitative measures to indicators.
 
@@ -384,15 +424,15 @@ def reclassify_measures_to_indicators(extracted_data: list[dict[str, Any]]) -> l
 
     # Patterns that indicate a measure should be an indicator
     indicator_patterns = [
-        r'\d+\s*(?:km|m²|€|Ladepunkte|Standorte|Wohneinheiten|Hektar|ha|MW|kW)',  # Numbers with units
-        r'\d+\s*%',  # Percentages
-        r'(?:bis|ab|seit)\s+\d{4}',  # Year references
-        r'\d+\s+\w+(?:,\s*\d+\s+\w+)+',  # Lists of numbered items
-        r'(?:Verdopplung|Halbierung|Steigerung um|Reduktion um)',  # Comparative terms with implied numbers
-        r'\d+(?:\.\d+)?',  # Any number (as fallback)
+        r"\d+\s*(?:km|m²|€|Ladepunkte|Standorte|Wohneinheiten|Hektar|ha|MW|kW)",  # Numbers with units
+        r"\d+\s*%",  # Percentages
+        r"(?:bis|ab|seit)\s+\d{4}",  # Year references
+        r"\d+\s+\w+(?:,\s*\d+\s+\w+)+",  # Lists of numbered items
+        r"(?:Verdopplung|Halbierung|Steigerung um|Reduktion um)",  # Comparative terms with implied numbers
+        r"\d+(?:\.\d+)?",  # Any number (as fallback)
     ]
 
-    combined_pattern = '|'.join(indicator_patterns)
+    combined_pattern = "|".join(indicator_patterns)
 
     for action_field in extracted_data:
         for project in action_field.get("projects", []):
@@ -452,8 +492,10 @@ Extrahiere den kompletten Inhalt auf Deutsch."""
 
     # Validate chunk size
     if len(chunk_text) > CHUNK_WARNING_THRESHOLD:
-        print(f"⚠️ WARNING: Chunk size ({len(chunk_text)} chars) exceeds recommended limit "
-              f"of {CHUNK_WARNING_THRESHOLD} chars!")
+        print(
+            f"⚠️ WARNING: Chunk size ({len(chunk_text)} chars) exceeds recommended limit "
+            f"of {CHUNK_WARNING_THRESHOLD} chars!"
+        )
         print("   This may cause JSON parsing issues or incomplete responses.")
 
     for attempt in range(max_retries):
@@ -493,7 +535,9 @@ Extrahiere den kompletten Inhalt auf Deutsch."""
 
             # Post-process to reclassify measures containing numbers as indicators
             extracted_data = reclassify_measures_to_indicators(extracted_data)
-            print("📊 Post-processing: Reclassified quantitative measures as indicators")
+            print(
+                "📊 Post-processing: Reclassified quantitative measures as indicators"
+            )
 
             return extracted_data
         else:

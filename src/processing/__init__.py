@@ -1,19 +1,19 @@
 """Document processing functionality for CURATE."""
 
 from .chunker import (
+    INDICATOR_PATTERNS,
+    analyze_chunk_quality,
     chunk_for_embedding,
     chunk_for_llm,
-    smart_chunk,  # Backward compatibility
-    prepare_llm_chunks,  # Backward compatibility
-    analyze_chunk_quality,
     contains_indicator_context,
     extract_chunk_topic,
-    INDICATOR_PATTERNS,
+    prepare_llm_chunks,  # Backward compatibility
+    smart_chunk,  # Backward compatibility
 )
 from .embedder import (
     embed_chunks,
-    query_chunks,
     get_all_chunks_for_document,
+    query_chunks,
 )
 from .parser import extract_text_with_ocr_fallback
 
@@ -22,7 +22,7 @@ __all__ = [
     "extract_text_with_ocr_fallback",
     # Embedder exports
     "embed_chunks",
-    "query_chunks", 
+    "query_chunks",
     "get_all_chunks_for_document",
     # Chunker exports
     "chunk_for_embedding",
