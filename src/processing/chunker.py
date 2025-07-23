@@ -4,10 +4,13 @@ Document chunking functionality for CURATE.
 This module provides two main chunking strategies:
 1. Semantic chunking for embeddings (chunk_for_embedding)
 2. LLM-optimized chunking (chunk_for_llm)
+
+With optional structure-aware chunking when PDF path is available.
 """
 
 import re
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union
 
 # Indicator patterns for German municipal documents
 INDICATOR_PATTERNS = {
@@ -527,3 +530,83 @@ def analyze_chunk_quality(chunks: list[str], stage: str = "unknown") -> dict:
             ),
         },
     }
+
+
+def chunk_for_embedding_enhanced(
+    text_or_path: str | Path,
+    max_chars: int = 5000,
+    use_structure_aware: bool = True,
+    pdf_path: str | None = None,
+) -> list[str | dict]:
+    """
+    Enhanced chunking that can use structure-aware approach when PDF is available.
+
+    Args:
+        text_or_path: Either extracted text (str) or path to PDF file
+        max_chars: Maximum characters per chunk
+        use_structure_aware: Whether to use structure-aware chunking if possible
+        pdf_path: Optional PDF path if text_or_path is text
+
+    Returns:
+        List of chunks (strings for basic, dicts with metadata for structure-aware)
+    """
+    # Check if we can use structure-aware chunking
+    if use_structure_aware:
+        # If text_or_path is a path
+        if (
+            isinstance(text_or_path, (str, Path))
+            and Path(text_or_path).exists()
+            and str(text_or_path).endswith(".pdf")
+        ):
+            try:
+                from .structure_chunker_v2 import create_structure_aware_chunks
+
+                # Use structure-aware chunking with appropriate parameters
+                chunks = create_structure_aware_chunks(
+                    str(text_or_path),
+                    max_chunk_size=max_chars,
+                    min_chunk_size=int(max_chars * 0.3),  # 30% of max
+                    overlap_size=200,
+                    max_pages=None,
+                )
+
+                # Convert to list of text for compatibility
+                return [chunk["text"] for chunk in chunks]
+
+            except ImportError:
+                # Fall back to basic chunking
+                pass
+            except Exception as e:
+                print(f"Structure-aware chunking failed: {e}")
+                # Fall back to basic chunking
+
+        # If we have a pdf_path provided separately
+        elif pdf_path and Path(pdf_path).exists():
+            try:
+                from .structure_chunker_v2 import create_structure_aware_chunks
+
+                chunks = create_structure_aware_chunks(
+                    pdf_path,
+                    max_chunk_size=max_chars,
+                    min_chunk_size=int(max_chars * 0.3),
+                    overlap_size=200,
+                    max_pages=None,
+                )
+
+                return [chunk["text"] for chunk in chunks]
+
+            except:
+                # Fall back to basic chunking
+                pass
+
+    # Fall back to basic text-based chunking
+    if isinstance(text_or_path, (str, Path)) and Path(text_or_path).exists():
+        # It's a file path, need to extract text first
+        from .parser import extract_text_with_ocr_fallback
+
+        text, _ = extract_text_with_ocr_fallback(str(text_or_path))
+    else:
+        # It's already text
+        text = str(text_or_path)
+
+    return chunk_for_embedding(text, max_chars)

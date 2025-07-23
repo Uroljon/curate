@@ -4,6 +4,7 @@ from .chunker import (
     INDICATOR_PATTERNS,
     analyze_chunk_quality,
     chunk_for_embedding,
+    chunk_for_embedding_enhanced,
     chunk_for_llm,
     contains_indicator_context,
     extract_chunk_topic,
@@ -22,6 +23,7 @@ __all__ = [
     "analyze_chunk_quality",
     # Chunker exports
     "chunk_for_embedding",
+    "chunk_for_embedding_enhanced",
     "chunk_for_llm",
     "contains_indicator_context",
     # Embedder exports
