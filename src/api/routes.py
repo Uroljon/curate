@@ -23,6 +23,7 @@ from src.extraction import (
 )
 from src.processing import (
     chunk_for_embedding,
+    chunk_for_embedding_enhanced,
     chunk_for_llm,
     embed_chunks,
     extract_text_with_ocr_fallback,
@@ -71,8 +72,11 @@ async def upload_pdf(request: Request, file: UploadFile):
 
         # Stage 3: Semantic chunking
         monitor.start_stage("semantic_chunking")
-        chunks = chunk_for_embedding(
-            extracted_text, max_chars=SEMANTIC_CHUNK_TARGET_CHARS
+        chunks = chunk_for_embedding_enhanced(
+            extracted_text,
+            max_chars=SEMANTIC_CHUNK_TARGET_CHARS,
+            use_structure_aware=True,
+            pdf_path=file_path,
         )
 
         # Analyze chunk quality

@@ -233,6 +233,7 @@ class StructureAwareChunker:
         elements = partition_pdf(
             filename=str(partition_kwargs["filename"]),
             strategy=str(partition_kwargs["strategy"]),
+            languages=["deu"],  # German language support
             include_page_breaks=bool(partition_kwargs["include_page_breaks"]),
             max_partition=partition_kwargs.get("max_partition") if max_pages else None,
         )

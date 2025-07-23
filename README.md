@@ -64,6 +64,14 @@ Or, you can also install libraries manually:
 ```
 pip install fastapi uvicorn pymupdf python-multipart pytesseract pdf2image requests... (check full list in requirements.txt)
 ```
+
+**German Language Model for Structure-Aware Chunking**
+After installing the requirements, download the German spaCy model:
+```
+python -m spacy download de_core_news_lg
+```
+Note: This model is ~568MB and improves document structure detection for German texts.
+
 **Additional System Packages (macOS example)**  
 Ollama -  a tool to easily run local LLMs like Mixtral
 ```

@@ -551,62 +551,69 @@ def chunk_for_embedding_enhanced(
         List of chunks (strings only for compatibility)
     """
     # Check if we can use structure-aware chunking
-    if use_structure_aware:
-        # If text_or_path is a path
-        if (
-            isinstance(text_or_path, str | Path)
-            and Path(text_or_path).exists()
-            and str(text_or_path).endswith(".pdf")
-        ):
+    if use_structure_aware and pdf_path and Path(pdf_path).exists():
+        # We have a PDF path provided separately (most common case from API)
+        try:
+            from .structure_chunker_v2 import create_structure_aware_chunks
+
+            print(f"Using structure-aware chunking for PDF: {pdf_path}")
+            chunks = create_structure_aware_chunks(
+                pdf_path,
+                max_chunk_size=max_chars,
+                min_chunk_size=int(max_chars * 0.3),
+                overlap_size=200,
+                max_pages=None,
+            )
+
+            print(f"Structure-aware chunking created {len(chunks)} chunks")
+            return [chunk["text"] for chunk in chunks]
+
+        except ImportError as e:
+            print(f"Could not import structure_chunker_v2 (missing dependencies): {e}")
+            print("Falling back to improved semantic chunking...")
+            # Fall back to basic chunking
+        except Exception as e:
+            print(f"Structure-aware chunking failed: {e}")
+            print("Falling back to improved semantic chunking...")
+            # Fall back to basic chunking
+
+    # Check if text_or_path might be a PDF path (less common case)
+    if use_structure_aware and isinstance(text_or_path, str | Path):
+        text_or_path_str = str(text_or_path)
+        # Only check if it looks like a path (has .pdf extension and reasonable length)
+        if text_or_path_str.endswith(".pdf") and len(text_or_path_str) < 500:
             try:
-                from .structure_chunker_v2 import create_structure_aware_chunks
+                # Try to check if it's a valid file path
+                if Path(text_or_path_str).exists():
+                    from .structure_chunker_v2 import create_structure_aware_chunks
 
-                # Use structure-aware chunking with appropriate parameters
-                chunks = create_structure_aware_chunks(
-                    str(text_or_path),
-                    max_chunk_size=max_chars,
-                    min_chunk_size=int(max_chars * 0.3),  # 30% of max
-                    overlap_size=200,
-                    max_pages=None,
-                )
+                    print(f"Using structure-aware chunking for PDF: {text_or_path_str}")
+                    chunks = create_structure_aware_chunks(
+                        text_or_path_str,
+                        max_chunk_size=max_chars,
+                        min_chunk_size=int(max_chars * 0.3),
+                        overlap_size=200,
+                        max_pages=None,
+                    )
 
-                # Convert to list of text for compatibility
-                return [chunk["text"] for chunk in chunks]
-
-            except ImportError:
-                # Fall back to basic chunking
-                pass
-            except Exception as e:
-                print(f"Structure-aware chunking failed: {e}")
-                # Fall back to basic chunking
-
-        # If we have a pdf_path provided separately
-        elif pdf_path and Path(pdf_path).exists():
-            try:
-                from .structure_chunker_v2 import create_structure_aware_chunks
-
-                chunks = create_structure_aware_chunks(
-                    pdf_path,
-                    max_chunk_size=max_chars,
-                    min_chunk_size=int(max_chars * 0.3),
-                    overlap_size=200,
-                    max_pages=None,
-                )
-
-                return [chunk["text"] for chunk in chunks]
-
+                    return [chunk["text"] for chunk in chunks]
             except:
-                # Fall back to basic chunking
+                # Not a valid path or chunking failed, treat as text
                 pass
 
     # Fall back to basic text-based chunking
-    if isinstance(text_or_path, str | Path) and Path(text_or_path).exists():
-        # It's a file path, need to extract text first
-        from .parser import extract_text_with_ocr_fallback
+    # At this point, text_or_path should be text content
+    text = str(text_or_path)
 
-        text, _ = extract_text_with_ocr_fallback(str(text_or_path))
-    else:
-        # It's already text
-        text = str(text_or_path)
+    # If it still looks like a path that exists, extract text first
+    if len(text) < 500 and text.endswith(".pdf"):
+        try:
+            if Path(text).exists():
+                from .parser import extract_text_with_ocr_fallback
+                text, _ = extract_text_with_ocr_fallback(text)
+        except:
+            # Not a valid path, use as text
+            pass
 
+    print(f"Using basic text chunking, creating chunks from {len(text)} characters")
     return chunk_for_embedding(text, max_chars)

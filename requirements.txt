@@ -12,3 +12,5 @@ pyspellchecker
 json5
 pydantic
 json-repair
+unstructured[pdf]
+spacy
