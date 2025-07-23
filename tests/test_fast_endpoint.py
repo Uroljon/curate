@@ -15,7 +15,7 @@ def test_fast_endpoint_config():
     print(f"✅ FAST_EXTRACTION_ENABLED: {FAST_EXTRACTION_ENABLED}")
     print(f"✅ FAST_EXTRACTION_MAX_CHUNKS: {FAST_EXTRACTION_MAX_CHUNKS}")
 
-    assert FAST_EXTRACTION_ENABLED == True, "Fast extraction should be enabled"
+    assert FAST_EXTRACTION_ENABLED, "Fast extraction should be enabled"
     assert FAST_EXTRACTION_MAX_CHUNKS > 0, "Should have a chunk limit for speed"
 
     print("\n✅ Configuration test passed!")

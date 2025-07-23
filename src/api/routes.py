@@ -2,6 +2,7 @@
 
 import os
 import time
+from typing import Any
 
 from fastapi import File, Request, UploadFile
 from fastapi.responses import JSONResponse
@@ -35,7 +36,7 @@ from src.utils import (
 )
 
 
-async def upload_pdf(request: Request, file: UploadFile = File(...)):
+async def upload_pdf(request: Request, file: UploadFile):
     """Handle PDF upload and processing."""
     start_time = time.time()
 
@@ -155,7 +156,10 @@ async def extract_structure(
             continue
 
         # Stage 3: Extract details for each project
-        action_field_data = {"action_field": action_field, "projects": []}
+        action_field_data: dict[str, Any] = {
+            "action_field": action_field,
+            "projects": [],
+        }
 
         print(f"\n{'=' * 60}")
         print(f"STAGE 3: EXTRACTING DETAILS FOR {len(projects)} PROJECTS")
@@ -168,7 +172,7 @@ async def extract_structure(
                 optimized_chunks, action_field, project_title
             )
 
-            project_data = {"title": project_title}
+            project_data: dict[str, Any] = {"title": project_title}
             if details.measures:
                 project_data["measures"] = details.measures
             if details.indicators:
@@ -179,7 +183,8 @@ async def extract_structure(
         all_extracted_data.append(action_field_data)
 
     print(
-        f"📊 Final extraction result: {len(all_extracted_data)} unique action fields from {len(optimized_chunks)} chunks"
+        f"📊 Final extraction result: {len(all_extracted_data)} unique action fields "
+        f"from {len(optimized_chunks)} chunks"
     )
 
     if not all_extracted_data:
@@ -187,23 +192,28 @@ async def extract_structure(
         return JSONResponse(content={"structures": []})
 
     # Deduplicate action fields by name (merge projects from same action field)
-    deduplicated_data = {}
+    deduplicated_data: dict[str, Any] = {}
 
     for item in all_extracted_data:
-        action_field = item["action_field"]
+        field_name: str = str(item["action_field"])
 
-        if action_field in deduplicated_data:
+        if field_name in deduplicated_data:
             # Merge projects from duplicate action fields
-            existing_projects = deduplicated_data[action_field]["projects"]
+            existing_projects = deduplicated_data[field_name]["projects"]
             new_projects = item["projects"]
 
             # Simple deduplication by project title
-            existing_titles = {p["title"] for p in existing_projects}
+            existing_titles = {
+                p["title"] for p in existing_projects if isinstance(p, dict)
+            }
             for project in new_projects:
-                if project["title"] not in existing_titles:
+                if (
+                    isinstance(project, dict)
+                    and project.get("title") not in existing_titles
+                ):
                     existing_projects.append(project)
         else:
-            deduplicated_data[action_field] = item
+            deduplicated_data[field_name] = item
 
     # Convert back to list format
     final_structures = list(deduplicated_data.values())
@@ -211,10 +221,16 @@ async def extract_structure(
     # Count statistics
     total_projects = sum(len(af["projects"]) for af in final_structures)
     measures_count = sum(
-        1 for af in final_structures for p in af["projects"] if p.get("measures")
+        1
+        for af in final_structures
+        for p in af["projects"]
+        if isinstance(p, dict) and p.get("measures")
     )
     indicators_count = sum(
-        1 for af in final_structures for p in af["projects"] if p.get("indicators")
+        1
+        for af in final_structures
+        for p in af["projects"]
+        if isinstance(p, dict) and p.get("indicators")
     )
 
     print(
@@ -331,10 +347,10 @@ async def extract_structure_fast(
         )
 
         # Deduplicate action fields (same logic as multi-stage)
-        deduplicated_data = {}
+        deduplicated_data: dict[str, Any] = {}
 
         for item in all_extracted_data:
-            action_field = item["action_field"]
+            action_field: str = str(item["action_field"])
 
             if action_field in deduplicated_data:
                 # Merge projects from duplicate action fields
@@ -342,9 +358,14 @@ async def extract_structure_fast(
                 new_projects = item["projects"]
 
                 # Simple deduplication by project title
-                existing_titles = {p["title"] for p in existing_projects}
+                existing_titles = {
+                    p["title"] for p in existing_projects if isinstance(p, dict)
+                }
                 for project in new_projects:
-                    if project["title"] not in existing_titles:
+                    if (
+                        isinstance(project, dict)
+                        and project.get("title") not in existing_titles
+                    ):
                         existing_projects.append(project)
             else:
                 deduplicated_data[action_field] = item

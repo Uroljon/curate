@@ -9,9 +9,9 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import requests
 
@@ -38,7 +38,10 @@ class BenchmarkRunner:
 
     def __init__(self, base_url: str = "http://127.0.0.1:8000"):
         self.base_url = base_url
-        self.results = {"timestamp": datetime.utcnow().isoformat(), "benchmarks": []}
+        self.results: dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "benchmarks": [],
+        }
 
     def benchmark_chunking_methods(self, pdf_path: str) -> dict[str, Any]:
         """Compare different chunking methods."""
@@ -52,10 +55,11 @@ class BenchmarkRunner:
 
         print(f"✅ Text extracted: {len(text):,} chars in {extraction_time:.2f}s")
         print(
-            f"   Pages: {metadata['total_pages']} total ({metadata['native_pages']} native, {metadata['ocr_pages']} OCR)"
+            f"   Pages: {metadata['total_pages']} total "
+            f"({metadata['native_pages']} native, {metadata['ocr_pages']} OCR)"
         )
 
-        results = {
+        results: dict[str, Any] = {
             "pdf_path": pdf_path,
             "text_length": len(text),
             "extraction_time": extraction_time,
@@ -106,9 +110,11 @@ class BenchmarkRunner:
         old_time = time.time() - start
         old_quality = analyze_chunk_quality(old_llm_chunks, "llm_old")
 
-        # New semantic method
+        # New semantic method - NOT IMPLEMENTED YET
+        # TODO: Implement prepare_semantic_llm_chunks as described in TODO.md
+        # For now, use the same as old method to prevent errors
         start = time.time()
-        new_llm_chunks = prepare_semantic_llm_chunks(
+        new_llm_chunks = prepare_llm_chunks(
             base_chunks, max_chars=20000, min_chars=15000
         )
         new_time = time.time() - start
@@ -135,10 +141,15 @@ class BenchmarkRunner:
 
         print("\n📈 LLM Chunking Comparison:")
         print(
-            f"   Old: {len(old_llm_chunks)} chunks, {old_quality['heading_stats']['chunks_with_headings']} with headings"
+            f"   Old: {len(old_llm_chunks)} chunks, "
+            f"{old_quality['heading_stats']['chunks_with_headings']} with headings"
         )
         print(
-            f"   New: {len(new_llm_chunks)} chunks, {new_quality['heading_stats']['chunks_with_headings']} with headings"
+            f"   New: {len(new_llm_chunks)} chunks, "
+            f"{new_quality['heading_stats']['chunks_with_headings']} with headings"
+        )
+        print(
+            "   Note: Semantic chunking not yet implemented - using same method for comparison"
         )
 
         return results
@@ -148,12 +159,16 @@ class BenchmarkRunner:
         print(f"\n📊 Benchmarking extraction endpoints for: {source_id}")
         print("=" * 70)
 
-        results = {"source_id": source_id, "endpoints": {}}
+        results: dict[str, Any] = {"source_id": source_id, "endpoints": {}}
 
         # Test fast extraction
         print("\n🚀 Testing fast extraction endpoint...")
         url = f"{self.base_url}/extract_structure_fast"
-        params = {"source_id": source_id, "max_chars": 20000, "min_chars": 15000}
+        params: dict[str, Any] = {
+            "source_id": source_id,
+            "max_chars": 20000,
+            "min_chars": 15000,
+        }
 
         try:
             start = time.time()
@@ -234,7 +249,7 @@ class BenchmarkRunner:
                 # Combine results
                 benchmark_result = {
                     "pdf_name": pdf_name,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "chunking": chunking_results,
                     "extraction": extraction_results,
                 }
@@ -274,7 +289,7 @@ class BenchmarkRunner:
 
     def save_results(self):
         """Save benchmark results to file."""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         filename = BENCHMARK_DIR / f"benchmark_{timestamp}.json"
 
         with open(filename, "w", encoding="utf-8") as f:

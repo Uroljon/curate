@@ -94,7 +94,7 @@ def merge_similar_action_fields(fields: list[str]) -> list[str]:
 
     # Sort by length (longer names often contain more context)
     sorted_fields = sorted(fields, key=len, reverse=True)
-    merged = []
+    merged: list[str] = []
 
     for field in sorted_fields:
         field_lower = field.lower()
@@ -332,7 +332,7 @@ def extract_json_from_response(response: str) -> list[dict[str, Any]] | None:
                 if isinstance(data, dict):
                     data = [data]  # Wrap single object
                 if validate_extraction_schema(data):
-                    return data
+                    return list(data)
             except:
                 continue
 
@@ -344,7 +344,7 @@ def extract_json_from_response(response: str) -> list[dict[str, Any]] | None:
             json_str = cleaned[first_bracket : last_bracket + 1]
             data = json5.loads(json_str)
             if validate_extraction_schema(data):
-                return data
+                return list(data)
         except:
             pass
 
@@ -358,7 +358,7 @@ def extract_json_from_response(response: str) -> list[dict[str, Any]] | None:
             if isinstance(data, dict):
                 data = [data]
             if validate_extraction_schema(data):
-                return data
+                return list(data)
         except:
             pass
 
@@ -515,9 +515,12 @@ Extrahiere den kompletten Inhalt auf Deutsch."""
             # Convert Pydantic model to dict format expected by rest of pipeline
             extracted_data = []
             for af in result.action_fields:
-                action_field_dict = {"action_field": af.action_field, "projects": []}
+                action_field_dict: dict[str, Any] = {
+                    "action_field": af.action_field,
+                    "projects": [],
+                }
                 for project in af.projects:
-                    project_dict = {"title": project.title}
+                    project_dict: dict[str, Any] = {"title": project.title}
                     if project.measures:
                         project_dict["measures"] = project.measures
                     if project.indicators:
@@ -551,17 +554,19 @@ Extrahiere den kompletten Inhalt auf Deutsch."""
     print("🔄 Falling back to legacy extraction method...")
     prompt = build_structure_prompt(chunk_text)
     raw_response = query_ollama(prompt, system_message=system_message)
-    extracted_data = extract_json_from_response(raw_response)
+    legacy_extracted_data: list[dict[str, Any]] | None = extract_json_from_response(
+        raw_response
+    )
 
-    if extracted_data:
-        print(f"✅ Legacy method extracted {len(extracted_data)} action fields")
+    if legacy_extracted_data:
+        print(f"✅ Legacy method extracted {len(legacy_extracted_data)} action fields")
         # Filter English content
-        extracted_data = filter_english_content(extracted_data)
+        legacy_extracted_data = filter_english_content(legacy_extracted_data)
         print("🌐 Post-processing: Filtered English content")
         # Also post-process legacy extraction
-        extracted_data = reclassify_measures_to_indicators(extracted_data)
+        legacy_extracted_data = reclassify_measures_to_indicators(legacy_extracted_data)
         print("📊 Post-processing: Reclassified quantitative measures as indicators")
-        return extracted_data
+        return legacy_extracted_data
 
     return []
 
@@ -650,11 +655,11 @@ Remember: ENHANCE and ADD, never remove."""
         )
 
         # Convert to dict format
-        result_dict = {"action_fields": []}
+        result_dict: dict[str, Any] = {"action_fields": []}
         for af in enhanced_result.action_fields:
-            af_dict = {"action_field": af.action_field, "projects": []}
+            af_dict: dict[str, Any] = {"action_field": af.action_field, "projects": []}
             for project in af.projects:
-                proj_dict = {"title": project.title}
+                proj_dict: dict[str, Any] = {"title": project.title}
                 if project.measures:
                     proj_dict["measures"] = project.measures
                 if project.indicators:

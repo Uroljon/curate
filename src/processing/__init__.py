@@ -18,19 +18,19 @@ from .embedder import (
 from .parser import extract_text_with_ocr_fallback
 
 __all__ = [
-    # Parser exports
-    "extract_text_with_ocr_fallback",
-    # Embedder exports
-    "embed_chunks",
-    "query_chunks",
-    "get_all_chunks_for_document",
+    "INDICATOR_PATTERNS",
+    "analyze_chunk_quality",
     # Chunker exports
     "chunk_for_embedding",
     "chunk_for_llm",
-    "smart_chunk",
-    "prepare_llm_chunks",
-    "analyze_chunk_quality",
     "contains_indicator_context",
+    # Embedder exports
+    "embed_chunks",
     "extract_chunk_topic",
-    "INDICATOR_PATTERNS",
+    # Parser exports
+    "extract_text_with_ocr_fallback",
+    "get_all_chunks_for_document",
+    "prepare_llm_chunks",
+    "query_chunks",
+    "smart_chunk",
 ]

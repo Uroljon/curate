@@ -64,13 +64,15 @@ INDIKATORMUSTER ZUM FINDEN:
 - Raten: "pro Jahr", "je Einwohner", "täglich", "€/m²"
 
 SPEZIELLE ANWEISUNGEN:
-- Wenn ein Indikator ohne explizite Projektzuordnung erscheint, aber kontextuell zu "{project_title}" passt, füge ihn hinzu
+- Wenn ein Indikator ohne explizite Projektzuordnung erscheint, aber kontextuell zu
+  "{project_title}" passt, füge ihn hinzu
 - Schließe auch Teilinformationen ein - besser unvollständige Daten erfassen als sie zu verpassen"""
 
 
 # Enhanced prompts for each stage
 def get_stage1_prompt(chunk: str) -> str:
-    return f"""Analysiere diesen Text aus einem kommunalen Strategiedokument und finde ALLE Handlungsfelder/Themenbereiche:
+    return f"""Analysiere diesen Text aus einem kommunalen Strategiedokument und finde
+ALLE Handlungsfelder/Themenbereiche:
 
 {chunk.strip()}
 

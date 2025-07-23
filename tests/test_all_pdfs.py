@@ -12,7 +12,7 @@ This script runs a comprehensive test on all PDFs to verify:
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -41,7 +41,7 @@ def test_all_pdfs():
     print("=" * 70)
 
     results = {
-        "test_run": datetime.utcnow().isoformat(),
+        "test_run": datetime.now(timezone.utc).isoformat(),
         "pdfs_tested": [],
         "summary": {"total": len(pdf_files), "passed": 0, "failed": 0, "issues": []},
     }
@@ -70,7 +70,7 @@ def test_all_pdfs():
                 {
                     "pdf": pdf_path.name,
                     "status": status,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             )
 
@@ -83,7 +83,7 @@ def test_all_pdfs():
                     "pdf": pdf_path.name,
                     "status": "ERROR",
                     "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             )
 
@@ -103,7 +103,7 @@ def test_all_pdfs():
     # Save results
     results_file = (
         Path("test_results")
-        / f"pdf_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        / f"pdf_test_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
     )
     results_file.parent.mkdir(exist_ok=True)
 

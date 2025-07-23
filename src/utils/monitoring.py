@@ -9,9 +9,9 @@ import json
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 # Create logs directory if it doesn't exist
 LOG_DIR = Path("logs")
@@ -44,7 +44,7 @@ class StructuredLogger:
     def log_event(self, event_type: str, data: dict[str, Any], level: str = "INFO"):
         """Log a structured event."""
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "logger": self.name,
             "event_type": event_type,
             "level": level,
@@ -76,10 +76,10 @@ class ExtractionMonitor:
     def __init__(self, source_id: str):
         self.source_id = source_id
         self.start_time = time.time()
-        self.stages = {}
-        self.metrics = {
+        self.stages: dict[str, dict[str, Any]] = {}
+        self.metrics: dict[str, Any] = {
             "source_id": source_id,
-            "start_time": datetime.utcnow().isoformat(),
+            "start_time": datetime.now(timezone.utc).isoformat(),
             "stages": {},
         }
 
@@ -117,7 +117,7 @@ class ExtractionMonitor:
         )
 
     def log_error(
-        self, stage_name: str, error: Exception, context: dict[str, Any] = None
+        self, stage_name: str, error: Exception, context: dict[str, Any] | None = None
     ):
         """Log an error during extraction."""
         error_data = {
@@ -133,12 +133,12 @@ class ExtractionMonitor:
         # Also mark stage as failed
         self.end_stage(stage_name, success=False, error=error_data)
 
-    def finalize(self, extraction_results: dict[str, Any] = None):
+    def finalize(self, extraction_results: dict[str, Any] | None = None):
         """Finalize monitoring and log summary."""
         total_duration = time.time() - self.start_time
 
         self.metrics["total_duration_seconds"] = total_duration
-        self.metrics["end_time"] = datetime.utcnow().isoformat()
+        self.metrics["end_time"] = datetime.now(timezone.utc).isoformat()
 
         if extraction_results:
             self.metrics["extraction_results"] = {
@@ -175,7 +175,7 @@ class ChunkQualityMonitor:
         # Simple structural analysis (no complex heading detection)
         structural_stats = []
         for i, chunk in enumerate(chunks):
-            lines = chunk.split("\n")
+            chunk.split("\n")
 
             # Basic structural markers
             has_double_newline = "\n\n" in chunk
@@ -230,7 +230,7 @@ class ChunkQualityMonitor:
 
 
 def log_api_request(
-    endpoint: str, method: str, params: dict[str, Any], source_ip: str = None
+    endpoint: str, method: str, params: dict[str, Any], source_ip: str | None = None
 ):
     """Log API request."""
     extraction_logger.log_event(
@@ -245,7 +245,10 @@ def log_api_request(
 
 
 def log_api_response(
-    endpoint: str, status_code: int, response_time: float, response_size: int = None
+    endpoint: str,
+    status_code: int,
+    response_time: float,
+    response_size: int | None = None,
 ):
     """Log API response."""
     extraction_logger.log_event(
@@ -260,7 +263,7 @@ def log_api_response(
 
 
 def analyze_logs(
-    log_file: str, start_date: str = None, end_date: str = None
+    log_file: str, start_date: str | None = None, end_date: str | None = None
 ) -> dict[str, Any]:
     """Analyze logs from a specific file."""
     log_path = LOG_DIR / log_file
@@ -290,7 +293,7 @@ def analyze_logs(
         events = filtered_events
 
     # Basic analysis
-    analysis = {
+    analysis: dict[str, Any] = {
         "total_events": len(events),
         "date_range": {
             "start": events[0]["timestamp"] if events else None,

@@ -8,7 +8,7 @@ enhancing prompts for mixed-topic robustness.
 import json
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
@@ -21,7 +21,7 @@ def test_simplified_extraction():
     print("=" * 80)
     print("Testing Simplified Extraction Approach")
     print("=" * 80)
-    print(f"Timestamp: {datetime.now()}")
+    print(f"Timestamp: {datetime.now(timezone.utc)}")
     print(f"PDF: {pdf_path}")
     print("\nChanges made:")
     print("- ✅ Removed topic detection from semantic_chunker.py")
@@ -164,11 +164,11 @@ def test_simplified_extraction():
         print("  ✅ All projects have content")
 
     # Save results
-    output_file = f"test_results/simplified_extraction_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    output_file = f"test_results/simplified_extraction_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(
             {
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "approach": "simplified",
                 "extraction_time": extraction_time,
                 "statistics": {

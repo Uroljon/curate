@@ -1,5 +1,5 @@
 [tool.ruff]
-line-length = 120
+line-length = 160
 target-version = "py310"
 
 # Exclude directories
@@ -54,6 +54,7 @@ ignore_missing_imports = true  # Many libraries lack stubs
 exclude = [
     "venv",
     "chroma_store",
+    "archive",
 ]
 
 # Per-module options for gradual typing

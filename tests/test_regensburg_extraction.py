@@ -6,7 +6,7 @@ Verifies if we achieve >70% indicator extraction rate.
 
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
@@ -19,7 +19,7 @@ def test_regensburg_extraction():
     print("=" * 80)
     print("Testing Regensburg PDF with Semantic-Aware Chunking")
     print("=" * 80)
-    print(f"Timestamp: {datetime.now()}")
+    print(f"Timestamp: {datetime.now(timezone.utc)}")
     print(f"PDF: {pdf_path}")
     print()
 
@@ -142,11 +142,11 @@ def test_regensburg_extraction():
                     sample_count += 1
 
     # Save detailed results
-    output_file = f"test_results/regensburg_semantic_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    output_file = f"test_results/regensburg_semantic_test_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(
             {
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "pdf": pdf_path,
                 "extraction_time": extraction_time,
                 "statistics": {

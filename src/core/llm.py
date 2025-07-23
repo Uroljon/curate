@@ -1,5 +1,5 @@
 # llm.py
-from typing import Optional, Type, TypeVar
+from typing import Optional, TypeVar
 
 import requests
 from pydantic import BaseModel
@@ -21,7 +21,7 @@ def query_ollama(
     prompt: str,
     model: str = MODEL_NAME,
     temperature: float = 0.0,
-    system_message: str = None,
+    system_message: str | None = None,
 ) -> str:
     """
     Query Ollama with optimized parameters for structured JSON extraction.
@@ -57,7 +57,7 @@ def query_ollama(
         )
         response.raise_for_status()
         data = response.json()
-        return data.get("response", "").strip()
+        return str(data.get("response", "")).strip()
     except requests.RequestException as e:
         print(f"❌ LLM API Error: {e!s}")
         return f"LLM API Error: {e!s}"

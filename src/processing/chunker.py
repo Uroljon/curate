@@ -7,7 +7,7 @@ This module provides two main chunking strategies:
 """
 
 import re
-from typing import List, Optional, Tuple
+from typing import Optional
 
 # Indicator patterns for German municipal documents
 INDICATOR_PATTERNS = {
@@ -41,7 +41,7 @@ def contains_indicator_context(
     context = text[start:end]
 
     # Check each indicator pattern
-    for pattern_name, pattern in INDICATOR_PATTERNS.items():
+    for _pattern_name, pattern in INDICATOR_PATTERNS.items():
         matches = list(re.finditer(pattern, context, re.IGNORECASE))
 
         for match in matches:
@@ -186,7 +186,7 @@ def extract_chunk_topic(chunk: str) -> dict:
     lines = chunk.strip().split("\n")
 
     # Look for heading in first few lines
-    for i, line in enumerate(lines[:5]):
+    for _i, line in enumerate(lines[:5]):
         line = line.strip()
         if not line:
             continue
@@ -238,10 +238,9 @@ def split_by_heading(text: str) -> list[str]:
     """
     lines = text.split("\n")
     chunks = []
-    current_chunk = []
-    current_heading = None
+    current_chunk: list[str] = []
 
-    for i, line in enumerate(lines):
+    for _i, line in enumerate(lines):
         # Check if this line is a heading
         if is_heading(line):
             # If we have accumulated content, save it as a chunk
@@ -250,7 +249,6 @@ def split_by_heading(text: str) -> list[str]:
 
             # Start new chunk with this heading
             current_chunk = [line]
-            current_heading = line
         else:
             # Add line to current chunk
             current_chunk.append(line)
@@ -307,7 +305,7 @@ def split_by_lines(text: str, max_chars: int) -> list[str]:
     """
     lines = text.split("\n")
     chunks = []
-    current_chunk = []
+    current_chunk: list[str] = []
     current_size = 0
 
     for line in lines:
@@ -430,7 +428,7 @@ def chunk_for_llm(
         return []
 
     result_chunks = []
-    current_merge = []
+    current_merge: list[str] = []
     current_size = 0
 
     for chunk in chunks:
@@ -467,8 +465,8 @@ def chunk_for_llm(
         result_chunks.append("\n\n".join(current_merge))
 
     # Post-process: try to merge very small chunks
-    final_chunks = []
-    for i, chunk in enumerate(result_chunks):
+    final_chunks: list[str] = []
+    for _i, chunk in enumerate(result_chunks):
         chunk = chunk.strip()
         if not chunk:
             continue

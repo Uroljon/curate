@@ -17,7 +17,7 @@ def test_chunk_size_improvement():
         """
 1. Klimaschutz und Energie
 
-Die Stadt Regensburg setzt sich ambitionierte Ziele im Bereich Klimaschutz. 
+Die Stadt Regensburg setzt sich ambitionierte Ziele im Bereich Klimaschutz.
 Bis zum Jahr 2030 sollen die CO2-Emissionen um 55% gegenüber 1990 reduziert werden.
 Dies erfordert umfangreiche Maßnahmen in verschiedenen Bereichen.
 
@@ -39,13 +39,13 @@ Die Verkehrswende ist ein zentraler Baustein der Nachhaltigkeitsstrategie.
 2.1 Stadtbahn Regensburg
 
 Das Leuchtturmprojekt der Stadt ist die neue Stadtbahn. Mit einer Streckenlänge von
-18 Kilometern und 24 Haltestellen soll sie bis 2028 in Betrieb gehen. 
+18 Kilometern und 24 Haltestellen soll sie bis 2028 in Betrieb gehen.
 Investitionsvolumen: 650 Millionen Euro. Erwartete Fahrgastzahlen: 50.000 pro Tag.
 
 2.2 Radverkehrsförderung
 
 Der Radverkehrsanteil soll bis 2030 von derzeit 18% auf 30% gesteigert werden.
-Dafür werden 100 Kilometer neue Radwege gebaut und 5.000 zusätzliche 
+Dafür werden 100 Kilometer neue Radwege gebaut und 5.000 zusätzliche
 Fahrradstellplätze geschaffen.
 """
         * 3
