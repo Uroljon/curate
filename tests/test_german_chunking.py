@@ -5,7 +5,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from semantic_chunker import is_heading, split_by_heading, smart_chunk
+from src.processing import is_heading, split_by_heading, smart_chunk
 
 
 def test_german_heading_detection():

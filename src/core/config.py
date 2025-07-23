@@ -53,12 +53,12 @@ SUPPORTED_LANGUAGES = ["en", "de"]  # Languages to accept in OCR text
 SPELL_CHECK_LANGUAGES = {"de": "de", "en": "en"}  # Language codes for spell checker
 
 # ChromaDB Configuration
-CHROMA_DIR = "chroma_store"
+CHROMA_DIR = "data/chroma_store"
 COLLECTION_NAME = "document_chunks"
 EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
 # Upload Configuration
-UPLOAD_FOLDER = "uploads"
+UPLOAD_FOLDER = "data/uploads"
 
 # Indicator Configuration  
 INDICATOR_AWARE_CHUNKING = True  # Preserve indicators with their context
@@ -80,4 +80,4 @@ RETRIEVAL_QUERIES = [
 ]
 
 # Output Configuration
-OUTPUT_FOLDER = "outputs"
+OUTPUT_FOLDER = "data/outputs"

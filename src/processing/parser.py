@@ -7,7 +7,7 @@ from langdetect import detect
 from pdf2image import convert_from_path
 from spellchecker import SpellChecker
 
-from config import (
+from src.core import (
     MIN_CHARS_FOR_VALID_PAGE,
     SPELL_CHECK_THRESHOLD,
     SYMBOL_FILTER_THRESHOLD,

@@ -4,7 +4,7 @@ from typing import Optional, Type, TypeVar
 import requests
 from pydantic import BaseModel
 
-from config import (
+from .config import (
     OLLAMA_API_URL,
     OLLAMA_CHAT_URL,
     MODEL_NAME,

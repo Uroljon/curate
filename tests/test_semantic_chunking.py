@@ -3,11 +3,9 @@
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from embedder import query_chunks
-from structure_extractor import prepare_llm_chunks
-from semantic_llm_chunker import prepare_semantic_llm_chunks, analyze_chunk_quality
+from src.processing import query_chunks, prepare_llm_chunks, prepare_semantic_llm_chunks, analyze_chunk_quality
 
 
 def compare_chunking_methods(source_id: str):

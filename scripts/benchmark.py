@@ -15,14 +15,14 @@ import requests
 from typing import Dict, Any, List, Tuple
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from parser import extract_text_with_ocr_fallback
-from semantic_chunker import smart_chunk
-from embedder import embed_chunks, query_chunks
-from structure_extractor import prepare_llm_chunks
-from semantic_llm_chunker import prepare_semantic_llm_chunks, analyze_chunk_quality
-from monitoring import analyze_logs
+from src.processing import extract_text_with_ocr_fallback
+from src.processing import smart_chunk
+from src.processing import embed_chunks, query_chunks
+from src.extraction import prepare_llm_chunks
+from src.processing import analyze_chunk_quality
+from src.utils.monitoring import analyze_logs
 
 
 # Create benchmark results directory

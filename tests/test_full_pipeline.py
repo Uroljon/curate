@@ -7,9 +7,7 @@ import time
 import json
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from semantic_chunker import smart_chunk, is_heading
-from embedder import embed_chunks, query_chunks, model
-from semantic_llm_chunker import prepare_semantic_llm_chunks, analyze_chunk_quality
+from src.processing import smart_chunk, is_heading, embed_chunks, query_chunks, model, prepare_semantic_llm_chunks, analyze_chunk_quality
 
 
 def test_pipeline_components():
@@ -213,7 +211,7 @@ def test_embedding_storage():
         print("   ✅ Content verified")
         
         # Clean up test data
-        from embedder import collection
+        from src.processing import collection
         existing = collection.get(where={"source": test_source_id})
         if existing and existing["ids"]:
             collection.delete(ids=existing["ids"])

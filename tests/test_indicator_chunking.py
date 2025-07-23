@@ -7,7 +7,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from semantic_chunker import (
+from src.processing import (
     contains_indicator_context, 
     find_safe_split_point,
     split_large_chunk,

@@ -1,9 +1,0 @@
-================================================================================
-Testing Regensburg PDF with Semantic-Aware Chunking
-================================================================================
-Timestamp: 2025-07-22 16:45:39.472497
-PDF: uploads/regensburg.pdf
-
-Step 1: Uploading PDF...
-Response: {'chunks': 28, 'text_length': 102958, 'chunk_quality': {'avg_size': 3679.8571428571427, 'with_headings': 13}}
-❌ Unknown response structure

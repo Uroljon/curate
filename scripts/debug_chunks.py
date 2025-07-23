@@ -3,10 +3,10 @@
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from embedder import query_chunks
-from structure_extractor import prepare_llm_chunks
+from src.processing import query_chunks
+from src.extraction import prepare_llm_chunks
 
 def show_chunk_boundaries(source_id: str):
     # Get stored semantic chunks

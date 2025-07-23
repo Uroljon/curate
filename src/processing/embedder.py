@@ -7,7 +7,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from chromadb import PersistentClient
 from sentence_transformers import SentenceTransformer
 
-from config import CHROMA_DIR, COLLECTION_NAME, EMBEDDING_MODEL
+from src.core import CHROMA_DIR, COLLECTION_NAME, EMBEDDING_MODEL
 
 model = SentenceTransformer(EMBEDDING_MODEL)
 

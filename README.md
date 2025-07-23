@@ -84,9 +84,24 @@ On Windows:
 Add both to your PATH environment variable
 
 ✅ Step 4: Project Structure
-- main.py            ← FastAPI server
-- parser.py          ← PDF text extractor
-- uploads/           ← Folder for uploaded PDFs
+```
+curate/
+├── src/                      # Source code
+│   ├── api/                  # API routes and endpoints
+│   ├── core/                 # Core functionality (config, schemas, LLM)
+│   ├── extraction/           # Document extraction logic
+│   ├── processing/           # Document processing (parsing, chunking, embedding)
+│   └── utils/                # Utilities (monitoring, logging)
+├── data/                     # Data storage
+│   ├── uploads/              # Uploaded PDFs
+│   ├── chroma_store/         # Vector database
+│   └── outputs/              # Extraction results
+├── tests/                    # Test suite
+├── scripts/                  # Utility scripts
+├── docs/                     # Documentation
+├── main.py                   # FastAPI server entry point
+└── requirements.txt          # Python dependencies
+```
 
 ✅ Step 5: Code Quality (Development)
 Format and lint your code:

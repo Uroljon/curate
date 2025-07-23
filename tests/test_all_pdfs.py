@@ -15,10 +15,10 @@ from pathlib import Path
 import json
 from datetime import datetime
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tests.test_integration import test_real_pdf_flow
-from monitoring import analyze_logs
+from src.utils import analyze_logs
 from benchmark_extraction import BenchmarkRunner
 
 

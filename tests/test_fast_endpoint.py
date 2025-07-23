@@ -7,7 +7,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def test_fast_endpoint_config():
     """Test that fast endpoint configuration is correct."""
-    from config import FAST_EXTRACTION_ENABLED, FAST_EXTRACTION_MAX_CHUNKS
+    from src.core import FAST_EXTRACTION_ENABLED, FAST_EXTRACTION_MAX_CHUNKS
     
     print("Testing fast extraction configuration...")
     print(f"✅ FAST_EXTRACTION_ENABLED: {FAST_EXTRACTION_ENABLED}")
@@ -26,7 +26,7 @@ def test_imports():
         from main import extract_structure_fast
         print("✅ Fast endpoint function imported successfully")
         
-        from structure_extractor import extract_structures_with_retry
+        from src.extraction import extract_structures_with_retry
         print("✅ Single-pass extraction function available")
         
         return True

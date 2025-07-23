@@ -5,7 +5,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from semantic_chunker import smart_chunk, merge_short_chunks
+from src.processing import smart_chunk, merge_short_chunks
 
 def test_chunk_size_improvement():
     """Test that chunks are now character-based and larger."""
@@ -113,7 +113,7 @@ Fahrradstellplätze geschaffen.
 
 def test_heading_detection():
     """Test that German headings are properly detected."""
-    from semantic_chunker import is_heading
+    from src.processing import is_heading
     
     test_cases = [
         # (text, expected_result)

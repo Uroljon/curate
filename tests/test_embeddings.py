@@ -5,7 +5,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import EMBEDDING_MODEL
+from src.core import EMBEDDING_MODEL
 from sentence_transformers import SentenceTransformer
 
 def test_embedding_model():

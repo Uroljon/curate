@@ -4,9 +4,9 @@ from typing import Any, Optional
 
 import json5
 
-from config import CHUNK_MAX_CHARS, CHUNK_MIN_CHARS, CHUNK_WARNING_THRESHOLD, EXTRACTION_MAX_RETRIES, MODEL_TEMPERATURE
-from embedder import query_chunks
-from enhanced_prompts import (
+from src.core import CHUNK_MAX_CHARS, CHUNK_MIN_CHARS, CHUNK_WARNING_THRESHOLD, EXTRACTION_MAX_RETRIES, MODEL_TEMPERATURE
+from src.processing import query_chunks
+from .prompts import (
     STAGE1_SYSTEM_MESSAGE,
     get_stage1_prompt,
     get_stage2_prompt,
@@ -14,9 +14,9 @@ from enhanced_prompts import (
     get_stage3_prompt,
     get_stage3_system_message,
 )
-from llm import query_ollama, query_ollama_structured
-from schemas import ActionField, ActionFieldList, ExtractionResult, Project, ProjectDetails, ProjectList
-from semantic_llm_chunker import prepare_llm_chunks
+from src.core import query_ollama, query_ollama_structured
+from src.core import ActionField, ActionFieldList, ExtractionResult, Project, ProjectDetails, ProjectList
+from src.processing import prepare_llm_chunks
 
 # prepare_llm_chunks is imported from semantic_llm_chunker
 

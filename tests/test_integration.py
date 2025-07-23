@@ -7,11 +7,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
 import time
-from parser import extract_text_with_ocr_fallback
-from semantic_chunker import smart_chunk
-from embedder import embed_chunks, query_chunks
-from semantic_llm_chunker import prepare_semantic_llm_chunks
-from structure_extractor import prepare_llm_chunks
+from src.processing import extract_text_with_ocr_fallback, smart_chunk, embed_chunks, query_chunks, prepare_semantic_llm_chunks, prepare_llm_chunks
 
 
 def test_real_pdf_flow(pdf_path: str):
@@ -52,7 +48,7 @@ def test_real_pdf_flow(pdf_path: str):
         print(f"   📊 Chunk sizes: min={min(chunk_sizes)}, max={max(chunk_sizes)}, avg={sum(chunk_sizes)/len(chunk_sizes):.0f}")
         
         # Check for heading detection
-        from semantic_chunker import is_heading
+        from src.processing import is_heading
         total_headings = 0
         chunks_with_headings = 0
         for chunk in chunks:
@@ -103,7 +99,7 @@ def test_real_pdf_flow(pdf_path: str):
         print(f"   📊 New method: {len(new_chunks)} chunks")
         
         # Compare quality
-        from semantic_llm_chunker import analyze_chunk_quality
+        from src.processing import analyze_chunk_quality
         old_quality = analyze_chunk_quality(old_chunks)
         new_quality = analyze_chunk_quality(new_chunks)
         
@@ -139,7 +135,7 @@ def test_real_pdf_flow(pdf_path: str):
         
         # Cleanup
         print("\n7️⃣ Cleaning up test data...")
-        from embedder import collection
+        from src.processing import collection
         existing = collection.get(where={"source": test_source_id})
         if existing and existing["ids"]:
             collection.delete(ids=existing["ids"])
@@ -169,8 +165,7 @@ def test_edge_cases():
     print("\n\n🧪 Testing Edge Cases")
     print("="*70)
     
-    from semantic_chunker import smart_chunk
-    from semantic_llm_chunker import prepare_semantic_llm_chunks
+    from src.processing import smart_chunk, prepare_semantic_llm_chunks
     
     edge_cases = [
         ("Empty text", ""),
