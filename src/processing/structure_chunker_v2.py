@@ -82,7 +82,7 @@ class StructureAwareChunker:
     def group_elements_by_section(self, elements: list[Element]) -> list[list[Element]]:
         """Group elements into sections based on significant headings."""
         sections = []
-        current_section = []
+        current_section: list[Element] = []
 
         for element in elements:
             if self.is_significant_heading(element):
@@ -103,8 +103,8 @@ class StructureAwareChunker:
 
     def section_to_chunks(self, section: list[Element]) -> list[dict[str, Any]]:
         """Convert a section of elements into appropriately sized chunks."""
-        chunks = []
-        current_text = []
+        chunks: list[dict[str, Any]] = []
+        current_text: list[str] = []
         current_size = 0
         section_heading = None
 
@@ -162,8 +162,9 @@ class StructureAwareChunker:
                 )
             elif chunks:
                 # Merge with previous chunk if too small
-                chunks[-1]["text"] += "\n\n" + chunk_text
-                chunks[-1]["metadata"]["char_count"] = len(chunks[-1]["text"])
+                last_chunk = chunks[-1]
+                last_chunk["text"] = last_chunk["text"] + "\n\n" + chunk_text
+                last_chunk["metadata"]["char_count"] = len(last_chunk["text"])
 
         return chunks
 
@@ -229,7 +230,12 @@ class StructureAwareChunker:
         if max_pages:
             partition_kwargs["max_partition"] = max_pages
 
-        elements = partition_pdf(**partition_kwargs)
+        elements = partition_pdf(
+            filename=str(partition_kwargs["filename"]),
+            strategy=str(partition_kwargs["strategy"]),
+            include_page_breaks=bool(partition_kwargs["include_page_breaks"]),
+            max_partition=partition_kwargs.get("max_partition") if max_pages else None,
+        )
 
         # Group elements by section
         sections = self.group_elements_by_section(elements)

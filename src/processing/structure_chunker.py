@@ -20,8 +20,7 @@ def extract_hierarchical_path(element: Element) -> str:
 
     For example: "2. Handlungsfeld Klimaschutz > 2.1 Energieeffizienz"
     """
-    # Get parent information if available
-    metadata = getattr(element, "metadata", {})
+    # Get parent information if available (unused for now)
 
     # Build path from element text
     if isinstance(element, Title):
@@ -135,7 +134,7 @@ def structure_aware_chunk(
     )
 
     # Convert chunks to our format
-    structured_chunks = []
+    structured_chunks: list[dict[str, Any]] = []
 
     for i, chunk in enumerate(chunks):
         # Extract text content
@@ -197,7 +196,8 @@ def structure_aware_chunk(
     structured_chunks = [
         chunk
         for chunk in structured_chunks
-        if chunk["char_count"] >= min_characters or chunk["metadata"].get("is_heading")
+        if (chunk.get("char_count", 0) >= min_characters)
+        or (chunk.get("metadata", {}).get("is_heading", False))
     ]
 
     # Add overlap between chunks

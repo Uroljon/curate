@@ -537,7 +537,7 @@ def chunk_for_embedding_enhanced(
     max_chars: int = 5000,
     use_structure_aware: bool = True,
     pdf_path: str | None = None,
-) -> list[str | dict]:
+) -> list[str]:
     """
     Enhanced chunking that can use structure-aware approach when PDF is available.
 
@@ -548,13 +548,13 @@ def chunk_for_embedding_enhanced(
         pdf_path: Optional PDF path if text_or_path is text
 
     Returns:
-        List of chunks (strings for basic, dicts with metadata for structure-aware)
+        List of chunks (strings only for compatibility)
     """
     # Check if we can use structure-aware chunking
     if use_structure_aware:
         # If text_or_path is a path
         if (
-            isinstance(text_or_path, (str, Path))
+            isinstance(text_or_path, str | Path)
             and Path(text_or_path).exists()
             and str(text_or_path).endswith(".pdf")
         ):
@@ -600,7 +600,7 @@ def chunk_for_embedding_enhanced(
                 pass
 
     # Fall back to basic text-based chunking
-    if isinstance(text_or_path, (str, Path)) and Path(text_or_path).exists():
+    if isinstance(text_or_path, str | Path) and Path(text_or_path).exists():
         # It's a file path, need to extract text first
         from .parser import extract_text_with_ocr_fallback
 
