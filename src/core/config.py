@@ -10,8 +10,11 @@ MODEL_TEMPERATURE = 0.0  # 0.0 for deterministic output
 MODEL_TIMEOUT = 180  # seconds
 
 # API Configuration
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
-OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
+import os
+
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "localhost:11434")
+OLLAMA_API_URL = f"http://{OLLAMA_HOST}/api/generate"
+OLLAMA_CHAT_URL = f"http://{OLLAMA_HOST}/api/chat"
 
 # Chunk Configuration
 CHUNK_MAX_CHARS = 20000  # Maximum characters per chunk for LLM
