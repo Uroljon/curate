@@ -41,7 +41,7 @@ um 55% bis 2030 reduziert werden. Investitionen von 120 Millionen Euro sind gepl
     assert indicator_found, "Indicator not found in any chunk"
 
 
-def test_smart_chunk_with_indicators():
+def test_chunk_for_embedding_enhanced_with_indicators():
     """Test chunk_for_embedding_enhanced preserves indicators in real document."""
 
     document = """Handlungsfeld: Klimaschutz
@@ -93,8 +93,8 @@ if __name__ == "__main__":
     test_indicator_preservation_in_chunking()
     print("✅ Test 1 passed: Indicator preservation")
 
-    test_smart_chunk_with_indicators()
-    print("✅ Test 2 passed: Smart chunk with indicators")
+    test_chunk_for_embedding_enhanced_with_indicators()
+    print("✅ Test 2 passed: Chunk for embedding enhanced with indicators")
 
     test_indicator_at_chunk_boundary()
     print("✅ Test 3 passed: Indicator at boundary")

@@ -10,21 +10,26 @@ With optional structure-aware chunking when PDF path is available.
 
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 from src.core.constants import ACTION_FIELD_PATTERNS, INDICATOR_PATTERNS
 from src.utils.text import is_heading
 
 # Optional imports for structure-aware chunking
-try:
-    from unstructured.documents.elements import Element, NarrativeText, Title
+UNSTRUCTURED_AVAILABLE = False
+
+if TYPE_CHECKING:
+    from unstructured.documents.elements import Element, Title
     from unstructured.partition.pdf import partition_pdf
-    UNSTRUCTURED_AVAILABLE = True
-except ImportError:
-    UNSTRUCTURED_AVAILABLE = False
-    Element = None
-    Title = None
-    partition_pdf = None
+else:
+    try:
+        from unstructured.documents.elements import Element, NarrativeText, Title
+        from unstructured.partition.pdf import partition_pdf
+        UNSTRUCTURED_AVAILABLE = True
+    except ImportError:
+        Element = Any
+        Title = Any
+        partition_pdf = Any
 
 
 def contains_indicator_context(
@@ -771,11 +776,12 @@ def create_structure_aware_chunks(
         List of chunks with metadata
     """
     if not UNSTRUCTURED_AVAILABLE:
-        raise ImportError(
+        error_msg = (
             "The 'unstructured' library is required for structure-aware chunking. "
             "Please install it with: pip install unstructured[pdf]"
         )
-    
+        raise ImportError(error_msg)
+
     chunker = StructureAwareChunker(
         max_chunk_size=max_chunk_size,
         min_chunk_size=min_chunk_size,
