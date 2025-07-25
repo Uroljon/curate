@@ -166,7 +166,7 @@ def normalize_german_text(text: str) -> str:
         Normalized text
     """
     # Normalize German quotes
-    text = re.sub(r"[„""]", '"', text)
+    text = re.sub(r"[„" "]", '"', text)
     text = re.sub(r"[‚'']", "'", text)  # noqa: RUF001
 
     # Normalize German dashes
@@ -215,13 +215,15 @@ def extract_numbers_from_text(text: str) -> list[dict[str, Any]]:
         end = min(len(text), match.end() + 30)
         context = text[start:end].strip()
 
-        numbers.append({
-            "value": float(number),
-            "raw": match.group(0),
-            "unit": unit,
-            "context": context,
-            "position": match.start()
-        })
+        numbers.append(
+            {
+                "value": float(number),
+                "raw": match.group(0),
+                "unit": unit,
+                "context": context,
+                "position": match.start(),
+            }
+        )
 
     return numbers
 
@@ -238,9 +240,31 @@ def split_into_sentences(text: str) -> list[str]:
     """
     # Common German abbreviations that don't end sentences
     abbreviations = {
-        "bzw", "ca", "d.h", "evtl", "ggf", "i.d.R", "inkl", "max", "min",
-        "o.ä", "s.o", "u.a", "u.ä", "usw", "vgl", "z.B", "z.T", "zzgl",
-        "Dr", "Prof", "Nr", "Str", "Mio", "Mrd", "Tsd"
+        "bzw",
+        "ca",
+        "d.h",
+        "evtl",
+        "ggf",
+        "i.d.R",
+        "inkl",
+        "max",
+        "min",
+        "o.ä",
+        "s.o",
+        "u.a",
+        "u.ä",
+        "usw",
+        "vgl",
+        "z.B",
+        "z.T",
+        "zzgl",
+        "Dr",
+        "Prof",
+        "Nr",
+        "Str",
+        "Mio",
+        "Mrd",
+        "Tsd",
     }
 
     # Replace abbreviations temporarily

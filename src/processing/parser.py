@@ -21,8 +21,6 @@ spell_checkers = {
 }
 
 
-
-
 def extract_text_with_ocr_fallback(pdf_path: str) -> tuple[str, dict]:
     doc = fitz.open(pdf_path)
     total_pages = len(doc)

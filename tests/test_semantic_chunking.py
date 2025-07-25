@@ -35,9 +35,7 @@ def compare_chunking_methods(source_id: str):
 
     # New method
     print("\n🟢 NEW METHOD (chunk_for_llm - semantic mode):")
-    new_chunks = chunk_for_llm(
-        raw_texts, max_chars=20000, min_chars=15000
-    )
+    new_chunks = chunk_for_llm(raw_texts, max_chars=20000, min_chars=15000)
     new_quality = analyze_chunk_quality(new_chunks)
 
     print(f"  Chunks created: {new_quality['total_chunks']}")

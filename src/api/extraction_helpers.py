@@ -135,7 +135,7 @@ def extract_project_details_for_field(
 
 
 def deduplicate_extraction_results(
-    extracted_data: list[dict[str, Any]]
+    extracted_data: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """
     Deduplicate action fields and merge their projects.
@@ -210,10 +210,7 @@ def print_extraction_summary(
     """
     total_projects = sum(len(af["projects"]) for af in all_extracted_data)
     projects_with_indicators = sum(
-        1
-        for af in all_extracted_data
-        for p in af["projects"]
-        if p.get("indicators")
+        1 for af in all_extracted_data for p in af["projects"] if p.get("indicators")
     )
 
     print(f"\n{'=' * 60}")
@@ -263,7 +260,9 @@ def process_chunks_for_fast_extraction(
     return all_extracted_data, len(chunks_to_process)
 
 
-def merge_extraction_results(all_extracted_data: list[dict[str, Any]]) -> dict[str, Any]:
+def merge_extraction_results(
+    all_extracted_data: list[dict[str, Any]],
+) -> dict[str, Any]:
     """
     Merge extraction results by action field name.
 

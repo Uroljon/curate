@@ -15,7 +15,6 @@ from .config import (
 T = TypeVar("T", bound=BaseModel)
 
 
-
 def query_ollama_structured(
     prompt: str,
     response_model: type[T],

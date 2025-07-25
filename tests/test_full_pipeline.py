@@ -133,9 +133,7 @@ Zielstellung:
         ]
 
         # Test semantic chunking
-        semantic_chunks = chunk_for_llm(
-            test_chunks, max_chars=10000, min_chars=5000
-        )
+        semantic_chunks = chunk_for_llm(test_chunks, max_chars=10000, min_chars=5000)
 
         print(f"   ✅ Input chunks: {len(test_chunks)}")
         print(f"   ✅ Output chunks: {len(semantic_chunks)}")

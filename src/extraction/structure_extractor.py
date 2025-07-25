@@ -369,7 +369,6 @@ Extrahiere den kompletten Inhalt auf Deutsch."""
                 f"✅ Successfully extracted {len(extracted_data)} action fields on attempt {attempt + 1}"
             )
 
-
             # Post-process to reclassify measures containing numbers as indicators
             extracted_data = reclassify_measures_to_indicators(extracted_data)
             print(

@@ -208,7 +208,9 @@ Mobilität
 Die Stadt plant 500 neue Ladepunkte für E-Autos bis 2025.
 Der Modal Split soll 30% PKW und 70% Umweltverbund betragen."""
 
-    chunks = chunk_for_embedding_enhanced(test_text, max_chars=150)  # Small chunks to test preservation
+    chunks = chunk_for_embedding_enhanced(
+        test_text, max_chars=150
+    )  # Small chunks to test preservation
 
     # Check that indicators stay in same chunk
     indicators = [

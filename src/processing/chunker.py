@@ -10,7 +10,7 @@ With optional structure-aware chunking when PDF path is available.
 
 import re
 from pathlib import Path
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 from src.core.constants import ACTION_FIELD_PATTERNS, INDICATOR_PATTERNS
 from src.utils.text import is_heading
@@ -25,6 +25,7 @@ else:
     try:
         from unstructured.documents.elements import Element, NarrativeText, Title
         from unstructured.partition.pdf import partition_pdf
+
         UNSTRUCTURED_AVAILABLE = True
     except ImportError:
         Element = Any
@@ -120,8 +121,6 @@ def find_safe_split_point(text: str, target_pos: int, max_chars: int) -> int:
 
     # Last resort: return original position
     return target_pos
-
-
 
 
 def extract_chunk_topic(chunk: str) -> dict:
@@ -344,7 +343,6 @@ def chunk_for_embedding(cleaned_text: str, max_chars: int = 5000) -> list[str]:
     return final_chunks
 
 
-
 def chunk_for_llm(
     chunks: list[str], max_chars: int = 20000, min_chars: int = 15000
 ) -> list[str]:
@@ -421,8 +419,6 @@ def chunk_for_llm(
             final_chunks.append(chunk)
 
     return final_chunks
-
-
 
 
 def analyze_chunk_quality(chunks: list[str], stage: str = "unknown") -> dict:
@@ -810,7 +806,12 @@ def chunk_for_embedding_enhanced(
         List of chunks (strings only for compatibility)
     """
     # Check if we can use structure-aware chunking
-    if use_structure_aware and pdf_path and Path(pdf_path).exists() and UNSTRUCTURED_AVAILABLE:
+    if (
+        use_structure_aware
+        and pdf_path
+        and Path(pdf_path).exists()
+        and UNSTRUCTURED_AVAILABLE
+    ):
         # We have a PDF path provided separately (most common case from API)
         try:
             print(f"Using structure-aware chunking for PDF: {pdf_path}")
@@ -831,7 +832,11 @@ def chunk_for_embedding_enhanced(
             # Fall back to basic chunking
 
     # Check if text_or_path might be a PDF path (less common case)
-    if use_structure_aware and isinstance(text_or_path, str | Path) and UNSTRUCTURED_AVAILABLE:
+    if (
+        use_structure_aware
+        and isinstance(text_or_path, str | Path)
+        and UNSTRUCTURED_AVAILABLE
+    ):
         text_or_path_str = str(text_or_path)
         # Only check if it looks like a path (has .pdf extension and reasonable length)
         if text_or_path_str.endswith(".pdf") and len(text_or_path_str) < 500:

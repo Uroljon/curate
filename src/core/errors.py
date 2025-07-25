@@ -110,7 +110,9 @@ class ConfigurationError(CurateError):
 class TimeoutError(CurateError):
     """Raised when an operation exceeds its timeout."""
 
-    def __init__(self, message: str, operation: str | None = None, timeout: int | None = None):
+    def __init__(
+        self, message: str, operation: str | None = None, timeout: int | None = None
+    ):
         super().__init__(message)
         self.operation = operation
         self.timeout = timeout

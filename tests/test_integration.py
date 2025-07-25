@@ -110,9 +110,7 @@ def test_real_pdf_flow(pdf_path: str):
 
         # New semantic method
         # New semantic method uses same function now
-        new_chunks = chunk_for_llm(
-            chunks, max_chars=20000, min_chars=15000
-        )
+        new_chunks = chunk_for_llm(chunks, max_chars=20000, min_chars=15000)
         print(f"   📊 New method: {len(new_chunks)} chunks")
 
         # Compare quality
