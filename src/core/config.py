@@ -7,7 +7,7 @@ All tunable parameters should be defined here.
 import os
 
 # Model Configuration
-MODEL_NAME = "qwen2.5:7b"  # Options: "qwen2.5:7b", "qwen2.5:14b", "llama3:8b", etc.
+MODEL_NAME = "qwen3:32b"  # Options: "qwen2.5:7b", "qwen2.5:14b", "llama3:8b", etc.
 MODEL_TEMPERATURE = 0.2  # Research-backed: 0.2-0.3 for PDF extraction (balances determinism with flexibility)
 MODEL_TIMEOUT = 180  # seconds
 
@@ -17,10 +17,10 @@ OLLAMA_HOST = os.getenv("OLLAMA_HOST", "localhost:11434")
 OLLAMA_API_URL = f"http://{OLLAMA_HOST}/api/generate"
 OLLAMA_CHAT_URL = f"http://{OLLAMA_HOST}/api/chat"
 
-# Chunk Configuration
-CHUNK_MAX_CHARS = 20000  # Maximum characters per chunk for LLM
-CHUNK_MIN_CHARS = 15000  # Minimum characters per chunk for LLM
-CHUNK_WARNING_THRESHOLD = 25000  # Warn if chunk exceeds this size
+# Chunk Configuration - Optimized for qwen3:32b (40960 char context window)
+CHUNK_MAX_CHARS = 38000  # Maximum characters per chunk for LLM (95% of context window)
+CHUNK_MIN_CHARS = 30000  # Minimum characters per chunk for LLM
+CHUNK_WARNING_THRESHOLD = 40000  # Warn if chunk exceeds this size
 
 # Semantic Chunk Configuration (for initial document chunking)
 SEMANTIC_CHUNK_MAX_CHARS = 7500  # Maximum characters per semantic chunk
@@ -31,7 +31,7 @@ SEMANTIC_CHUNK_MIN_CHARS = 1000  # Minimum characters per semantic chunk
 STRUCTURED_OUTPUT_OPTIONS = {
     "temperature": MODEL_TEMPERATURE,  # 0.2 for balance of determinism and flexibility
     "top_p": 0.4,  # Research shows 0.3-0.5 optimal for factual extraction
-    "top_k": 40,   # Focused candidate set for reliable JSON generation
+    "top_k": 40,  # Focused candidate set for reliable JSON generation
     "num_predict": 3000,  # Larger for complex German municipal documents
     "stop": ["</json>", "```"],
 }
