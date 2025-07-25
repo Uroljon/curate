@@ -246,7 +246,10 @@ async def extract_structure_fast(
 
         # Aggregate all results using separate LLM call
         print(f"\n🔄 Aggregating {len(all_chunk_results)} extracted action fields...")
-        final_action_fields = aggregate_extraction_results(all_chunk_results)
+        aggregated_fields = aggregate_extraction_results(all_chunk_results)
+
+        # Final deduplication to ensure unique action fields
+        final_action_fields = deduplicate_extraction_results(aggregated_fields)
 
         monitor.end_stage(
             "llm_extraction",
