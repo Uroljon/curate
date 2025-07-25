@@ -66,6 +66,13 @@ async def upload_pdf(request: Request, file: UploadFile):
         # Stage 2: Text extraction
         monitor.start_stage("text_extraction")
         extracted_text, extraction_metadata = extract_text_with_ocr_fallback(file_path)
+        
+        # Save extracted text as .txt file
+        txt_filename = os.path.splitext(file.filename)[0] + ".txt"
+        txt_path = os.path.join(UPLOAD_FOLDER, txt_filename)
+        with open(txt_path, "w", encoding="utf-8") as txt_file:
+            txt_file.write(extracted_text)
+        
         monitor.end_stage(
             "text_extraction",
             text_length=len(extracted_text),
@@ -88,6 +95,15 @@ async def upload_pdf(request: Request, file: UploadFile):
 
         # Analyze chunk quality
         chunk_metrics = ChunkQualityMonitor.analyze_chunks(chunks, "semantic")
+        
+        # Save chunked text as separate file
+        chunks_filename = os.path.splitext(file.filename)[0] + "_chunks.txt"
+        chunks_path = os.path.join(UPLOAD_FOLDER, chunks_filename)
+        with open(chunks_path, "w", encoding="utf-8") as chunks_file:
+            for i, chunk in enumerate(chunks, 1):
+                chunks_file.write(f"\n\n# ====== CHUNK {i} ======\n\n")
+                chunks_file.write(chunk)
+        
         monitor.end_stage(
             "semantic_chunking", chunk_count=len(chunks), chunk_metrics=chunk_metrics
         )
@@ -129,19 +145,32 @@ async def extract_structure(
     source_id: str, max_chars: int = CHUNK_MAX_CHARS, min_chars: int = CHUNK_MIN_CHARS
 ):
     """Multi-stage structure extraction."""
+    # Set up LLM dialog log file path
+    llm_dialog_filename = f"{source_id}_llm_dialog.txt"
+    llm_dialog_path = os.path.join(UPLOAD_FOLDER, llm_dialog_filename)
+    
     # Prepare chunks for extraction
     optimized_chunks = prepare_chunks_for_extraction(source_id, max_chars, min_chars)
 
     print(f"\n🚀 Starting multi-stage extraction with {len(optimized_chunks)} chunks\n")
 
     # Stage 1: Extract action fields
-    action_fields = extract_all_action_fields(optimized_chunks)
+    action_fields = extract_all_action_fields(
+        optimized_chunks, 
+        log_file_path=llm_dialog_path,
+        log_context_prefix="Regular Extraction"
+    )
 
     if not action_fields:
         return JSONResponse(content={"structures": []})
 
     # Stage 2 & 3: Extract projects and details
-    all_extracted_data = extract_projects_and_details(optimized_chunks, action_fields)
+    all_extracted_data = extract_projects_and_details(
+        optimized_chunks, 
+        action_fields, 
+        log_file_path=llm_dialog_path,
+        log_context_prefix="Regular Extraction"
+    )
 
     if not all_extracted_data:
         print("⚠️ No valid data extracted from any chunks")
@@ -213,6 +242,18 @@ async def extract_structure_fast(
             optimized_chunks = optimized_chunks[:FAST_EXTRACTION_MAX_CHUNKS]
             print(f"⚡ Fast mode: Processing only first {len(optimized_chunks)} chunks")
 
+        # Save LLM chunks as separate file
+        llm_chunks_filename = f"{source_id}_llm_chunks.txt"
+        llm_chunks_path = os.path.join(UPLOAD_FOLDER, llm_chunks_filename)
+        with open(llm_chunks_path, "w", encoding="utf-8") as llm_chunks_file:
+            for i, chunk in enumerate(optimized_chunks, 1):
+                llm_chunks_file.write(f"\n\n# ====== LLM CHUNK {i} ======\n\n")
+                llm_chunks_file.write(chunk)
+
+        # Set up LLM dialog log file path
+        llm_dialog_filename = f"{source_id}_llm_dialog.txt"
+        llm_dialog_path = os.path.join(UPLOAD_FOLDER, llm_dialog_filename)
+
         print(
             f"\n🚀 Starting FAST single-pass extraction with {len(optimized_chunks)} chunks\n"
         )
@@ -231,7 +272,11 @@ async def extract_structure_fast(
             )
 
             # Extract independently from each chunk
-            chunk_data = extract_structures_with_retry(chunk)
+            chunk_data = extract_structures_with_retry(
+                chunk, 
+                log_file_path=llm_dialog_path,
+                log_context=f"Fast Extraction - Chunk {i+1}/{len(optimized_chunks)} ({len(chunk)} chars)"
+            )
 
             chunk_time = time.time() - chunk_start
             chunk_timings.append(chunk_time)
@@ -246,7 +291,11 @@ async def extract_structure_fast(
 
         # Aggregate all results using separate LLM call
         print(f"\n🔄 Aggregating {len(all_chunk_results)} extracted action fields...")
-        aggregated_fields = aggregate_extraction_results(all_chunk_results)
+        aggregated_fields = aggregate_extraction_results(
+            all_chunk_results, 
+            log_file_path=llm_dialog_path,
+            log_context_prefix="Fast Extraction Aggregation"
+        )
 
         # Final deduplication to ensure unique action fields
         final_action_fields = deduplicate_extraction_results(aggregated_fields)

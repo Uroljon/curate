@@ -37,7 +37,7 @@ def prepare_chunks_for_extraction(
     return chunk_for_llm(raw_texts, max_chars=max_chars, min_chars=min_chars)
 
 
-def extract_all_action_fields(chunks: list[str]) -> list[str]:
+def extract_all_action_fields(chunks: list[str], log_file_path: str | None = None, log_context_prefix: str | None = None) -> list[str]:
     """
     Stage 1: Extract action fields from chunks.
 
@@ -51,7 +51,7 @@ def extract_all_action_fields(chunks: list[str]) -> list[str]:
     print("STAGE 1: DISCOVERING ACTION FIELDS")
     print("=" * 60)
 
-    action_fields = extract_action_fields_only(chunks)
+    action_fields = extract_action_fields_only(chunks, log_file_path, log_context_prefix)
 
     if not action_fields:
         print("⚠️ No action fields found in Stage 1")
@@ -60,7 +60,7 @@ def extract_all_action_fields(chunks: list[str]) -> list[str]:
 
 
 def extract_projects_and_details(
-    chunks: list[str], action_fields: list[str]
+    chunks: list[str], action_fields: list[str], log_file_path: str | None = None, log_context_prefix: str | None = None
 ) -> list[dict[str, Any]]:
     """
     Stage 2 & 3: Extract projects and their details for each action field.
@@ -81,7 +81,7 @@ def extract_projects_and_details(
         )
         print("=" * 60)
 
-        projects = extract_projects_for_field(chunks, action_field)
+        projects = extract_projects_for_field(chunks, action_field, log_file_path, f"{log_context_prefix} - Field {field_idx + 1}/{len(action_fields)}" if log_context_prefix else f"Field {field_idx + 1}/{len(action_fields)}")
 
         if not projects:
             print(f"   ⚠️ No projects found for {action_field}")
@@ -89,7 +89,7 @@ def extract_projects_and_details(
 
         # Stage 3: Extract details for each project
         action_field_data = extract_project_details_for_field(
-            chunks, action_field, projects
+            chunks, action_field, projects, log_file_path, f"{log_context_prefix} - Field {field_idx + 1}/{len(action_fields)}" if log_context_prefix else f"Field {field_idx + 1}/{len(action_fields)}"
         )
         all_extracted_data.append(action_field_data)
 
@@ -257,6 +257,8 @@ def chunked_aggregation(
     chunk_size: int = 15,
     recursion_depth: int = 0,
     max_recursion: int = 2,
+    log_file_path: str | None = None,
+    log_context_prefix: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Handle large datasets by recursively processing them in smaller chunks.
@@ -279,7 +281,8 @@ def chunked_aggregation(
         )
 
         chunk_data = json.dumps(chunk, indent=2, ensure_ascii=False)
-        result = perform_single_aggregation(chunk_data)
+        log_context = f"{log_context_prefix} - Aggregation Pass {recursion_depth + 1}, Chunk {i//chunk_size + 1} ({len(chunk)} fields)" if log_context_prefix else None
+        result = perform_single_aggregation(chunk_data, log_file_path, log_context)
 
         if result:
             intermediate_results.extend(result)
@@ -300,7 +303,7 @@ def chunked_aggregation(
         all_chunk_results
     ):
         return chunked_aggregation(
-            intermediate_results, chunk_size, recursion_depth + 1, max_recursion
+            intermediate_results, chunk_size, recursion_depth + 1, max_recursion, log_file_path, log_context_prefix
         )
 
     elif len(intermediate_results) > 12:
@@ -310,7 +313,7 @@ def chunked_aggregation(
     return intermediate_results
 
 
-def perform_single_aggregation(chunk_data: str) -> list[dict[str, Any]] | None:
+def perform_single_aggregation(chunk_data: str, log_file_path: str | None = None, log_context: str | None = None) -> list[dict[str, Any]] | None:
     """
     Perform a single aggregation pass on JSON data.
     """
@@ -374,6 +377,8 @@ ERFOLGSZIEL: Maximal 12 finale Handlungsfelder mit vollständiger Datensammlung 
             response_model=ExtractionResult,
             system_message=system_message,
             temperature=0.1,
+            log_file_path=log_file_path,
+            log_context=log_context,
         )
 
         if result:
@@ -659,6 +664,8 @@ class ExtractionChangeTracker:
 
 def aggregate_extraction_results(
     all_chunk_results: list[dict[str, Any]],
+    log_file_path: str | None = None,
+    log_context_prefix: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Aggregate extraction results from multiple chunks using proven chunked approach.
@@ -677,14 +684,14 @@ def aggregate_extraction_results(
         print(
             f"📊 Starting chunked aggregation for {len(all_chunk_results)} action fields"
         )
-        return chunked_aggregation(all_chunk_results)
+        return chunked_aggregation(all_chunk_results, log_file_path=log_file_path, log_context_prefix=log_context_prefix)
 
     # For small datasets, we can still benefit from a single aggregation pass
     print(
         f"📋 Small dataset ({len(all_chunk_results)} fields) - single aggregation pass"
     )
     chunk_data = json.dumps(all_chunk_results, indent=2, ensure_ascii=False)
-    result = perform_single_aggregation(chunk_data)
+    result = perform_single_aggregation(chunk_data, log_file_path, f"{log_context_prefix} - Single Pass Aggregation" if log_context_prefix else "Single Pass Aggregation")
 
     if result:
         # Final validation to remove any English contamination

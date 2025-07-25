@@ -28,7 +28,7 @@ from .prompts import (
 # prepare_llm_chunks is imported from semantic_llm_chunker
 
 
-def extract_action_fields_only(chunks: list[str]) -> list[str]:
+def extract_action_fields_only(chunks: list[str], log_file_path: str | None = None, log_context_prefix: str | None = None) -> list[str]:
     """
     Stage 1: Extract just action field names from all chunks.
 
@@ -55,6 +55,8 @@ def extract_action_fields_only(chunks: list[str]) -> list[str]:
             response_model=ActionFieldList,
             system_message=system_message,
             temperature=MODEL_TEMPERATURE,
+            log_file_path=log_file_path,
+            log_context=f"{log_context_prefix} - Stage 1: Action Field Discovery, Chunk {i+1}/{len(chunks)} ({len(chunk)} chars)" if log_context_prefix else f"Stage 1: Action Field Discovery, Chunk {i+1}/{len(chunks)} ({len(chunk)} chars)",
         )
 
         if result and result.action_fields:
@@ -294,7 +296,7 @@ def reclassify_measures_to_indicators(
 
 
 def extract_structures_with_retry(
-    chunk_text: str, max_retries: int = EXTRACTION_MAX_RETRIES
+    chunk_text: str, max_retries: int = EXTRACTION_MAX_RETRIES, log_file_path: str | None = None, log_context: str | None = None
 ) -> list[dict[str, Any]]:
     """
     Extract structures from text using Ollama structured output.
@@ -368,6 +370,8 @@ Keine Annahmen oder externes Wissen hinzufügen."""
             response_model=ExtractionResult,
             system_message=system_message,
             temperature=MODEL_TEMPERATURE,  # Zero temperature for deterministic extraction
+            log_file_path=log_file_path,
+            log_context=log_context,
         )
 
         if result is not None:
