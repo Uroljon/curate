@@ -9,14 +9,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import json
 import time
 
-from src.processing import (
-    embed_chunks,
-    extract_text_with_ocr_fallback,
-    prepare_llm_chunks,
-    prepare_semantic_llm_chunks,
-    query_chunks,
-    smart_chunk,
-)
+from src.processing.chunker import chunk_for_embedding_enhanced, chunk_for_llm
+from src.processing.embedder import embed_chunks, query_chunks
+from src.processing.parser import extract_text_with_ocr_fallback
 
 
 def test_real_pdf_flow(pdf_path: str):
@@ -52,7 +47,7 @@ def test_real_pdf_flow(pdf_path: str):
         # Step 2: Create semantic chunks
         print("\n2️⃣ Creating semantic chunks...")
         start = time.time()
-        chunks = smart_chunk(extracted_text, max_chars=5000)
+        chunks = chunk_for_embedding_enhanced(extracted_text, max_chars=5000)
         chunking_time = time.time() - start
 
         print(f"   ✅ Created {len(chunks)} chunks in {chunking_time:.2f}s")
@@ -64,7 +59,7 @@ def test_real_pdf_flow(pdf_path: str):
         )
 
         # Check for heading detection
-        from src.processing import is_heading
+        from src.utils.text import is_heading
 
         total_headings = 0
         chunks_with_headings = 0
@@ -110,17 +105,18 @@ def test_real_pdf_flow(pdf_path: str):
         print("\n5️⃣ Comparing LLM chunking methods...")
 
         # Old method
-        old_chunks = prepare_llm_chunks(chunks, max_chars=20000, min_chars=15000)
+        old_chunks = chunk_for_llm(chunks, max_chars=20000, min_chars=15000)
         print(f"   📊 Old method: {len(old_chunks)} chunks")
 
         # New semantic method
-        new_chunks = prepare_semantic_llm_chunks(
+        # New semantic method uses same function now
+        new_chunks = chunk_for_llm(
             chunks, max_chars=20000, min_chars=15000
         )
         print(f"   📊 New method: {len(new_chunks)} chunks")
 
         # Compare quality
-        from src.processing import analyze_chunk_quality
+        from src.processing.chunker import analyze_chunk_quality
 
         old_quality = analyze_chunk_quality(old_chunks)
         new_quality = analyze_chunk_quality(new_chunks)
@@ -163,7 +159,7 @@ def test_real_pdf_flow(pdf_path: str):
 
         # Cleanup
         print("\n7️⃣ Cleaning up test data...")
-        from src.processing import collection
+        from src.processing.embedder import collection
 
         existing = collection.get(where={"source": test_source_id})
         if existing and existing["ids"]:
@@ -197,7 +193,7 @@ def test_edge_cases():
     print("\n\n🧪 Testing Edge Cases")
     print("=" * 70)
 
-    from src.processing import prepare_semantic_llm_chunks, smart_chunk
+    from src.processing.chunker import chunk_for_embedding_enhanced, chunk_for_llm
 
     edge_cases = [
         ("Empty text", ""),
@@ -217,11 +213,11 @@ def test_edge_cases():
     for name, text in edge_cases:
         try:
             print(f"\n   Testing: {name}")
-            chunks = smart_chunk(text, max_chars=5000)
+            chunks = chunk_for_embedding_enhanced(text, max_chars=5000)
             print(f"   ✅ Chunking: {len(chunks)} chunks")
 
             if chunks:  # Only test LLM chunking if we have chunks
-                llm_chunks = prepare_semantic_llm_chunks(chunks)
+                llm_chunks = chunk_for_llm(chunks)
                 print(f"   ✅ LLM prep: {len(llm_chunks)} chunks")
         except Exception as e:
             print(f"   ❌ Failed: {e}")

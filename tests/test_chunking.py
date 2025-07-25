@@ -6,7 +6,7 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.processing import merge_short_chunks, smart_chunk
+from src.processing.chunker import chunk_for_embedding_enhanced, merge_short_chunks
 
 
 def test_chunk_size_improvement():
@@ -72,7 +72,7 @@ Fahrradstellplätze geschaffen.
         old_chunks.append("\n\n".join(temp))
 
     # Test with new character-based approach
-    new_chunks = smart_chunk(test_text, max_chars=5000)
+    new_chunks = chunk_for_embedding_enhanced(test_text, max_chars=5000)
 
     print("=== CHUNKING COMPARISON ===")
     print(f"Old approach (300 words): {len(old_chunks)} chunks")
@@ -123,7 +123,7 @@ Fahrradstellplätze geschaffen.
 
 def test_heading_detection():
     """Test that German headings are properly detected."""
-    from src.processing import is_heading
+    from src.utils.text import is_heading
 
     test_cases = [
         # (text, expected_result)

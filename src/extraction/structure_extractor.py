@@ -1,25 +1,20 @@
 import json
 import re
-from typing import Any, Optional
+from typing import Any
 
 import json5
 
 from src.core import (
-    CHUNK_MAX_CHARS,
-    CHUNK_MIN_CHARS,
     CHUNK_WARNING_THRESHOLD,
     EXTRACTION_MAX_RETRIES,
     MODEL_TEMPERATURE,
-    ActionField,
     ActionFieldList,
     ExtractionResult,
-    Project,
     ProjectDetails,
     ProjectList,
-    query_ollama,
     query_ollama_structured,
 )
-from src.processing import prepare_llm_chunks, query_chunks
+from src.core.constants import ENGLISH_FILTER_TERMS, QUANTITATIVE_PATTERNS
 
 from .prompts import (
     STAGE1_SYSTEM_MESSAGE,
@@ -210,15 +205,6 @@ def extract_project_details(
     return details
 
 
-def build_structure_prompt(chunk_text: str) -> str:
-    return f"""Extract from this German text and output JSON:
-
-{chunk_text.strip()}
-
-Output the JSON array now:
-["""
-
-
 def validate_extraction_schema(data: Any) -> bool:
     """
     Validate that extracted data matches the expected schema.
@@ -227,18 +213,6 @@ def validate_extraction_schema(data: Any) -> bool:
     """
     if not isinstance(data, list):
         return False
-
-    # English terms that should not appear in German extraction
-    english_terms = [
-        "Development",
-        "Enhancement",
-        "Support",
-        "Promotion",
-        "Implementation",
-        "Management",
-        "Strategy",
-        "Initiative",
-    ]
 
     for item in data:
         if not isinstance(item, dict):
@@ -255,7 +229,7 @@ def validate_extraction_schema(data: Any) -> bool:
 
         # Check for English content in action field
         action_field = item["action_field"]
-        if any(term in action_field for term in english_terms):
+        if any(term in action_field for term in ENGLISH_FILTER_TERMS):
             print(f"⚠️ Rejecting English action field: {action_field}")
             return False
 
@@ -271,7 +245,7 @@ def validate_extraction_schema(data: Any) -> bool:
                 return False
 
             # Check for English content in project title
-            if any(term in project["title"] for term in english_terms):
+            if any(term in project["title"] for term in ENGLISH_FILTER_TERMS):
                 print(f"⚠️ Rejecting English project title: {project['title']}")
                 return False
 
@@ -285,132 +259,6 @@ def validate_extraction_schema(data: Any) -> bool:
     return True
 
 
-def extract_json_from_response(response: str) -> list[dict[str, Any]] | None:
-    """
-    Extract and validate JSON from LLM response with aggressive cleaning.
-    """
-    # Clean the response first - remove any conversational text
-    cleaned = response.strip()
-
-    # Remove common conversational prefixes/suffixes
-    prefixes_to_remove = [
-        "Here",
-        "Hier",
-        "This",
-        "Das",
-        "Es",
-        "The",
-        "I'll",
-        "Let",
-        "Based",
-        "Looking",
-        "What",
-        "Wie",
-        "Municipal",
-        "German",
-    ]
-
-    for prefix in prefixes_to_remove:
-        if cleaned.startswith(prefix):
-            # Find the first [ or { after the prefix
-            start_idx = max(cleaned.find("["), cleaned.find("{"))
-            if start_idx > 0:
-                cleaned = cleaned[start_idx:]
-                break
-
-    # Method 1: Direct JSON array extraction (most aggressive)
-    array_patterns = [
-        r"\[[\s\S]*?\]",  # Complete array
-        r"\{[\s\S]*?\}",  # Single object (will wrap)
-    ]
-
-    for pattern in array_patterns:
-        matches = re.findall(pattern, cleaned, re.DOTALL)
-        for match in matches:
-            try:
-                data = json5.loads(match)
-                if isinstance(data, dict):
-                    data = [data]  # Wrap single object
-                if validate_extraction_schema(data):
-                    return list(data)
-            except:
-                continue
-
-    # Method 2: Extract everything between first [ and last ]
-    first_bracket = cleaned.find("[")
-    last_bracket = cleaned.rfind("]")
-    if first_bracket >= 0 and last_bracket > first_bracket:
-        try:
-            json_str = cleaned[first_bracket : last_bracket + 1]
-            data = json5.loads(json_str)
-            if validate_extraction_schema(data):
-                return list(data)
-        except:
-            pass
-
-    # Method 3: Try to find object and wrap
-    first_brace = cleaned.find("{")
-    last_brace = cleaned.rfind("}")
-    if first_brace >= 0 and last_brace > first_brace:
-        try:
-            json_str = cleaned[first_brace : last_brace + 1]
-            data = json5.loads(json_str)
-            if isinstance(data, dict):
-                data = [data]
-            if validate_extraction_schema(data):
-                return list(data)
-        except:
-            pass
-
-    return None
-
-
-def filter_english_content(
-    extracted_data: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """
-    Filter out action fields and projects containing English terms.
-    """
-    english_terms = [
-        "Development",
-        "Enhancement",
-        "Support",
-        "Promotion",
-        "Implementation",
-        "Management",
-        "Strategy",
-        "Initiative",
-        "Renewable",
-        "Energy",
-        "Smart",
-        "City",
-    ]
-
-    filtered_data = []
-
-    for action_field in extracted_data:
-        # Check action field name
-        af_name = action_field.get("action_field", "")
-        if any(term.lower() in af_name.lower() for term in english_terms):
-            print(f"⚠️ Filtering out English action field: {af_name}")
-            continue
-
-        # Filter projects
-        filtered_projects = []
-        for project in action_field.get("projects", []):
-            project_title = project.get("title", "")
-            if any(term.lower() in project_title.lower() for term in english_terms):
-                print(f"⚠️ Filtering out English project: {project_title}")
-                continue
-            filtered_projects.append(project)
-
-        if filtered_projects:  # Only keep action field if it has projects
-            action_field["projects"] = filtered_projects
-            filtered_data.append(action_field)
-
-    return filtered_data
-
-
 def reclassify_measures_to_indicators(
     extracted_data: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -420,19 +268,8 @@ def reclassify_measures_to_indicators(
     Scans measures for numbers, percentages, dates, and other quantitative patterns
     and reclassifies them as indicators.
     """
-    import re
-
-    # Patterns that indicate a measure should be an indicator
-    indicator_patterns = [
-        r"\d+\s*(?:km|m²|€|Ladepunkte|Standorte|Wohneinheiten|Hektar|ha|MW|kW)",  # Numbers with units
-        r"\d+\s*%",  # Percentages
-        r"(?:bis|ab|seit)\s+\d{4}",  # Year references
-        r"\d+\s+\w+(?:,\s*\d+\s+\w+)+",  # Lists of numbered items
-        r"(?:Verdopplung|Halbierung|Steigerung um|Reduktion um)",  # Comparative terms with implied numbers
-        r"\d+(?:\.\d+)?",  # Any number (as fallback)
-    ]
-
-    combined_pattern = "|".join(indicator_patterns)
+    # Use patterns from constants
+    combined_pattern = "|".join(QUANTITATIVE_PATTERNS)
 
     for action_field in extracted_data:
         for project in action_field.get("projects", []):
@@ -532,9 +369,6 @@ Extrahiere den kompletten Inhalt auf Deutsch."""
                 f"✅ Successfully extracted {len(extracted_data)} action fields on attempt {attempt + 1}"
             )
 
-            # Filter out English content
-            extracted_data = filter_english_content(extracted_data)
-            print("🌐 Post-processing: Filtered English content")
 
             # Post-process to reclassify measures containing numbers as indicators
             extracted_data = reclassify_measures_to_indicators(extracted_data)
@@ -549,25 +383,6 @@ Extrahiere den kompletten Inhalt auf Deutsch."""
                 print("🔄 Retrying...")
 
     print(f"⚠️ All {max_retries} attempts failed for chunk")
-
-    # Fallback to old method as last resort
-    print("🔄 Falling back to legacy extraction method...")
-    prompt = build_structure_prompt(chunk_text)
-    raw_response = query_ollama(prompt, system_message=system_message)
-    legacy_extracted_data: list[dict[str, Any]] | None = extract_json_from_response(
-        raw_response
-    )
-
-    if legacy_extracted_data:
-        print(f"✅ Legacy method extracted {len(legacy_extracted_data)} action fields")
-        # Filter English content
-        legacy_extracted_data = filter_english_content(legacy_extracted_data)
-        print("🌐 Post-processing: Filtered English content")
-        # Also post-process legacy extraction
-        legacy_extracted_data = reclassify_measures_to_indicators(legacy_extracted_data)
-        print("📊 Post-processing: Reclassified quantitative measures as indicators")
-        return legacy_extracted_data
-
     return []
 
 

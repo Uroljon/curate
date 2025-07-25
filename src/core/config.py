@@ -4,13 +4,14 @@ Central configuration file for CURATE PDF extraction system.
 All tunable parameters should be defined here.
 """
 
+import os
+
 # Model Configuration
 MODEL_NAME = "qwen2.5:7b"  # Options: "qwen2.5:7b", "qwen2.5:14b", "llama3:8b", etc.
 MODEL_TEMPERATURE = 0.0  # 0.0 for deterministic output
 MODEL_TIMEOUT = 180  # seconds
 
 # API Configuration
-import os
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "localhost:11434")
 OLLAMA_API_URL = f"http://{OLLAMA_HOST}/api/generate"
@@ -26,16 +27,6 @@ SEMANTIC_CHUNK_MAX_CHARS = 7500  # Maximum characters per semantic chunk
 SEMANTIC_CHUNK_TARGET_CHARS = 5000  # Target size for semantic chunks
 SEMANTIC_CHUNK_MIN_CHARS = 1000  # Minimum characters per semantic chunk
 
-# LLM Generation Configuration
-GENERATION_OPTIONS = {
-    "temperature": 0.3,  # For non-structured generation
-    "top_p": 0.9,
-    "top_k": 40,
-    "repeat_penalty": 1.05,
-    "num_predict": 800,
-    "stop": ["```", "</json>"],
-}
-
 # Structured Output Configuration
 STRUCTURED_OUTPUT_OPTIONS = {
     "temperature": MODEL_TEMPERATURE,
@@ -45,7 +36,7 @@ STRUCTURED_OUTPUT_OPTIONS = {
 }
 
 # Extraction Configuration
-EXTRACTION_MAX_RETRIES = 1  # Number of retry attempts for failed extractions
+EXTRACTION_MAX_RETRIES = 3  # Number of retry attempts for failed extractions
 
 # Text Processing Configuration
 MIN_CHARS_FOR_VALID_PAGE = (
@@ -65,6 +56,9 @@ EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 # Upload Configuration
 UPLOAD_FOLDER = "data/uploads"
 
+# Logging Configuration
+LOG_DIR = "logs"
+
 # Indicator Configuration
 INDICATOR_AWARE_CHUNKING = True  # Preserve indicators with their context
 INDICATOR_WINDOW_SIZE = 150  # Characters to check around split points
@@ -72,17 +66,3 @@ INDICATOR_WINDOW_SIZE = 150  # Characters to check around split points
 # Fast Extraction Configuration
 FAST_EXTRACTION_ENABLED = True  # Enable fast single-pass extraction endpoint
 FAST_EXTRACTION_MAX_CHUNKS = 50  # Limit chunks for speed (0 = no limit)
-FAST_EXTRACTION_PARALLEL = False  # Future: enable parallel chunk processing
-
-# Retrieval Configuration
-RETRIEVAL_MODE = "all"  # Options: "all", "semantic", "hybrid"
-RETRIEVAL_MIN_SCORE = 0.3  # Minimum similarity score for semantic mode
-RETRIEVAL_TOP_K = 100  # Number of chunks to retrieve in semantic mode
-RETRIEVAL_QUERIES = [
-    "Handlungsfeld Handlungsfelder action field Maßnahmen Projekte",
-    "Klimaschutz Mobilität Energie Bildung Wirtschaft Nachhaltigkeit",
-    "Indikatoren indicators Kennzahlen metrics Ziele targets",
-]
-
-# Output Configuration
-OUTPUT_FOLDER = "data/outputs"

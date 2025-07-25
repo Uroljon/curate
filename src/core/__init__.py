@@ -1,5 +1,10 @@
 """Core functionality for CURATE."""
 
+# Chunking configuration
+# Model configuration
+# Storage configuration
+# Extraction configuration
+# Text processing configuration
 from .config import (
     CHROMA_DIR,
     CHUNK_MAX_CHARS,
@@ -10,10 +15,9 @@ from .config import (
     EXTRACTION_MAX_RETRIES,
     FAST_EXTRACTION_ENABLED,
     FAST_EXTRACTION_MAX_CHUNKS,
-    FAST_EXTRACTION_PARALLEL,
-    GENERATION_OPTIONS,
     INDICATOR_AWARE_CHUNKING,
     INDICATOR_WINDOW_SIZE,
+    LOG_DIR,
     MIN_CHARS_FOR_VALID_PAGE,
     MODEL_NAME,
     MODEL_TEMPERATURE,
@@ -21,11 +25,6 @@ from .config import (
     OCR_LANGUAGE,
     OLLAMA_API_URL,
     OLLAMA_CHAT_URL,
-    OUTPUT_FOLDER,
-    RETRIEVAL_MIN_SCORE,
-    RETRIEVAL_MODE,
-    RETRIEVAL_QUERIES,
-    RETRIEVAL_TOP_K,
     SEMANTIC_CHUNK_MAX_CHARS,
     SEMANTIC_CHUNK_MIN_CHARS,
     SEMANTIC_CHUNK_TARGET_CHARS,
@@ -36,7 +35,11 @@ from .config import (
     SYMBOL_FILTER_THRESHOLD,
     UPLOAD_FOLDER,
 )
-from .llm import query_ollama, query_ollama_structured
+
+# LLM functionality
+from .llm import query_ollama_structured
+
+# Data schemas
 from .schemas import (
     ActionField,
     ActionFieldList,
@@ -47,32 +50,30 @@ from .schemas import (
 )
 
 __all__ = [
+    # Storage configuration
     "CHROMA_DIR",
+    # Chunking configuration
     "CHUNK_MAX_CHARS",
     "CHUNK_MIN_CHARS",
     "CHUNK_WARNING_THRESHOLD",
     "COLLECTION_NAME",
     "EMBEDDING_MODEL",
+    # Extraction configuration
     "EXTRACTION_MAX_RETRIES",
     "FAST_EXTRACTION_ENABLED",
     "FAST_EXTRACTION_MAX_CHUNKS",
-    "FAST_EXTRACTION_PARALLEL",
-    "GENERATION_OPTIONS",
     "INDICATOR_AWARE_CHUNKING",
     "INDICATOR_WINDOW_SIZE",
+    "LOG_DIR",
+    # Text processing configuration
     "MIN_CHARS_FOR_VALID_PAGE",
-    # Config exports
+    # Model configuration
     "MODEL_NAME",
     "MODEL_TEMPERATURE",
     "MODEL_TIMEOUT",
     "OCR_LANGUAGE",
     "OLLAMA_API_URL",
     "OLLAMA_CHAT_URL",
-    "OUTPUT_FOLDER",
-    "RETRIEVAL_MIN_SCORE",
-    "RETRIEVAL_MODE",
-    "RETRIEVAL_QUERIES",
-    "RETRIEVAL_TOP_K",
     "SEMANTIC_CHUNK_MAX_CHARS",
     "SEMANTIC_CHUNK_MIN_CHARS",
     "SEMANTIC_CHUNK_TARGET_CHARS",
@@ -90,6 +91,5 @@ __all__ = [
     "ProjectDetails",
     "ProjectList",
     # LLM exports
-    "query_ollama",
     "query_ollama_structured",
 ]

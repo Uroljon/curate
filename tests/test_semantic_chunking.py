@@ -6,12 +6,11 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.processing import (
+from src.processing.chunker import (
     analyze_chunk_quality,
-    prepare_llm_chunks,
-    prepare_semantic_llm_chunks,
-    query_chunks,
+    chunk_for_llm,
 )
+from src.processing.embedder import query_chunks
 
 
 def compare_chunking_methods(source_id: str):
@@ -25,8 +24,8 @@ def compare_chunking_methods(source_id: str):
     print(f"Starting with {len(raw_texts)} semantic chunks from database")
 
     # Old method
-    print("\n🔴 OLD METHOD (prepare_llm_chunks):")
-    old_chunks = prepare_llm_chunks(raw_texts, max_chars=20000, min_chars=15000)
+    print("\n🔴 OLD METHOD (chunk_for_llm - basic mode):")
+    old_chunks = chunk_for_llm(raw_texts, max_chars=20000, min_chars=15000)
     old_quality = analyze_chunk_quality(old_chunks)
 
     print(f"  Chunks created: {old_quality['total_chunks']}")
@@ -35,8 +34,8 @@ def compare_chunking_methods(source_id: str):
     print(f"  With headings: {old_quality['chunks_with_headings']} chunks")
 
     # New method
-    print("\n🟢 NEW METHOD (prepare_semantic_llm_chunks):")
-    new_chunks = prepare_semantic_llm_chunks(
+    print("\n🟢 NEW METHOD (chunk_for_llm - semantic mode):")
+    new_chunks = chunk_for_llm(
         raw_texts, max_chars=20000, min_chars=15000
     )
     new_quality = analyze_chunk_quality(new_chunks)

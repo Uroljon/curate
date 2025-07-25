@@ -7,15 +7,16 @@ to enable performance analysis and debugging.
 
 import json
 import logging
-import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
+
+from src.core import LOG_DIR
 
 # Create logs directory if it doesn't exist
-LOG_DIR = Path("logs")
-LOG_DIR.mkdir(exist_ok=True)
+LOG_DIR_PATH = Path(LOG_DIR)
+LOG_DIR_PATH.mkdir(exist_ok=True)
 
 
 # Configure structured logging
@@ -36,7 +37,7 @@ class StructuredLogger:
 
         # File handler for structured logs
         if log_file:
-            file_path = LOG_DIR / log_file
+            file_path = LOG_DIR_PATH / log_file
             file_handler = logging.FileHandler(file_path, mode="a")
             file_handler.setLevel(logging.DEBUG)
             self.logger.addHandler(file_handler)
@@ -266,7 +267,7 @@ def analyze_logs(
     log_file: str, start_date: str | None = None, end_date: str | None = None
 ) -> dict[str, Any]:
     """Analyze logs from a specific file."""
-    log_path = LOG_DIR / log_file
+    log_path = LOG_DIR_PATH / log_file
 
     if not log_path.exists():
         return {"error": f"Log file {log_file} not found"}

@@ -4,7 +4,7 @@ import os
 import time
 from typing import Any
 
-from fastapi import File, Request, UploadFile
+from fastapi import Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from src.core import (
@@ -15,14 +15,8 @@ from src.core import (
     SEMANTIC_CHUNK_TARGET_CHARS,
     UPLOAD_FOLDER,
 )
-from src.extraction import (
-    extract_action_fields_only,
-    extract_project_details,
-    extract_projects_for_field,
-    extract_structures_with_retry,
-)
+from src.extraction import extract_structures_with_retry
 from src.processing import (
-    chunk_for_embedding,
     chunk_for_embedding_enhanced,
     chunk_for_llm,
     embed_chunks,
@@ -34,6 +28,16 @@ from src.utils import (
     get_extraction_monitor,
     log_api_request,
     log_api_response,
+)
+
+from .extraction_helpers import (
+    deduplicate_extraction_results,
+    extract_all_action_fields,
+    extract_projects_and_details,
+    merge_extraction_results,
+    prepare_chunks_for_extraction,
+    print_extraction_summary,
+    process_chunks_for_fast_extraction,
 )
 
 
@@ -122,132 +126,29 @@ async def extract_structure(
     source_id: str, max_chars: int = CHUNK_MAX_CHARS, min_chars: int = CHUNK_MIN_CHARS
 ):
     """Multi-stage structure extraction."""
-    # Get all chunks for comprehensive multi-stage extraction
-    chunks = get_all_chunks_for_document(source_id)
-    raw_texts = [c["text"] for c in chunks]
-    # Use simple size-based chunking
-    optimized_chunks = chunk_for_llm(
-        raw_texts, max_chars=max_chars, min_chars=min_chars
-    )
+    # Prepare chunks for extraction
+    optimized_chunks = prepare_chunks_for_extraction(source_id, max_chars, min_chars)
 
-    # Multi-stage extraction approach
     print(f"\n🚀 Starting multi-stage extraction with {len(optimized_chunks)} chunks\n")
 
     # Stage 1: Extract action fields
-    print("=" * 60)
-    print("STAGE 1: DISCOVERING ACTION FIELDS")
-    print("=" * 60)
-    action_fields = extract_action_fields_only(optimized_chunks)
+    action_fields = extract_all_action_fields(optimized_chunks)
 
     if not action_fields:
-        print("⚠️ No action fields found in Stage 1")
         return JSONResponse(content={"structures": []})
 
-    # Stage 2 & 3: Extract projects and details for each action field
-    all_extracted_data = []
-
-    for field_idx, action_field in enumerate(action_fields):
-        print(f"\n{'=' * 60}")
-        print(
-            f"STAGE 2: EXTRACTING PROJECTS FOR '{action_field}' ({field_idx + 1}/{len(action_fields)})"
-        )
-        print("=" * 60)
-
-        projects = extract_projects_for_field(optimized_chunks, action_field)
-
-        if not projects:
-            print(f"   ⚠️ No projects found for {action_field}")
-            continue
-
-        # Stage 3: Extract details for each project
-        action_field_data: dict[str, Any] = {
-            "action_field": action_field,
-            "projects": [],
-        }
-
-        print(f"\n{'=' * 60}")
-        print(f"STAGE 3: EXTRACTING DETAILS FOR {len(projects)} PROJECTS")
-        print("=" * 60)
-
-        for proj_idx, project_title in enumerate(projects):
-            print(f"\n📁 Project {proj_idx + 1}/{len(projects)}: {project_title}")
-
-            details = extract_project_details(
-                optimized_chunks, action_field, project_title
-            )
-
-            project_data: dict[str, Any] = {"title": project_title}
-            if details.measures:
-                project_data["measures"] = details.measures
-            if details.indicators:
-                project_data["indicators"] = details.indicators
-
-            action_field_data["projects"].append(project_data)
-
-        all_extracted_data.append(action_field_data)
-
-    print(
-        f"📊 Final extraction result: {len(all_extracted_data)} unique action fields "
-        f"from {len(optimized_chunks)} chunks"
-    )
+    # Stage 2 & 3: Extract projects and details
+    all_extracted_data = extract_projects_and_details(optimized_chunks, action_fields)
 
     if not all_extracted_data:
         print("⚠️ No valid data extracted from any chunks")
         return JSONResponse(content={"structures": []})
 
-    # Deduplicate action fields by name (merge projects from same action field)
-    deduplicated_data: dict[str, Any] = {}
+    # Deduplicate results
+    final_structures = deduplicate_extraction_results(all_extracted_data)
 
-    for item in all_extracted_data:
-        field_name: str = str(item["action_field"])
-
-        if field_name in deduplicated_data:
-            # Merge projects from duplicate action fields
-            existing_projects = deduplicated_data[field_name]["projects"]
-            new_projects = item["projects"]
-
-            # Simple deduplication by project title
-            existing_titles = {
-                p["title"] for p in existing_projects if isinstance(p, dict)
-            }
-            for project in new_projects:
-                if (
-                    isinstance(project, dict)
-                    and project.get("title") not in existing_titles
-                ):
-                    existing_projects.append(project)
-        else:
-            deduplicated_data[field_name] = item
-
-    # Convert back to list format
-    final_structures = list(deduplicated_data.values())
-
-    # Count statistics
-    total_projects = sum(len(af["projects"]) for af in final_structures)
-    measures_count = sum(
-        1
-        for af in final_structures
-        for p in af["projects"]
-        if isinstance(p, dict) and p.get("measures")
-    )
-    indicators_count = sum(
-        1
-        for af in final_structures
-        for p in af["projects"]
-        if isinstance(p, dict) and p.get("indicators")
-    )
-
-    print(
-        f"✅ Final result: {len(final_structures)} unique action fields, {total_projects} total projects"
-    )
-    print(
-        f"   📊 {measures_count} projects with measures, {indicators_count} projects with indicators"
-    )
-
-    for structure in final_structures:
-        print(
-            f"   📋 {structure['action_field']}: {len(structure['projects'])} projects"
-        )
+    # Print summary
+    print_extraction_summary(final_structures, len(optimized_chunks))
 
     return JSONResponse(content={"structures": final_structures})
 

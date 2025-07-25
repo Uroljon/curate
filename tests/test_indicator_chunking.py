@@ -9,10 +9,10 @@ import pytest
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.processing import (
+from src.processing.chunker import (
+    chunk_for_embedding_enhanced,
     contains_indicator_context,
     find_safe_split_point,
-    smart_chunk,
     split_large_chunk,
 )
 
@@ -42,7 +42,7 @@ um 55% bis 2030 reduziert werden. Investitionen von 120 Millionen Euro sind gepl
 
 
 def test_smart_chunk_with_indicators():
-    """Test smart_chunk preserves indicators in real document."""
+    """Test chunk_for_embedding_enhanced preserves indicators in real document."""
 
     document = """Handlungsfeld: Klimaschutz
 
@@ -58,7 +58,7 @@ Handlungsfeld: Mobilität
 Der Modal Split soll 30% PKW und 70% Umweltverbund erreichen.
 Investitionen: 250 Millionen Euro bis 2028."""
 
-    chunks = smart_chunk(document, max_chars=300)
+    chunks = chunk_for_embedding_enhanced(document, max_chars=300)
 
     # All indicators should be preserved
     indicators = [

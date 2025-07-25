@@ -1,66 +1,19 @@
 # llm.py
-from typing import Optional, TypeVar
+from typing import TypeVar
 
 import requests
 from pydantic import BaseModel
 
 from .config import (
-    GENERATION_OPTIONS,
     MODEL_NAME,
     MODEL_TEMPERATURE,
     MODEL_TIMEOUT,
-    OLLAMA_API_URL,
     OLLAMA_CHAT_URL,
     STRUCTURED_OUTPUT_OPTIONS,
 )
 
 T = TypeVar("T", bound=BaseModel)
 
-
-def query_ollama(
-    prompt: str,
-    model: str = MODEL_NAME,
-    temperature: float = 0.0,
-    system_message: str | None = None,
-) -> str:
-    """
-    Query Ollama with optimized parameters for structured JSON extraction.
-
-    Args:
-        prompt: The input prompt
-        model: Model name to use
-        temperature: Controls randomness (0.0 = deterministic)
-        system_message: Optional system message for role definition
-
-    Returns:
-        Generated text response
-    """
-    try:
-        # Build request body
-        options = GENERATION_OPTIONS.copy()
-        if temperature is not None:
-            options["temperature"] = temperature
-
-        request_body = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "options": options,
-        }
-
-        # Add system message if provided
-        if system_message:
-            request_body["system"] = system_message
-
-        response = requests.post(
-            OLLAMA_API_URL, json=request_body, timeout=MODEL_TIMEOUT
-        )
-        response.raise_for_status()
-        data = response.json()
-        return str(data.get("response", "")).strip()
-    except requests.RequestException as e:
-        print(f"❌ LLM API Error: {e!s}")
-        return f"LLM API Error: {e!s}"
 
 
 def query_ollama_structured(

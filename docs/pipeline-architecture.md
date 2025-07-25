@@ -20,13 +20,13 @@ The CURATE pipeline consists of two main phases:
                                    ▼
                         ┌──────────────────────┐
                         │  1. FILE UPLOAD      │
-                        │  src/api/routes.py:52│
+                        │  src/api/routes.py:44│
                         └──────────┬───────────┘
                                    │ Save to data/uploads/
                                    ▼
                         ┌──────────────────────┐
                         │ 2. TEXT EXTRACTION   │
-                        │ parser.py:80         │
+                        │ parser.py:extract_text_with_ocr_fallback│
                         └──────────┬───────────┘
                                    │
                         ┌──────────┴───────────┐
@@ -61,7 +61,7 @@ The CURATE pipeline consists of two main phases:
                                       ▼
                         ┌─────────────────────────┐
                         │ 3. SEMANTIC CHUNKING    │
-                        │ chunker.py:229          │
+                        │ chunker.py              │
                         │ chunk_for_embedding_    │
                         │ enhanced()              │
                         └──────────┬──────────────┘
@@ -76,7 +76,7 @@ The CURATE pipeline consists of two main phases:
                                    ▼
                         ┌─────────────────────────┐
                         │ 4. EMBEDDING GENERATION │
-                        │ embedder.py:19          │
+                        │ embedder.py:embed_chunks│
                         │ - Delete old chunks     │
                         │ - Generate embeddings   │
                         │ - Store in ChromaDB     │

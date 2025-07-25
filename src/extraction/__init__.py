@@ -9,21 +9,18 @@ from .prompts import (
     get_stage3_system_message,
 )
 from .structure_extractor import (
-    build_structure_prompt,
     extract_action_fields_only,
     extract_project_details,
     extract_projects_for_field,
     extract_structures_with_retry,
     extract_with_accumulation,
     merge_similar_action_fields,
-    prepare_llm_chunks,
 )
 
 __all__ = [
     # Prompts
     "STAGE1_SYSTEM_MESSAGE",
     # Structure extractor
-    "build_structure_prompt",
     "extract_action_fields_only",
     "extract_project_details",
     "extract_projects_for_field",
@@ -35,5 +32,4 @@ __all__ = [
     "get_stage3_prompt",
     "get_stage3_system_message",
     "merge_similar_action_fields",
-    "prepare_llm_chunks",
 ]

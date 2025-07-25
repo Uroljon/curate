@@ -6,7 +6,8 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.processing import is_heading, smart_chunk, split_by_heading
+from src.processing.chunker import chunk_for_embedding_enhanced, split_by_heading
+from src.utils.text import is_heading
 
 
 def test_german_heading_detection():
@@ -150,7 +151,7 @@ Projekte:
 Zielstellung:
 Modal Split von 70% für den Umweltverbund erreichen."""
 
-    chunks = smart_chunk(sample_text, max_chars=5000)
+    chunks = chunk_for_embedding_enhanced(sample_text, max_chars=5000)
 
     print(f"Number of chunks created: {len(chunks)}")
     print(f"Average chunk size: {sum(len(c) for c in chunks) / len(chunks):.0f} chars")
@@ -207,7 +208,7 @@ Mobilität
 Die Stadt plant 500 neue Ladepunkte für E-Autos bis 2025.
 Der Modal Split soll 30% PKW und 70% Umweltverbund betragen."""
 
-    chunks = smart_chunk(test_text, max_chars=150)  # Small chunks to test preservation
+    chunks = chunk_for_embedding_enhanced(test_text, max_chars=150)  # Small chunks to test preservation
 
     # Check that indicators stay in same chunk
     indicators = [

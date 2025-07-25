@@ -8,15 +8,16 @@ import time
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.processing import (
+from sentence_transformers import SentenceTransformer
+
+from src.core import EMBEDDING_MODEL
+from src.processing.chunker import (
     analyze_chunk_quality,
-    embed_chunks,
-    is_heading,
-    model,
-    prepare_semantic_llm_chunks,
-    query_chunks,
-    smart_chunk,
+    chunk_for_embedding_enhanced,
+    chunk_for_llm,
 )
+from src.processing.embedder import embed_chunks, query_chunks
+from src.utils.text import is_heading
 
 
 def test_pipeline_components():
@@ -64,7 +65,7 @@ Zielstellung:
     # Test 1: German-aware chunking
     print("\n1️⃣ Testing German-aware chunking...")
     try:
-        chunks = smart_chunk(sample_text, max_chars=5000)
+        chunks = chunk_for_embedding_enhanced(sample_text, max_chars=5000)
 
         # Check if headings are detected
         heading_count = 0
@@ -91,6 +92,9 @@ Zielstellung:
     # Test 2: Multilingual embeddings
     print("\n2️⃣ Testing multilingual embeddings...")
     try:
+        # Create model instance
+        model = SentenceTransformer(EMBEDDING_MODEL)
+
         # Test German-German similarity
         german_texts = ["Klimaschutz und Energie", "Umweltschutz und Energiewende"]
         embeddings = model.encode(german_texts)
@@ -129,7 +133,7 @@ Zielstellung:
         ]
 
         # Test semantic chunking
-        semantic_chunks = prepare_semantic_llm_chunks(
+        semantic_chunks = chunk_for_llm(
             test_chunks, max_chars=10000, min_chars=5000
         )
 
@@ -231,7 +235,7 @@ def test_embedding_storage():
         print("   ✅ Content verified")
 
         # Clean up test data
-        from src.processing import collection
+        from src.processing.embedder import collection
 
         existing = collection.get(where={"source": test_source_id})
         if existing and existing["ids"]:

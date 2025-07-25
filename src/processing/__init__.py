@@ -8,8 +8,6 @@ from .chunker import (
     chunk_for_llm,
     contains_indicator_context,
     extract_chunk_topic,
-    prepare_llm_chunks,  # Backward compatibility
-    smart_chunk,  # Backward compatibility
 )
 from .embedder import (
     embed_chunks,
@@ -19,9 +17,9 @@ from .embedder import (
 from .parser import extract_text_with_ocr_fallback
 
 __all__ = [
+    # Chunker exports
     "INDICATOR_PATTERNS",
     "analyze_chunk_quality",
-    # Chunker exports
     "chunk_for_embedding",
     "chunk_for_embedding_enhanced",
     "chunk_for_llm",
@@ -32,7 +30,5 @@ __all__ = [
     # Parser exports
     "extract_text_with_ocr_fallback",
     "get_all_chunks_for_document",
-    "prepare_llm_chunks",
     "query_chunks",
-    "smart_chunk",
 ]
