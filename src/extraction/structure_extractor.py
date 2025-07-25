@@ -299,33 +299,55 @@ def extract_structures_with_retry(
     """
     Extract structures from text using Ollama structured output.
     """
-    system_message = """Extrahiere Handlungsfelder und deren Projekte aus kommunalen Strategiedokumenten.
+    system_message = """Sie sind ein Experte für die Analyse deutscher kommunaler Strategiedokumente.
 
-Jedes Handlungsfeld enthält Projekte. Für jedes Projekt extrahiere:
-- Titel
-- Maßnahmen (konkrete Aktionen, Umsetzungsschritte)
-- Indikatoren (ALLE Zahlen, Prozentsätze, Zielwerte, Termine)
+KRITISCHE ANWEISUNG: Verwenden Sie AUSSCHLIESSLICH Informationen aus dem bereitgestellten Quelldokument.
+Nutzen Sie NIEMALS Ihr Vorwissen oder Annahmen - nur den vorliegenden Text.
 
-WICHTIG: Indikatoren sind IMMER quantitative Angaben:
-- Prozentangaben: "55% Reduktion", "um 30% steigern"
-- Zeitangaben: "bis 2030", "ab 2025", "jährlich"
-- Mengenangaben: "500 Ladepunkte", "18 km", "1000 Wohneinheiten"
-- Vergleiche: "Verdopplung", "Halbierung", "30% weniger"
-- Aufzählungen mit Zahlen: "24 Frauenzellstraße, 25 Sallern, 26 Stadtamhof"
+VERFAHREN (Quote-Before-Answer):
+1. ZITATE EXTRAHIEREN: Identifizieren Sie relevante Textpassagen im Dokument
+2. ANALYSE: Basieren Sie Ihre Extraktion ausschließlich auf diesen Zitaten
+3. VALIDIERUNG: Jeder extrahierte Punkt muss direkt im Quelltext nachweisbar sein
 
-BEISPIELE für die Unterscheidung:
-✓ "24 Frauenzellstraße, 25 Sallern" → INDIKATOR (enthält Zahlen/Standorte)
-✓ "500 Ladepunkte" → INDIKATOR (Zahl mit Einheit)
-✗ "Verbesserung der Stadtbahninfrastruktur" → MAẞNAHME (keine Zahl)
-✗ "Förderung von Innovationen" → MAẞNAHME (keine quantitative Angabe)
+DEUTSCHE VERWALTUNGSSPRACHE - NUR FOLGENDE INHALTE:
+✓ Deutsche Handlungsfelder: "Mobilität und Verkehr", "Klimaschutz und Energie", "Wohnen und Quartiersentwicklung"
+✓ Offizielle Projektbezeichnungen: "Stadtbahn Regensburg", "Klimaschutzkonzept 2030"
+✓ Verwaltungsterminologie: Bescheid, Verordnung, Verwaltungsakt, Maßnahme, Indikator
 
-REGEL: Enthält der Text eine Zahl, ein Datum oder Prozent? → INDIKATOR. Sonst → MAẞNAHME.
+ABSOLUT VERBOTEN - Englische Begriffe:
+✗ "Current State", "Future Vision", "Urban Planning", "Smart City"
+✗ Jegliche englische Fachterminologie
 
-Extrahiere den kompletten Inhalt auf Deutsch."""
+EXTRAKTION PRO HANDLUNGSFELD:
+- Titel: Prägnante deutsche Bezeichnung (max. 100 Zeichen)
+- Maßnahmen: Konkrete Umsetzungsschritte aus dem Dokument
+- Indikatoren: Quantitative UND qualitative Zielgrößen aus dem Text
 
-    prompt = f"""Extrahiere alle Handlungsfelder und deren Projekte aus diesem kommunalen Strategietext:
+INDIKATOREN (beide Typen erfassen):
+- Quantitativ: "55% Reduktion bis 2030", "500 Ladepunkte", "18 km Radwege"
+- Qualitativ: "Verbesserung der Luftqualität", "Stärkung des Zusammenhalts"
 
-{chunk_text.strip()}"""
+Antworten Sie nur basierend auf explizit im Dokument gefundenen Informationen.
+Falls Informationen nicht verfügbar sind: "Information im Quelldokument nicht verfügbar"."""
+
+    prompt = f"""QUELLDOKUMENT:
+========
+{chunk_text.strip()}
+========
+
+ARBEITSSCHRITTE:
+
+1. RELEVANTE ZITATE IDENTIFIZIEREN:
+Suchen Sie alle Textpassagen, die Handlungsfelder, Projekte, Maßnahmen oder Indikatoren erwähnen.
+
+2. DEUTSCHE HANDLUNGSFELDER EXTRAHIEREN:
+Basierend nur auf den gefundenen Zitaten - identifizieren Sie deutsche Handlungsfelder.
+
+3. PROJEKTE UND DETAILS ZUORDNEN:
+Für jedes Handlungsfeld - extrahieren Sie nur die im Text explizit erwähnten Projekte und Details.
+
+WICHTIG: Verwenden Sie ausschließlich Informationen aus dem obigen Quelldokument.
+Keine Annahmen oder externes Wissen hinzufügen."""
 
     # Validate chunk size
     if len(chunk_text) > CHUNK_WARNING_THRESHOLD:
@@ -425,12 +447,24 @@ WICHTIGE REGELN:
 4. FÜGE neue Handlungsfelder und Projekte hinzu
 5. SUCHE aktiv nach übersehenen Indikatoren
 
+PROJEKTTITEL REGELN:
+- Verwende prägnante, offizielle Bezeichnungen (max. 100 Zeichen)
+- RICHTIG: "Stadtbahn Regensburg", "Klimaschutzkonzept 2030", "Digitales Rathaus"
+- FALSCH: "Weiterentwicklung der bisherigen Dienstleistungsachse zu einer Dienstleistungs-, Technologie- und Wissenschaftsachse"
+- Bei langen Beschreibungen: Extrahiere den Kernnamen oder erstelle eine kurze, treffende Bezeichnung
+- Deutsche Komposita sind erlaubt: "Nachhaltigkeitsorientierte Stadtentwicklungskonzeption"
+
 BESONDERER FOKUS auf Indikatoren - finde ALLE quantitativen Informationen:
 - Zahlen mit Einheiten: "500 Ladepunkte", "18 km", "1000 Wohneinheiten"
 - Prozentangaben: "40% Reduktion", "um 30% senken"
 - Zeitziele: "bis 2030", "ab 2025", "innerhalb 5 Jahren"
 - Häufigkeiten: "jährlich", "pro Jahr", "monatlich"
 - Vergleiche: "Verdopplung", "Halbierung", "30% weniger"
+
+QUALITATIVE INDIKATOREN sind auch wichtig:
+- "Deutliche Reduktion der CO2-Emissionen" (später quantifizieren)
+- "Erhöhung der Biodiversität" (Zahlen folgen eventuell später)
+- "Verbesserung der Luftqualität" (konkrete Werte können später kommen)
 
 Alles auf Deutsch extrahieren."""
 

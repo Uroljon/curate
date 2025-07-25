@@ -1,5 +1,6 @@
 """API routes for CURATE."""
 
+import json
 import os
 import time
 from typing import Any
@@ -15,7 +16,7 @@ from src.core import (
     SEMANTIC_CHUNK_TARGET_CHARS,
     UPLOAD_FOLDER,
 )
-from src.extraction import extract_structures_with_retry
+from src.extraction import extract_structures_with_retry, extract_with_accumulation
 from src.processing import (
     chunk_for_embedding_enhanced,
     chunk_for_llm,
@@ -31,6 +32,8 @@ from src.utils import (
 )
 
 from .extraction_helpers import (
+    ExtractionChangeTracker,
+    aggregate_extraction_results,
     deduplicate_extraction_results,
     extract_all_action_fields,
     extract_projects_and_details,
@@ -217,8 +220,8 @@ async def extract_structure_fast(
         # Stage 3: LLM extraction
         monitor.start_stage("llm_extraction", total_chunks=len(optimized_chunks))
 
-        # Single-pass extraction
-        all_extracted_data = []
+        # Independent extraction per chunk
+        all_chunk_results = []
         chunk_timings = []
 
         for i, chunk in enumerate(optimized_chunks):
@@ -227,56 +230,36 @@ async def extract_structure_fast(
                 f"⚡ Processing chunk {i+1}/{len(optimized_chunks)} ({len(chunk)} chars)"
             )
 
-            # Use the existing single-pass extraction function
+            # Extract independently from each chunk
             chunk_data = extract_structures_with_retry(chunk)
 
             chunk_time = time.time() - chunk_start
             chunk_timings.append(chunk_time)
 
             if chunk_data:
-                all_extracted_data.extend(chunk_data)
+                all_chunk_results.extend(chunk_data)
                 print(
                     f"   ✅ Found {len(chunk_data)} action fields in {chunk_time:.2f}s"
                 )
             else:
                 print(f"   ⚠️ No data found ({chunk_time:.2f}s)")
 
+        # Aggregate all results using separate LLM call
+        print(f"\n🔄 Aggregating {len(all_chunk_results)} extracted action fields...")
+        final_action_fields = aggregate_extraction_results(all_chunk_results)
+
         monitor.end_stage(
             "llm_extraction",
             chunks_processed=len(optimized_chunks),
-            total_action_fields=len(all_extracted_data),
+            total_action_fields=len(final_action_fields),
             avg_chunk_time=(
                 sum(chunk_timings) / len(chunk_timings) if chunk_timings else 0
             ),
             total_extraction_time=sum(chunk_timings),
         )
 
-        # Deduplicate action fields (same logic as multi-stage)
-        deduplicated_data: dict[str, Any] = {}
-
-        for item in all_extracted_data:
-            action_field: str = str(item["action_field"])
-
-            if action_field in deduplicated_data:
-                # Merge projects from duplicate action fields
-                existing_projects = deduplicated_data[action_field]["projects"]
-                new_projects = item["projects"]
-
-                # Simple deduplication by project title
-                existing_titles = {
-                    p["title"] for p in existing_projects if isinstance(p, dict)
-                }
-                for project in new_projects:
-                    if (
-                        isinstance(project, dict)
-                        and project.get("title") not in existing_titles
-                    ):
-                        existing_projects.append(project)
-            else:
-                deduplicated_data[action_field] = item
-
-        # Convert back to list format
-        final_structures = list(deduplicated_data.values())
+        # Use the aggregated results
+        final_structures = final_action_fields
 
         # Calculate extraction time
         extraction_time = time.time() - start_time

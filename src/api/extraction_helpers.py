@@ -5,6 +5,7 @@ This module contains refactored helper functions to break down
 the large extraction functions in routes.py.
 """
 
+import json
 from typing import Any
 
 from src.extraction.structure_extractor import (
@@ -170,6 +171,204 @@ def deduplicate_extraction_results(
     return list(deduplicated_data.values())
 
 
+def validate_german_only_content(
+    action_fields: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Final validation to remove any English contamination from action fields.
+
+    This serves as a safety net to catch any English content that might have
+    slipped through the LLM aggregation process.
+    """
+    # Comprehensive list of English terms to block
+    english_terms = [
+        "current", "future", "state", "vision", "enhanced", "new", "findings", "data",
+        "urban", "mobility", "plan", "strategy", "analysis", "report", "overview",
+        "summary", "background", "energy", "development", "framework", "concept",
+        "program", "initiative", "approach", "implementation", "assessment", "review"
+    ]
+
+    validated_fields = []
+
+    for action_field in action_fields:
+        field_name = action_field.get("action_field", "").lower()
+
+        # Check if action field contains English terms
+        contains_english = any(term in field_name for term in english_terms)
+
+        if contains_english:
+            print(f"🚫 FINAL FILTER: Removing English action field '{action_field.get('action_field')}'")
+            continue
+
+        # Also validate project titles
+        validated_projects = []
+        for project in action_field.get("projects", []):
+            project_title = project.get("title", "").lower()
+            project_has_english = any(term in project_title for term in english_terms)
+
+            if project_has_english:
+                print(f"🚫 FINAL FILTER: Removing English project '{project.get('title')}'")
+                continue
+
+            validated_projects.append(project)
+
+        # Only include action field if it has valid projects
+        if validated_projects:
+            validated_field = action_field.copy()
+            validated_field["projects"] = validated_projects
+            validated_fields.append(validated_field)
+        else:
+            print(f"🚫 FINAL FILTER: Removing action field '{action_field.get('action_field')}' - no valid projects")
+
+    return validated_fields
+
+
+def chunked_aggregation(
+    all_chunk_results: list[dict[str, Any]],
+    chunk_size: int = 5,  # Further reduced from 10 to 5 for maximum JSON reliability
+    recursion_depth: int = 0,  # Track recursion depth to prevent infinite loops
+    max_recursion: int = 3  # Maximum recursion levels
+) -> list[dict[str, Any]]:
+    """
+    Handle large datasets by processing them in smaller chunks and then combining.
+
+    This prevents JSON parsing issues when dealing with many action fields.
+    """
+    from src.core import ExtractionResult, query_ollama_structured
+
+    print(f"🔄 Processing {len(all_chunk_results)} action fields in chunks of {chunk_size} (recursion depth: {recursion_depth})")
+    
+    # Prevent infinite recursion
+    if recursion_depth >= max_recursion:
+        print(f"⚠️ Maximum recursion depth ({max_recursion}) reached - falling back to simple deduplication")
+        return simple_deduplication_fallback(all_chunk_results)
+
+    # First pass: Process in smaller chunks
+    intermediate_results = []
+
+    for i in range(0, len(all_chunk_results), chunk_size):
+        chunk = all_chunk_results[i:i + chunk_size]
+        print(f"📋 Processing chunk {i//chunk_size + 1} with {len(chunk)} action fields")
+
+        # Use the regular aggregation for each smaller chunk
+        chunk_data = json.dumps(chunk, indent=2, ensure_ascii=False)
+
+        result = perform_single_aggregation(chunk_data)
+        if result:
+            intermediate_results.extend(result)
+            print(f"   ✅ Chunk {i//chunk_size + 1} aggregated to {len(result)} action fields")
+        else:
+            print(f"   ❌ Chunk {i//chunk_size + 1} aggregation failed - using fallback")
+
+    print(f"✅ First pass completed: {len(intermediate_results)} intermediate results")
+
+    # Second pass: Recursive final aggregation of intermediate results
+    if len(intermediate_results) <= 20:
+        print(f"🔄 Final aggregation pass with {len(intermediate_results)} intermediate results")
+        final_data = json.dumps(intermediate_results, indent=2, ensure_ascii=False)
+        final_result = perform_single_aggregation(final_data)
+        if final_result:
+            print(f"✅ Final aggregation successful: {len(final_result)} final action fields")
+            return final_result
+        else:
+            print("❌ Final aggregation failed")
+    else:
+        print(f"🔄 Too many intermediate results ({len(intermediate_results)} > 20) - applying recursive chunked aggregation")
+        # Recursively apply chunked aggregation until we get a manageable set
+        return chunked_aggregation(intermediate_results, chunk_size, recursion_depth + 1, max_recursion)
+
+    # Fallback to simple deduplication if still too complex
+    print("⚠️ Falling back to simple deduplication")
+    return simple_deduplication_fallback(intermediate_results)
+
+
+def perform_single_aggregation(chunk_data: str) -> list[dict[str, Any]] | None:
+    """
+    Perform a single aggregation pass on JSON data.
+    """
+    from src.core import ExtractionResult, query_ollama_structured
+
+    system_message = """KONTEXT: Sie sind Spezialist für kommunale Strategieplanung mit Fokus auf AGGRESSIVE HANDLUNGSFELD-KONSOLIDIERUNG.
+
+ZIEL: Reduzieren Sie die Anzahl der Handlungsfelder durch intelligente Zusammenführung ähnlicher Bereiche.
+
+KERNAUFTRAG - MAXIMALE KONSOLIDIERUNG:
+🎯 OBERSTE PRIORITÄT: Verschmelzen Sie ähnliche Handlungsfelder zu weniger, umfassenderen Kategorien
+🎯 ZIELWERT: Maximal 10-15 Handlungsfelder im Endergebnis
+🎯 STRATEGIE: Gruppieren Sie verwandte Themenbereiche unter gemeinsame Oberkategorien
+
+KONSOLIDIERUNGSREGELN:
+✅ "Klimaschutz", "Energie", "Nachhaltigkeit" → "Klimaschutz und Energie"
+✅ "Mobilität", "Verkehr", "ÖPNV" → "Mobilität und Verkehr"  
+✅ "Wohnen", "Quartiere", "Stadtentwicklung" → "Wohnen und Quartiersentwicklung"
+✅ "Wirtschaft", "Innovation", "Wissenschaft" → "Wirtschaft und Innovation"
+✅ "Kultur", "Bildung", "Sport" → "Kultur und Bildung"
+✅ "Soziales", "Integration", "Teilhabe" → "Soziales und Integration"
+
+DEUTSCHE VERWALTUNGSSPRACHE:
+✅ NUR offizielle deutsche Fachterminologie
+✅ Vollständige Projekt- und Indikatorensammlung bei Zusammenführung
+❌ ABSOLUTES VERBOT: Englische Begriffe jeder Art
+
+ERFOLGSMESSUNG: Sie waren erfolgreich, wenn Sie die Eingabezahl um mindestens 30% reduziert haben."""
+
+    prompt = f"""Sie erhalten {chunk_data.count('"action_field"')} Handlungsfelder zur Konsolidierung:
+
+{chunk_data}
+
+AUFGABE - AGGRESSIVE REDUKTION:
+🎯 REDUZIEREN Sie die Anzahl um mindestens 30% durch intelligente Zusammenführung
+🎯 VERSCHMELZEN Sie ähnliche Themenbereiche zu umfassenderen Kategorien
+🎯 ZIEL: Maximal 10-15 finale Handlungsfelder
+
+KONSOLIDIERUNGSSTRATEGIE:
+1. IDENTIFIZIEREN Sie verwandte Themenbereiche
+2. GRUPPIEREN Sie sie unter gemeinsame Oberkategorien
+3. SAMMELN Sie alle Projekte und Indikatoren der zusammengeführten Bereiche
+4. ELIMINIEREN Sie englische Begriffe komplett
+
+ERFOLG = Deutlich weniger Handlungsfelder als in der Eingabe bei vollständiger Datensammlung."""
+
+    try:
+        # Check input size
+        data_size = len(chunk_data)
+        print(f"   🔍 Attempting aggregation with {data_size} characters of JSON")
+        
+        result = query_ollama_structured(
+            prompt=prompt,
+            response_model=ExtractionResult,
+            system_message=system_message,
+            temperature=0.1,
+        )
+
+        if result:
+            # Convert to the expected format
+            aggregated_data = []
+            for af in result.action_fields:
+                action_field_dict: dict[str, Any] = {
+                    "action_field": af.action_field,
+                    "projects": [],
+                }
+                for project in af.projects:
+                    project_dict: dict[str, Any] = {"title": project.title}
+                    if project.measures:
+                        project_dict["measures"] = project.measures
+                    if project.indicators:
+                        project_dict["indicators"] = project.indicators
+                    action_field_dict["projects"].append(project_dict)
+                aggregated_data.append(action_field_dict)
+
+            print(f"   ✅ LLM aggregation successful: {len(aggregated_data)} action fields")
+            return aggregated_data
+        else:
+            print("   ❌ LLM returned None - structured output failed")
+            return None
+
+    except Exception as e:
+        print(f"   ❌ Single aggregation error: {type(e).__name__}: {e}")
+        return None
+
+
 def merge_project_details(existing_projects: list[dict], new_project: dict) -> None:
     """
     Merge measures and indicators from a duplicate project.
@@ -314,3 +513,269 @@ def merge_extraction_results(
             merged_structures[field_name] = item
 
     return merged_structures
+
+
+class ExtractionChangeTracker:
+    """Track changes in extraction results across chunks."""
+
+    def __init__(self):
+        self.history = []
+
+    def track_changes(
+        self, old_data: dict[str, Any], new_data: dict[str, Any], chunk_index: int
+    ) -> dict[str, Any]:
+        """
+        Track changes between old and new extraction data.
+
+        Returns a dictionary of changes for logging.
+        """
+        changes: dict[str, Any] = {
+            "chunk": chunk_index + 1,
+            "action_fields": {"added": [], "total": 0},
+            "projects": {"added": 0, "enhanced": 0, "total": 0},
+            "measures": {"added": 0, "total": 0},
+            "indicators": {"added": 0, "total": 0},
+        }
+
+        old_afs = {af["action_field"]: af for af in old_data.get("action_fields", [])}
+        new_afs = {af["action_field"]: af for af in new_data.get("action_fields", [])}
+
+        # Track new action fields
+        for af_name in new_afs:
+            if af_name not in old_afs:
+                changes["action_fields"]["added"].append(af_name)
+
+        changes["action_fields"]["total"] = len(new_afs)
+
+        # Track project changes
+        for af_name, af_data in new_afs.items():
+            old_af = old_afs.get(af_name, {"projects": []})
+            old_projects = {p["title"]: p for p in old_af.get("projects", [])}
+            new_projects = {p["title"]: p for p in af_data.get("projects", [])}
+
+            for proj_name, proj_data in new_projects.items():
+                if proj_name not in old_projects:
+                    changes["projects"]["added"] += 1
+                else:
+                    # Check if enhanced with new measures/indicators
+                    old_proj = old_projects[proj_name]
+                    if len(proj_data.get("measures", [])) > len(
+                        old_proj.get("measures", [])
+                    ) or len(proj_data.get("indicators", [])) > len(
+                        old_proj.get("indicators", [])
+                    ):
+                        changes["projects"]["enhanced"] += 1
+
+                changes["measures"]["total"] += len(proj_data.get("measures", []))
+                changes["indicators"]["total"] += len(proj_data.get("indicators", []))
+
+            changes["projects"]["total"] += len(new_projects)
+
+        # Calculate new additions
+        if chunk_index > 0:  # Not first chunk
+            for af_data in new_afs.values():
+                for proj in af_data.get("projects", []):
+                    old_af = old_afs.get(af_data["action_field"], {"projects": []})
+                    old_proj = next(
+                        (p for p in old_af["projects"] if p["title"] == proj["title"]),
+                        None,
+                    )
+
+                    if old_proj:
+                        old_measures = set(old_proj.get("measures", []))
+                        new_measures = set(proj.get("measures", []))
+                        changes["measures"]["added"] += len(new_measures - old_measures)
+
+                        old_indicators = set(old_proj.get("indicators", []))
+                        new_indicators = set(proj.get("indicators", []))
+                        changes["indicators"]["added"] += len(
+                            new_indicators - old_indicators
+                        )
+                    else:
+                        changes["measures"]["added"] += len(proj.get("measures", []))
+                        changes["indicators"]["added"] += len(
+                            proj.get("indicators", [])
+                        )
+
+        self.history.append(changes)
+        return changes
+
+    def get_summary(self) -> dict[str, Any]:
+        """Get summary of all changes across chunks."""
+        if not self.history:
+            return {}
+
+        return {
+            "total_chunks": len(self.history),
+            "final_counts": self.history[-1] if self.history else {},
+            "progression": [
+                {
+                    "chunk": h["chunk"],
+                    "action_fields": h["action_fields"]["total"],
+                    "projects": h["projects"]["total"],
+                    "indicators": h["indicators"]["total"],
+                }
+                for h in self.history
+            ],
+        }
+
+
+def aggregate_extraction_results(
+    all_chunk_results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Aggregate extraction results from multiple chunks using LLM intelligence.
+
+    This function uses an LLM to intelligently merge, deduplicate, and enhance
+    the extracted data from all chunks into a coherent final structure.
+    """
+    from src.core import ExtractionResult, query_ollama_structured
+
+    if not all_chunk_results:
+        return []
+
+    # Handle large datasets by chunking the aggregation
+    if len(all_chunk_results) > 20:
+        print(f"📊 Large dataset ({len(all_chunk_results)} action fields) - using chunked aggregation")
+        return chunked_aggregation(all_chunk_results)
+
+    # Prepare the data for aggregation
+    chunk_data = json.dumps(all_chunk_results, indent=2, ensure_ascii=False)
+
+    # Check if the JSON is too large (rough estimate)
+    if len(chunk_data) > 30000:  # ~30KB limit
+        print(f"📊 Large JSON ({len(chunk_data)} chars) - using chunked aggregation")
+        return chunked_aggregation(all_chunk_results)
+
+    system_message = """Du bist ein Experte für die Aggregation kommunaler Strategiedokumente.
+
+AUFGABE: Aggregiere die Einzelextrakte aus verschiedenen Textabschnitten zu einer konsistenten Gesamtstruktur.
+
+KRITISCHE REGEL - DEUTSCHE INHALTE:
+⚠️ ABSOLUTE BLOCKADE von englischen Begriffen:
+- "Current", "Future", "State", "Vision", "Plan", "Enhanced", "New", "Findings"
+- "Urban", "Mobility", "Energy", "Data", "Analysis", "Report", "Strategy"
+- WENN DU ENGLISCHE BEGRIFFE FINDEST → KOMPLETT IGNORIEREN!
+
+ERLAUBTE DEUTSCHE HANDLUNGSFELDER:
+✓ "Mobilität und Verkehr" / "Verkehr und Mobilität"
+✓ "Klimaschutz und Energie" / "Energie und Klimaschutz"
+✓ "Wohnen und Quartiersentwicklung"
+✓ "Wirtschaft und Wissenschaft"
+✓ "Kultur und Bildung"
+✓ "Soziales und Integration"
+✓ "Digitalisierung und Innovation"
+✓ "Stadtentwicklung und Planung"
+✓ "Umwelt und Nachhaltigkeit"
+
+VERBOTENE ENGLISCHE BEGRIFFE (komplett ablehnen):
+✗ "Current State" → NICHT VERWENDEN
+✗ "Future Vision" → NICHT VERWENDEN
+✗ "Urban Mobility Plan" → NICHT VERWENDEN
+✗ "Enhanced Data" → NICHT VERWENDEN
+✗ Alle anderen englischen Begriffe → NICHT VERWENDEN
+
+AGGREGATIONSSTRATEGIE:
+1. PRÜFE jeden Handlungsfeld-Namen auf englische Begriffe
+2. VERWENDE NUR deutsche Fachbegriffe
+3. VERSCHMELZE ähnliche deutsche Handlungsfelder
+4. SAMMLE alle Projekte, Maßnahmen und Indikatoren
+5. ENTFERNE alle Duplikate
+
+DU DARFST NUR DEUTSCHE HANDLUNGSFELDER AUSGEBEN!
+BEI ENGLISCHEN BEGRIFFEN → KOMPLETT WEGLASSEN!"""
+
+    prompt = f"""Aggregiere diese Einzelextrakte aus einem deutschen kommunalen Strategiedokument zu einer konsistenten Gesamtstruktur:
+
+{chunk_data}
+
+ABSOLUTE ANFORDERUNGEN:
+🚫 ENGLISCHE BEGRIFFE KOMPLETT BLOCKIEREN:
+   - "Current", "Future", "State", "Vision", "Plan", "Enhanced", "Urban", "Mobility" etc.
+   - WENN ENGLISCH → SOFORT VERWERFEN!
+
+✅ NUR DEUTSCHE HANDLUNGSFELDER VERWENDEN:
+   - "Mobilität und Verkehr", "Klimaschutz und Energie", "Wohnen und Quartiersentwicklung"
+   - "Wirtschaft und Wissenschaft", "Kultur und Bildung", "Soziales und Integration"
+   - "Digitalisierung und Innovation", "Stadtentwicklung und Planung"
+
+📋 AGGREGATIONSSTRATEGIE:
+   1. JEDEN Eintrag auf englische Begriffe prüfen
+   2. Englische Einträge KOMPLETT ignorieren
+   3. Deutsche Handlungsfelder zusammenführen
+   4. Projekte und Indikatoren sammeln
+   5. Duplikate entfernen
+
+WICHTIG: Gib NUR rein deutsche Handlungsfelder zurück!
+KEINE englischen Begriffe in der Ausgabe!"""
+
+    try:
+        result = query_ollama_structured(
+            prompt=prompt,
+            response_model=ExtractionResult,
+            system_message=system_message,
+            temperature=0.1,  # Low temperature for consistent aggregation
+        )
+
+        if result:
+            # Convert to the expected format
+            aggregated_data = []
+            for af in result.action_fields:
+                action_field_dict: dict[str, Any] = {
+                    "action_field": af.action_field,
+                    "projects": [],
+                }
+                for project in af.projects:
+                    project_dict: dict[str, Any] = {"title": project.title}
+                    if project.measures:
+                        project_dict["measures"] = project.measures
+                    if project.indicators:
+                        project_dict["indicators"] = project.indicators
+                    action_field_dict["projects"].append(project_dict)
+                aggregated_data.append(action_field_dict)
+
+            # Final validation to remove any English contamination
+            validated_data = validate_german_only_content(aggregated_data)
+            print(f"✅ Aggregated to {len(validated_data)} clean German action fields")
+            return validated_data
+        else:
+            print("⚠️ Aggregation failed, using simple deduplication")
+            return simple_deduplication_fallback(all_chunk_results)
+
+    except Exception as e:
+        print(f"⚠️ Aggregation error: {e}, using fallback")
+        return simple_deduplication_fallback(all_chunk_results)
+
+
+def simple_deduplication_fallback(
+    all_chunk_results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Fallback deduplication if LLM aggregation fails."""
+    deduplicated_data: dict[str, Any] = {}
+
+    for item in all_chunk_results:
+        field_name = item.get("action_field", "")
+
+        # Skip English action fields (expanded list)
+        english_terms = [
+            "current", "future", "state", "vision", "enhanced", "new findings",
+            "urban", "mobility", "plan", "strategy", "analysis", "report",
+            "data", "findings", "energy", "overview", "summary", "background"
+        ]
+        if any(term in field_name.lower() for term in english_terms):
+            print(f"🚫 Filtering out English action field: {field_name}")
+            continue
+
+        if field_name in deduplicated_data:
+            # Merge projects
+            existing_projects = deduplicated_data[field_name]["projects"]
+            new_projects = item.get("projects", [])
+
+            existing_titles = {p["title"] for p in existing_projects}
+            for project in new_projects:
+                if project["title"] not in existing_titles:
+                    existing_projects.append(project)
+        else:
+            deduplicated_data[field_name] = item
+
+    return list(deduplicated_data.values())

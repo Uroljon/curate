@@ -8,7 +8,7 @@ import os
 
 # Model Configuration
 MODEL_NAME = "qwen2.5:7b"  # Options: "qwen2.5:7b", "qwen2.5:14b", "llama3:8b", etc.
-MODEL_TEMPERATURE = 0.0  # 0.0 for deterministic output
+MODEL_TEMPERATURE = 0.2  # Research-backed: 0.2-0.3 for PDF extraction (balances determinism with flexibility)
 MODEL_TIMEOUT = 180  # seconds
 
 # API Configuration
@@ -27,11 +27,12 @@ SEMANTIC_CHUNK_MAX_CHARS = 7500  # Maximum characters per semantic chunk
 SEMANTIC_CHUNK_TARGET_CHARS = 5000  # Target size for semantic chunks
 SEMANTIC_CHUNK_MIN_CHARS = 1000  # Minimum characters per semantic chunk
 
-# Structured Output Configuration
+# Structured Output Configuration - Research-backed optimal parameters
 STRUCTURED_OUTPUT_OPTIONS = {
-    "temperature": MODEL_TEMPERATURE,
-    "top_p": 0.9,
-    "num_predict": 2000,  # Larger for structured output
+    "temperature": MODEL_TEMPERATURE,  # 0.2 for balance of determinism and flexibility
+    "top_p": 0.4,  # Research shows 0.3-0.5 optimal for factual extraction
+    "top_k": 40,   # Focused candidate set for reliable JSON generation
+    "num_predict": 3000,  # Larger for complex German municipal documents
     "stop": ["</json>", "```"],
 }
 
