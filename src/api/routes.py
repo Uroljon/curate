@@ -2,7 +2,10 @@
 
 import json
 import os
+import re
 import time
+import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import Request, UploadFile
@@ -54,7 +57,9 @@ async def upload_pdf_with_pages(request: Request, file: UploadFile):
     start_time = time.time()
 
     # Log API request
-    log_api_request("/upload_with_pages", "POST", {"filename": file.filename}, request.client.host)
+    log_api_request(
+        "/upload_with_pages", "POST", {"filename": file.filename}, request.client.host
+    )
 
     # Get monitor for this extraction
     monitor = get_extraction_monitor(file.filename)
@@ -62,7 +67,13 @@ async def upload_pdf_with_pages(request: Request, file: UploadFile):
     try:
         # Stage 1: File upload
         monitor.start_stage("file_upload", filename=file.filename, size=file.size)
-        file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+
+        # Generate unique filename to prevent race conditions
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        unique_id = str(uuid.uuid4())[:8]
+        safe_filename = f"{timestamp}_{unique_id}_{file.filename}"
+        file_path = os.path.join(UPLOAD_FOLDER, safe_filename)
+
         with open(file_path, "wb") as f:
             content = await file.read()
             f.write(content)
@@ -72,8 +83,8 @@ async def upload_pdf_with_pages(request: Request, file: UploadFile):
         monitor.start_stage("text_extraction")
         page_aware_text, extraction_metadata = extract_text_with_ocr_fallback(file_path)
 
-        # Save page-aware text as .txt file (for debugging)
-        txt_filename = os.path.splitext(file.filename)[0] + "_pages.txt"
+        # Save page-aware text as .txt file (for debugging) with safe filename
+        txt_filename = os.path.splitext(safe_filename)[0] + "_pages.txt"
         txt_path = os.path.join(UPLOAD_FOLDER, txt_filename)
         with open(txt_path, "w", encoding="utf-8") as txt_file:
             for text, page_num in page_aware_text:
@@ -88,7 +99,9 @@ async def upload_pdf_with_pages(request: Request, file: UploadFile):
             pages_with_content=extraction_metadata["pages_with_content"],
             ocr_pages=extraction_metadata["ocr_pages"],
             native_pages=extraction_metadata["native_pages"],
-            ocr_percentage=extraction_metadata["extraction_method_ratio"]["ocr_percentage"],
+            ocr_percentage=extraction_metadata["extraction_method_ratio"][
+                "ocr_percentage"
+            ],
         )
 
         # Stage 3: Page-aware semantic chunking
@@ -102,28 +115,32 @@ async def upload_pdf_with_pages(request: Request, file: UploadFile):
         chunk_texts = [chunk["text"] for chunk in chunks_with_pages]
         chunk_metrics = ChunkQualityMonitor.analyze_chunks(chunk_texts, "semantic")
 
-        # Save chunked text with page info
-        chunks_filename = os.path.splitext(file.filename)[0] + "_chunks_with_pages.txt"
+        # Save chunked text with page info using safe filename
+        chunks_filename = os.path.splitext(safe_filename)[0] + "_chunks_with_pages.txt"
         chunks_path = os.path.join(UPLOAD_FOLDER, chunks_filename)
         with open(chunks_path, "w", encoding="utf-8") as chunks_file:
             for i, chunk in enumerate(chunks_with_pages, 1):
-                chunks_file.write(f"\n\n# ====== CHUNK {i} (Pages: {chunk['pages']}) ======\n\n")
+                chunks_file.write(
+                    f"\n\n# ====== CHUNK {i} (Pages: {chunk['pages']}) ======\n\n"
+                )
                 chunks_file.write(chunk["text"])
 
         monitor.end_stage(
             "semantic_chunking",
             chunk_count=len(chunks_with_pages),
             chunk_metrics=chunk_metrics,
-            page_aware=True
+            page_aware=True,
         )
 
         # Stage 4: Page-aware embedding generation
         monitor.start_stage("embedding_generation")
-        embed_chunks_with_pages(chunks_with_pages, source_id=file.filename)
-        monitor.end_stage("embedding_generation", chunks_embedded=len(chunks_with_pages))
+        embed_chunks_with_pages(chunks_with_pages, source_id=safe_filename)
+        monitor.end_stage(
+            "embedding_generation", chunks_embedded=len(chunks_with_pages)
+        )
 
         # Prepare response
-        page_stats = {}
+        page_stats: dict[int, int] = {}
         for chunk in chunks_with_pages:
             for page in chunk["pages"]:
                 page_stats[page] = page_stats.get(page, 0) + 1
@@ -135,12 +152,16 @@ async def upload_pdf_with_pages(request: Request, file: UploadFile):
             "page_attribution_enabled": True,
             "chunk_quality": {
                 "avg_size": chunk_metrics["size_stats"]["avg"],
-                "with_structure": chunk_metrics["structural_stats"].get("chunks_with_structure", 0),
+                "with_structure": chunk_metrics["structural_stats"].get(
+                    "chunks_with_structure", 0
+                ),
             },
             "page_coverage": {
                 "total_pages": len(page_stats),
                 "chunks_per_page": dict(sorted(page_stats.items())),
-            }
+            },
+            "source_id": safe_filename,  # Return the safe filename for subsequent API calls
+            "original_filename": file.filename,  # Keep original filename for reference
         }
 
         # Log successful completion
@@ -152,7 +173,23 @@ async def upload_pdf_with_pages(request: Request, file: UploadFile):
 
         return JSONResponse(content=response_data)
 
+    except FileNotFoundError as e:
+        monitor.log_error("upload", e)
+        response_time = time.time() - start_time
+        log_api_response("/upload_with_pages", 404, response_time)
+        raise
+    except PermissionError as e:
+        monitor.log_error("upload", e)
+        response_time = time.time() - start_time
+        log_api_response("/upload_with_pages", 403, response_time)
+        raise
+    except OSError as e:
+        monitor.log_error("upload", e)
+        response_time = time.time() - start_time
+        log_api_response("/upload_with_pages", 500, response_time)
+        raise
     except Exception as e:
+        # Final fallback for unexpected errors
         monitor.log_error("upload", e)
         response_time = time.time() - start_time
         log_api_response("/upload_with_pages", 500, response_time)
@@ -172,7 +209,13 @@ async def upload_pdf(request: Request, file: UploadFile):
     try:
         # Stage 1: File upload
         monitor.start_stage("file_upload", filename=file.filename, size=file.size)
-        file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+
+        # Generate unique filename to prevent race conditions
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        unique_id = str(uuid.uuid4())[:8]
+        safe_filename = f"{timestamp}_{unique_id}_{file.filename}"
+        file_path = os.path.join(UPLOAD_FOLDER, safe_filename)
+
         with open(file_path, "wb") as f:
             content = await file.read()
             f.write(content)
@@ -249,7 +292,23 @@ async def upload_pdf(request: Request, file: UploadFile):
 
         return JSONResponse(content=response_data)
 
+    except FileNotFoundError as e:
+        monitor.log_error("upload", e)
+        response_time = time.time() - start_time
+        log_api_response("/upload", 404, response_time)
+        raise
+    except PermissionError as e:
+        monitor.log_error("upload", e)
+        response_time = time.time() - start_time
+        log_api_response("/upload", 403, response_time)
+        raise
+    except OSError as e:
+        monitor.log_error("upload", e)
+        response_time = time.time() - start_time
+        log_api_response("/upload", 500, response_time)
+        raise
     except Exception as e:
+        # Final fallback for unexpected errors
         monitor.log_error("upload", e)
         response_time = time.time() - start_time
         log_api_response("/upload", 500, response_time)
@@ -273,7 +332,7 @@ async def extract_structure(
     action_fields = extract_all_action_fields(
         optimized_chunks,
         log_file_path=llm_dialog_path,
-        log_context_prefix="Regular Extraction"
+        log_context_prefix="Regular Extraction",
     )
 
     if not action_fields:
@@ -284,7 +343,7 @@ async def extract_structure(
         optimized_chunks,
         action_fields,
         log_file_path=llm_dialog_path,
-        log_context_prefix="Regular Extraction"
+        log_context_prefix="Regular Extraction",
     )
 
     if not all_extracted_data:
@@ -344,11 +403,30 @@ async def extract_structure_fast(
             for chunk in page_aware_chunks:
                 chunk_text = chunk["text"]
                 chunk_pages = chunk["pages"]
-                if chunk_pages:
-                    # For multi-page chunks, assign the text to the first page
-                    # This is a simplification but preserves the page attribution
-                    primary_page = chunk_pages[0]
-                    page_aware_text.append((chunk_text, primary_page))
+
+                if not chunk_pages:
+                    # No page info, use page 1
+                    page_aware_text.append((chunk_text, 1))
+                elif len(chunk_pages) == 1:
+                    # Single page chunk
+                    page_aware_text.append((chunk_text, chunk_pages[0]))
+                else:
+                    # Multi-page chunk - distribute text proportionally
+                    # This is still an approximation but better than using only first page
+                    lines = chunk_text.split("\n")
+                    lines_per_page = max(1, len(lines) // len(chunk_pages))
+
+                    for i, page_num in enumerate(chunk_pages):
+                        start_line = i * lines_per_page
+                        if i == len(chunk_pages) - 1:
+                            # Last page gets remaining lines
+                            page_text = "\n".join(lines[start_line:])
+                        else:
+                            end_line = start_line + lines_per_page
+                            page_text = "\n".join(lines[start_line:end_line])
+
+                        if page_text.strip():  # Only add non-empty text
+                            page_aware_text.append((page_text, page_num))
         else:
             # Fallback: create page_aware_text with page 1 for all chunks
             print("⚠️ No page information available, using fallback chunking")
@@ -360,12 +438,15 @@ async def extract_structure_fast(
         monitor.start_stage("llm_chunk_preparation")
         # Use page-aware chunking
         from src.processing.chunker import chunk_for_llm_with_pages
+
         optimized_chunks_with_pages = chunk_for_llm_with_pages(
             page_aware_text, max_chars=max_chars, min_chars=min_chars
         )
 
         # Extract just the text for compatibility with existing code
-        optimized_chunks = [chunk_text for chunk_text, _ in optimized_chunks_with_pages]
+        optimized_chunks: list[str] = [
+            chunk_text for chunk_text, _ in optimized_chunks_with_pages
+        ]
 
         # Analyze LLM chunk quality
         llm_chunk_metrics = ChunkQualityMonitor.analyze_chunks(optimized_chunks, "llm")
@@ -379,16 +460,18 @@ async def extract_structure_fast(
         # Apply chunk limit if configured
         if FAST_EXTRACTION_MAX_CHUNKS > 0:
             optimized_chunks = optimized_chunks[:FAST_EXTRACTION_MAX_CHUNKS]
-            optimized_chunks_with_pages = optimized_chunks_with_pages[:FAST_EXTRACTION_MAX_CHUNKS]
+            optimized_chunks_with_pages = optimized_chunks_with_pages[
+                :FAST_EXTRACTION_MAX_CHUNKS
+            ]
             print(f"⚡ Fast mode: Processing only first {len(optimized_chunks)} chunks")
 
         # Save LLM chunks as separate file
         llm_chunks_filename = f"{source_id}_llm_chunks.txt"
         llm_chunks_path = os.path.join(UPLOAD_FOLDER, llm_chunks_filename)
         with open(llm_chunks_path, "w", encoding="utf-8") as llm_chunks_file:
-            for i, chunk in enumerate(optimized_chunks, 1):
+            for i, chunk_text in enumerate(optimized_chunks, 1):
                 llm_chunks_file.write(f"\n\n# ====== LLM CHUNK {i} ======\n\n")
-                llm_chunks_file.write(chunk)
+                llm_chunks_file.write(chunk_text)
 
         # Set up LLM dialog log file path
         llm_dialog_filename = f"{source_id}_llm_dialog.txt"
@@ -405,17 +488,17 @@ async def extract_structure_fast(
         all_chunk_results = []
         chunk_timings = []
 
-        for i, chunk in enumerate(optimized_chunks):
+        for i, chunk_text in enumerate(optimized_chunks):
             chunk_start = time.time()
             print(
-                f"⚡ Processing chunk {i+1}/{len(optimized_chunks)} ({len(chunk)} chars)"
+                f"⚡ Processing chunk {i+1}/{len(optimized_chunks)} ({len(chunk_text)} chars)"
             )
 
             # Extract independently from each chunk
             chunk_data = extract_structures_with_retry(
-                chunk,
+                chunk_text,
                 log_file_path=llm_dialog_path,
-                log_context=f"Fast Extraction - Chunk {i+1}/{len(optimized_chunks)} ({len(chunk)} chars)"
+                log_context=f"Fast Extraction - Chunk {i+1}/{len(optimized_chunks)} ({len(chunk_text)} chars)",
             )
 
             chunk_time = time.time() - chunk_start
@@ -437,7 +520,7 @@ async def extract_structure_fast(
         aggregated_fields = aggregate_extraction_results(
             all_chunk_results,
             log_file_path=llm_dialog_path,
-            log_context_prefix="Fast Extraction Aggregation"
+            log_context_prefix="Fast Extraction Aggregation",
         )
 
         # Final deduplication to ensure unique action fields
@@ -467,64 +550,108 @@ async def extract_structure_fast(
         if page_aware_chunks:
             # Create chunks that map LLM chunk IDs to their page numbers
             llm_page_aware_chunks = []
-            for chunk_id, (chunk_text, chunk_pages) in enumerate(optimized_chunks_with_pages):
-                llm_page_aware_chunks.append({
-                    "text": chunk_text,
-                    "pages": chunk_pages,
-                    "chunk_id": chunk_id
-                })
+            for chunk_id, (chunk_text, chunk_pages) in enumerate(
+                optimized_chunks_with_pages
+            ):
+                llm_page_aware_chunks.append(
+                    {"text": chunk_text, "pages": chunk_pages, "chunk_id": chunk_id}
+                )
 
             # Try to load original page-aware text for precise attribution
             original_page_text = []
-            pages_file = os.path.join(UPLOAD_FOLDER, f"{source_id}_pages.txt")
+            pages_file = os.path.join(
+                UPLOAD_FOLDER, f"{os.path.splitext(source_id)[0]}_pages.txt"
+            )
             if os.path.exists(pages_file):
                 print(f"📄 Loading original page text from {pages_file}")
-                with open(pages_file, encoding="utf-8") as f:
-                    content = f.read()
-                    # Parse the page-aware text file
-                    page_sections = content.split("\n\n# ====== PAGE ")
-                    for section in page_sections[1:]:  # Skip first empty section
-                        if section.strip():
-                            lines = section.split("\n", 1)
-                            if len(lines) >= 2:
-                                page_num = int(lines[0].split(" ======")[0])
-                                page_text = lines[1] if len(lines) > 1 else ""
-                                original_page_text.append((page_text, page_num))
-                print(f"   ✅ Loaded {len(original_page_text)} pages of original text")
+                try:
+                    with open(pages_file, encoding="utf-8") as f:
+                        content = f.read()
+
+                    # Use regex for more robust parsing
+                    page_pattern = re.compile(
+                        r"# ====== PAGE (\d+) ======\n(.*?)(?=\n\n# ====== PAGE|\Z)",
+                        re.DOTALL,
+                    )
+                    matches = page_pattern.findall(content)
+
+                    for page_num_str, page_text in matches:
+                        try:
+                            page_num = int(page_num_str)
+                            original_page_text.append((page_text.strip(), page_num))
+                        except ValueError:
+                            print(f"   ⚠️ Skipping invalid page number: {page_num_str}")
+
+                    print(
+                        f"   ✅ Loaded {len(original_page_text)} pages of original text"
+                    )
+                except ValueError as e:
+                    print(f"   ⚠️ Error parsing page numbers: {e}")
+                    # Continue without page attribution rather than failing
+                except OSError as e:
+                    print(f"   ⚠️ Error reading page text file: {e}")
+                    # Continue without page attribution rather than failing
+                except Exception as e:
+                    print(
+                        f"   ⚠️ Unexpected error parsing page text: {type(e).__name__}: {e}"
+                    )
+                    # Continue without page attribution rather than failing
             else:
                 print(f"   ⚠️ Original page text file not found: {pages_file}")
 
-            print(f"\n🔍 Adding source attribution using {len(llm_page_aware_chunks)} LLM page-aware chunks...")
-            final_structures = add_source_attributions(final_action_fields, llm_page_aware_chunks, original_page_text)
+            print(
+                f"\n🔍 Adding source attribution using {len(llm_page_aware_chunks)} LLM page-aware chunks..."
+            )
+            final_structures = add_source_attributions(
+                final_action_fields, llm_page_aware_chunks, original_page_text
+            )
 
             # Count attribution statistics
-            attribution_stats["total_projects"] = sum(len(af["projects"]) for af in final_structures)
+            attribution_stats["total_projects"] = sum(
+                len(af["projects"]) for af in final_structures
+            )
             attribution_stats["projects_with_sources"] = sum(
-                1 for af in final_structures
+                1
+                for af in final_structures
                 for project in af["projects"]
                 if project.get("sources")
             )
-            attribution_stats["attribution_success_rate"] = round(
-                attribution_stats["projects_with_sources"] / attribution_stats["total_projects"] * 100, 1
-            ) if attribution_stats["total_projects"] > 0 else 0.0
+            attribution_stats["attribution_success_rate"] = (
+                round(
+                    attribution_stats["projects_with_sources"]
+                    / attribution_stats["total_projects"]
+                    * 100,
+                    1,
+                )
+                if attribution_stats["total_projects"] > 0
+                else 0.0
+            )
 
             monitor.end_stage(
                 "source_attribution",
                 page_aware_chunks=len(page_aware_chunks),
                 projects_with_sources=attribution_stats["projects_with_sources"],
                 total_projects=attribution_stats["total_projects"],
-                attribution_success_rate=attribution_stats["attribution_success_rate"]
+                attribution_success_rate=attribution_stats["attribution_success_rate"],
             )
         else:
             print("INFO: No page attribution data available - using legacy chunks")
             final_structures = final_action_fields
 
             # Calculate stats even without attribution for accurate reporting
-            attribution_stats["total_projects"] = sum(len(af["projects"]) for af in final_structures)
-            attribution_stats["projects_with_sources"] = 0  # No sources without page-aware chunks
-            attribution_stats["attribution_success_rate"] = 0.0  # No attribution possible
+            attribution_stats["total_projects"] = sum(
+                len(af["projects"]) for af in final_structures
+            )
+            attribution_stats["projects_with_sources"] = (
+                0  # No sources without page-aware chunks
+            )
+            attribution_stats["attribution_success_rate"] = (
+                0.0  # No attribution possible
+            )
 
-            monitor.end_stage("source_attribution", page_aware_chunks=0, attribution_enabled=False)
+            monitor.end_stage(
+                "source_attribution", page_aware_chunks=0, attribution_enabled=False
+            )
 
         # Calculate extraction time
         extraction_time = time.time() - start_time
@@ -558,7 +685,9 @@ async def extract_structure_fast(
                 "projects_with_indicators": indicators_count,
                 "page_attribution_enabled": True,
                 "projects_with_sources": attribution_stats["projects_with_sources"],
-                "attribution_success_rate": round(attribution_stats["attribution_success_rate"], 1),
+                "attribution_success_rate": round(
+                    attribution_stats["attribution_success_rate"], 1
+                ),
             },
         }
 
@@ -570,9 +699,21 @@ async def extract_structure_fast(
 
         # Ensure response is JSON serializable
         from fastapi.encoders import jsonable_encoder
+
         return JSONResponse(content=jsonable_encoder(response_data))
 
+    except FileNotFoundError as e:
+        monitor.log_error("extraction", e)
+        response_time = time.time() - start_time
+        log_api_response("/extract_structure_fast", 404, response_time)
+        raise
+    except ValueError as e:
+        monitor.log_error("extraction", e)
+        response_time = time.time() - start_time
+        log_api_response("/extract_structure_fast", 400, response_time)
+        raise
     except Exception as e:
+        # Final fallback for unexpected errors
         monitor.log_error("extraction", e)
         response_time = time.time() - start_time
         log_api_response("/extract_structure_fast", 500, response_time)

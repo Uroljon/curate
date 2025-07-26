@@ -1,6 +1,6 @@
 # llm.py
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TypeVar
 
 import requests
@@ -72,7 +72,15 @@ def query_ollama_structured(
 
             # Log the dialog if log file path is provided
             if log_file_path:
-                _log_llm_dialog(log_file_path, system_message, prompt, content, log_context, model, temperature)
+                _log_llm_dialog(
+                    log_file_path,
+                    system_message,
+                    prompt,
+                    content,
+                    log_context,
+                    model,
+                    temperature,
+                )
 
             # Try to parse and validate with Pydantic
             try:
@@ -122,7 +130,7 @@ def _log_llm_dialog(
         temperature: Temperature setting used
     """
     try:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
         # Read existing content if file exists to get interaction counter
         interaction_num = 1

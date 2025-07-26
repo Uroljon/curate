@@ -1,6 +1,7 @@
 import os
 import uuid
 from collections.abc import Mapping
+from typing import Any
 
 # Prevent tokenizer parallelism warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -47,12 +48,14 @@ def embed_chunks_with_pages(chunks_with_pages: list[dict], source_id: str) -> No
             "chunk_index": i,
             "chunk_id": chunk["chunk_id"],
             "pages": str(chunk["pages"]),  # Store as string for ChromaDB compatibility
-            "page_count": len(chunk["pages"])
+            "page_count": len(chunk["pages"]),
         }
         metadata.append(meta)
 
     collection.add(documents=texts, embeddings=embeddings, ids=ids, metadatas=metadata)
-    print(f"✅ Stored {len(chunks_with_pages)} page-aware chunks into ChromaDB as '{source_id}'")
+    print(
+        f"✅ Stored {len(chunks_with_pages)} page-aware chunks into ChromaDB as '{source_id}'"
+    )
 
 
 def embed_chunks(chunks: list[str], source_id: str) -> None:
@@ -89,10 +92,10 @@ def get_all_chunks_for_document(source_id: str) -> list[dict]:
         return []
 
     # Create list of chunks with metadata
-    chunks = []
+    chunks: list[dict[str, Any]] = []
     metadatas = results.get("metadatas") or []
     for doc, meta in zip(results["documents"], metadatas, strict=False):
-        chunk_info = {
+        chunk_info: dict[str, Any] = {
             "text": doc,
             "chunk_index": meta.get("chunk_index", 0),
             "source": meta.get("source"),
@@ -103,11 +106,16 @@ def get_all_chunks_for_document(source_id: str) -> list[dict]:
             try:
                 # Parse pages from string format
                 import ast
-                pages = ast.literal_eval(meta["pages"])
+
+                pages_raw = meta["pages"]
+                if isinstance(pages_raw, str):
+                    pages = ast.literal_eval(pages_raw)
+                else:
+                    pages = pages_raw if isinstance(pages_raw, list) else []
                 chunk_info["pages"] = pages
                 chunk_info["chunk_id"] = meta.get("chunk_id")
                 chunk_info["page_count"] = meta.get("page_count", len(pages))
-            except (ValueError, SyntaxError):
+            except (ValueError, SyntaxError, TypeError):
                 # Fallback for malformed page data
                 chunk_info["pages"] = []
 
@@ -174,6 +182,7 @@ def query_chunks(
         if isinstance(meta, dict) and "pages" in meta and meta["pages"]:
             try:
                 import ast
+
                 pages = ast.literal_eval(meta["pages"])
                 result["pages"] = pages
                 result["chunk_id"] = meta.get("chunk_id")

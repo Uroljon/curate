@@ -422,7 +422,9 @@ def chunk_for_llm(
 
 
 def chunk_for_llm_with_pages(
-    page_aware_text: list[tuple[str, int]], max_chars: int = 20000, min_chars: int = 15000
+    page_aware_text: list[tuple[str, int]],
+    max_chars: int = 20000,
+    min_chars: int = 15000,
 ) -> list[tuple[str, list[int]]]:
     """
     Prepare page-aware chunks for LLM processing.
@@ -462,7 +464,9 @@ def chunk_for_llm_with_pages(
         elif text_size > max_chars:
             # Single page too large - flush current and add oversized page as-is
             if current_texts:
-                result_chunks.append(("\n\n".join(current_texts), sorted(current_pages)))
+                result_chunks.append(
+                    ("\n\n".join(current_texts), sorted(current_pages))
+                )
             result_chunks.append((page_text, [page_num]))
             current_texts = []
             current_pages = set()
@@ -927,11 +931,9 @@ def chunk_for_embedding_with_pages(
             if not (chunk_end <= start_pos or chunk_start >= end_pos):
                 chunk_pages.add(page_num)
 
-        chunks_with_pages.append({
-            "text": chunk_text,
-            "pages": sorted(chunk_pages),
-            "chunk_id": chunk_id
-        })
+        chunks_with_pages.append(
+            {"text": chunk_text, "pages": sorted(chunk_pages), "chunk_id": chunk_id}
+        )
         chunk_id += 1
 
     return chunks_with_pages
@@ -956,7 +958,9 @@ def chunk_for_embedding_enhanced(
         List of chunks (strings only for compatibility)
     """
     # Handle page-aware text input (new functionality)
-    if isinstance(text_or_path, list) and all(isinstance(item, tuple) and len(item) == 2 for item in text_or_path):
+    if isinstance(text_or_path, list) and all(
+        isinstance(item, tuple) and len(item) == 2 for item in text_or_path
+    ):
         # This is page-aware text format: list[tuple[str, int]]
         print(f"Using page-aware text chunking with {len(text_or_path)} pages")
         page_chunks = chunk_for_embedding_with_pages(text_or_path, max_chars)

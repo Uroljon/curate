@@ -6,8 +6,15 @@ the large extraction functions in routes.py.
 """
 
 import json
+import re
+from functools import lru_cache
 from typing import Any
 
+from src.core.config import (
+    AGGREGATION_CHUNK_SIZE,
+    MIN_QUOTE_LENGTH,
+    QUOTE_MATCH_THRESHOLD,
+)
 from src.extraction.structure_extractor import (
     extract_action_fields_only,
     extract_project_details,
@@ -37,7 +44,11 @@ def prepare_chunks_for_extraction(
     return chunk_for_llm(raw_texts, max_chars=max_chars, min_chars=min_chars)
 
 
-def extract_all_action_fields(chunks: list[str], log_file_path: str | None = None, log_context_prefix: str | None = None) -> list[str]:
+def extract_all_action_fields(
+    chunks: list[str],
+    log_file_path: str | None = None,
+    log_context_prefix: str | None = None,
+) -> list[str]:
     """
     Stage 1: Extract action fields from chunks.
 
@@ -51,7 +62,9 @@ def extract_all_action_fields(chunks: list[str], log_file_path: str | None = Non
     print("STAGE 1: DISCOVERING ACTION FIELDS")
     print("=" * 60)
 
-    action_fields = extract_action_fields_only(chunks, log_file_path, log_context_prefix)
+    action_fields = extract_action_fields_only(
+        chunks, log_file_path, log_context_prefix
+    )
 
     if not action_fields:
         print("⚠️ No action fields found in Stage 1")
@@ -60,7 +73,10 @@ def extract_all_action_fields(chunks: list[str], log_file_path: str | None = Non
 
 
 def extract_projects_and_details(
-    chunks: list[str], action_fields: list[str], log_file_path: str | None = None, log_context_prefix: str | None = None
+    chunks: list[str],
+    action_fields: list[str],
+    log_file_path: str | None = None,
+    log_context_prefix: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Stage 2 & 3: Extract projects and their details for each action field.
@@ -81,7 +97,7 @@ def extract_projects_and_details(
         )
         print("=" * 60)
 
-        projects = extract_projects_for_field(chunks, action_field, log_file_path, f"{log_context_prefix} - Field {field_idx + 1}/{len(action_fields)}" if log_context_prefix else f"Field {field_idx + 1}/{len(action_fields)}")
+        projects = extract_projects_for_field(chunks, action_field)
 
         if not projects:
             print(f"   ⚠️ No projects found for {action_field}")
@@ -89,7 +105,7 @@ def extract_projects_and_details(
 
         # Stage 3: Extract details for each project
         action_field_data = extract_project_details_for_field(
-            chunks, action_field, projects, log_file_path, f"{log_context_prefix} - Field {field_idx + 1}/{len(action_fields)}" if log_context_prefix else f"Field {field_idx + 1}/{len(action_fields)}"
+            chunks, action_field, projects
         )
         all_extracted_data.append(action_field_data)
 
@@ -180,7 +196,7 @@ def validate_german_only_content(
     This serves as a safety net to catch any English content that might have
     slipped through the LLM aggregation process.
     """
-    # Comprehensive list of English terms to block
+    # More comprehensive list with word boundaries
     english_terms = [
         "current",
         "future",
@@ -211,30 +227,29 @@ def validate_german_only_content(
         "review",
     ]
 
+    # Create pattern with word boundaries
+    english_pattern = re.compile(
+        r"\b(" + "|".join(re.escape(term) for term in english_terms) + r")\b",
+        re.IGNORECASE,
+    )
+
     validated_fields = []
 
     for action_field in action_fields:
-        field_name = action_field.get("action_field", "").lower()
+        field_name = action_field.get("action_field", "")
 
-        # Check if action field contains English terms
-        contains_english = any(term in field_name for term in english_terms)
-
-        if contains_english:
-            print(
-                f"🚫 FINAL FILTER: Removing English action field '{action_field.get('action_field')}'"
-            )
+        # Check if action field contains English terms (with word boundaries)
+        if english_pattern.search(field_name):
+            print(f"🚫 FINAL FILTER: Removing English action field '{field_name}'")
             continue
 
         # Also validate project titles
         validated_projects = []
         for project in action_field.get("projects", []):
-            project_title = project.get("title", "").lower()
-            project_has_english = any(term in project_title for term in english_terms)
+            project_title = project.get("title", "")
 
-            if project_has_english:
-                print(
-                    f"🚫 FINAL FILTER: Removing English project '{project.get('title')}'"
-                )
+            if english_pattern.search(project_title):
+                print(f"🚫 FINAL FILTER: Removing English project '{project_title}'")
                 continue
 
             validated_projects.append(project)
@@ -246,7 +261,7 @@ def validate_german_only_content(
             validated_fields.append(validated_field)
         else:
             print(
-                f"🚫 FINAL FILTER: Removing action field '{action_field.get('action_field')}' - no valid projects"
+                f"🚫 FINAL FILTER: Removing action field '{field_name}' - no valid projects"
             )
 
     return validated_fields
@@ -254,7 +269,7 @@ def validate_german_only_content(
 
 def chunked_aggregation(
     all_chunk_results: list[dict[str, Any]],
-    chunk_size: int = 15,
+    chunk_size: int = AGGREGATION_CHUNK_SIZE,
     recursion_depth: int = 0,
     max_recursion: int = 2,
     log_file_path: str | None = None,
@@ -281,7 +296,11 @@ def chunked_aggregation(
         )
 
         chunk_data = json.dumps(chunk, indent=2, ensure_ascii=False)
-        log_context = f"{log_context_prefix} - Aggregation Pass {recursion_depth + 1}, Chunk {i//chunk_size + 1} ({len(chunk)} fields)" if log_context_prefix else None
+        log_context = (
+            f"{log_context_prefix} - Aggregation Pass {recursion_depth + 1}, Chunk {i//chunk_size + 1} ({len(chunk)} fields)"
+            if log_context_prefix
+            else None
+        )
         result = perform_single_aggregation(chunk_data, log_file_path, log_context)
 
         if result:
@@ -303,7 +322,12 @@ def chunked_aggregation(
         all_chunk_results
     ):
         return chunked_aggregation(
-            intermediate_results, chunk_size, recursion_depth + 1, max_recursion, log_file_path, log_context_prefix
+            intermediate_results,
+            chunk_size,
+            recursion_depth + 1,
+            max_recursion,
+            log_file_path,
+            log_context_prefix,
         )
 
     elif len(intermediate_results) > 12:
@@ -313,15 +337,21 @@ def chunked_aggregation(
     return intermediate_results
 
 
-def perform_single_aggregation(chunk_data: str, log_file_path: str | None = None, log_context: str | None = None) -> list[dict[str, Any]] | None:
+def perform_single_aggregation(
+    chunk_data: str, log_file_path: str | None = None, log_context: str | None = None
+) -> list[dict[str, Any]] | None:
     """
     Perform a single aggregation pass on JSON data.
     """
-    from src.core import ExtractionResult, query_ollama_structured
+    from src.core import MODEL_TEMPERATURE
+    from src.core.llm import query_ollama_structured
+    from src.core.schemas import ExtractionResult
 
     system_message = """Sie sind ein Experte für die Konsolidierung von Handlungsfeldern aus deutschen kommunalen Strategiedokumenten.
-Ihre Aufgabe ist es, ähnliche Handlungsfelder intelligent zusammenzuführen und eine reduzierte Liste von maximal 12 konsolidierten Handlungsfeldern zu erstellen.
-Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der vorgegebenen Struktur entspricht. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
+Ihre Aufgabe ist es, ähnliche Handlungsfelder intelligent zusammenzuführen und eine reduzierte Liste von
+maximal 12 konsolidierten Handlungsfeldern zu erstellen.
+Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der vorgegebenen Struktur entspricht.
+KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
 
     prompt = f"""Sie erhalten {chunk_data.count('"action_field"')} Handlungsfelder zur Konsolidierung.
 
@@ -329,13 +359,15 @@ Ihre Aufgabe ist es, diese Liste durch intelligente Zusammenführung ähnlicher 
 
 ZIEL: Erstellen Sie eine Liste von maximal 12 konsolidierten Handlungsfeldern (idealerweise 8-12).
 
-ERFOLGSMETRIK: Erreichen Sie mindestens 50% Reduktion der ursprünglichen Anzahl der Handlungsfelder.
+ERFOLGSMETRIK: Konsolidieren Sie nur wirklich ähnliche Bereiche. Behalten Sie die Vielfalt und
+Granularität der kommunalen Handlungsfelder bei. Streben Sie 10-15 konsolidierte Handlungsfelder an.
 
 STRATEGIE:
 1. Analysieren Sie die bereitgestellten Handlungsfelder nach Themenähnlichkeit.
 2. Gruppieren Sie verwandte Bereiche unter aussagekräftige Oberkategorien.
 3. Verschmelzen Sie die Inhalte vollständig: Alle Projekte, Maßnahmen und Indikatoren der zusammengeführten Felder müssen erhalten bleiben.
 4. Verwenden Sie ausschließlich deutsche Fachterminologie. Englische Begriffe sind komplett zu eliminieren.
+5. Behalten Sie die Granularität bei: Verschiedene kommunale Fachbereiche sollten getrennt bleiben.
 
 Beachten Sie folgende Konsolidierungsregeln und Beispiele:
 ✅ "Klimaschutz" + "Energie" + "Nachhaltigkeit" + "Umwelt" → "Klimaschutz, Energie und Umwelt"
@@ -346,6 +378,10 @@ Beachten Sie folgende Konsolidierungsregeln und Beispiele:
 ✅ "Soziales" + "Integration" + "Teilhabe" + "Gesundheit" → "Soziales, Integration und Gesundheit"
 ✅ "Verwaltung" + "Bürgerbeteiligung" + "Transparenz" → "Verwaltung und Bürgerbeteiligung"
 ✅ "Sicherheit" + "Ordnung" + "Katastrophenschutz" → "Sicherheit und Ordnung"
+
+❌ "Jugendarbeit" und "Seniorenbetreuung" → Bleiben getrennt (verschiedene Zielgruppen)
+❌ "Digitalisierung der Verwaltung" und "Digitale Bildung" → Bleiben getrennt (verschiedene Bereiche)
+❌ "Stadtplanung" und "Denkmalschutz" → Bleiben getrennt (unterschiedliche Fachbereiche)
 
 Hier sind die Handlungsfelder zur Konsolidierung:
 {chunk_data}
@@ -362,7 +398,7 @@ Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das die konsolidierten Hand
             prompt=prompt,
             response_model=ExtractionResult,
             system_message=system_message,
-            temperature=0.1,
+            temperature=MODEL_TEMPERATURE,
             log_file_path=log_file_path,
             log_context=log_context,
         )
@@ -670,14 +706,26 @@ def aggregate_extraction_results(
         print(
             f"📊 Starting chunked aggregation for {len(all_chunk_results)} action fields"
         )
-        return chunked_aggregation(all_chunk_results, log_file_path=log_file_path, log_context_prefix=log_context_prefix)
+        return chunked_aggregation(
+            all_chunk_results,
+            log_file_path=log_file_path,
+            log_context_prefix=log_context_prefix,
+        )
 
     # For small datasets, we can still benefit from a single aggregation pass
     print(
         f"📋 Small dataset ({len(all_chunk_results)} fields) - single aggregation pass"
     )
     chunk_data = json.dumps(all_chunk_results, indent=2, ensure_ascii=False)
-    result = perform_single_aggregation(chunk_data, log_file_path, f"{log_context_prefix} - Single Pass Aggregation" if log_context_prefix else "Single Pass Aggregation")
+    result = perform_single_aggregation(
+        chunk_data,
+        log_file_path,
+        (
+            f"{log_context_prefix} - Single Pass Aggregation"
+            if log_context_prefix
+            else "Single Pass Aggregation"
+        ),
+    )
 
     if result:
         # Final validation to remove any English contamination
@@ -689,16 +737,9 @@ def aggregate_extraction_results(
         return simple_deduplication_fallback(all_chunk_results)
 
 
-def simple_deduplication_fallback(
-    all_chunk_results: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Fallback deduplication if LLM aggregation fails."""
-    import re
-
-    deduplicated_data: dict[str, Any] = {}
-
-    # Conservative list of clearly English-only terms that have no German equivalents.
-    # We match whole words only to prevent incorrectly flagging German compound words.
+@lru_cache(maxsize=1)
+def _get_english_pattern():
+    """Get compiled English pattern (cached for performance)."""
     english_terms = [
         "current",
         "future",
@@ -712,15 +753,24 @@ def simple_deduplication_fallback(
         "assessment",
         "review",
     ]
-    english_pattern = (
-        r"\b(" + "|".join(re.escape(term) for term in english_terms) + r")\b"
-    )
+    pattern = r"\b(" + "|".join(re.escape(term) for term in english_terms) + r")\b"
+    return re.compile(pattern, re.IGNORECASE)
+
+
+def simple_deduplication_fallback(
+    all_chunk_results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Fallback deduplication if LLM aggregation fails."""
+    deduplicated_data: dict[str, Any] = {}
+
+    # Use cached compiled pattern
+    english_pattern = _get_english_pattern()
 
     for item in all_chunk_results:
         field_name = item.get("action_field", "")
 
         # Skip English action fields using whole-word matching
-        if re.search(english_pattern, field_name, re.IGNORECASE):
+        if english_pattern.search(field_name):
             print(f"🚫 FALLBACK FILTER: Removing English action field '{field_name}'")
             continue
 
@@ -742,7 +792,7 @@ def simple_deduplication_fallback(
 def add_source_attributions(
     final_results: list[dict[str, Any]],
     page_aware_chunks: list[dict[str, Any]],
-    original_page_text: list[tuple[str, int]] | None = None
+    original_page_text: list[tuple[str, int]] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Add source attribution with page numbers to extracted results.
@@ -760,32 +810,38 @@ def add_source_attributions(
 
     from src.core.schemas import SourceAttribution
 
-    print(f"🔍 Adding source attribution for {len(final_results)} action fields using {len(page_aware_chunks)} LLM chunks")
+    print(
+        f"🔍 Adding source attribution for {len(final_results)} action fields using {len(page_aware_chunks)} LLM chunks"
+    )
     if original_page_text:
-        print(f"   📄 Using {len(original_page_text)} original pages for precise attribution")
+        print(
+            f"   📄 Using {len(original_page_text)} original pages for precise attribution"
+        )
 
-    def find_quote_page(quote: str, original_pages: list[tuple[str, int]], fallback_pages: list[int]) -> int:
+    def find_quote_page(
+        quote: str, original_pages: list[tuple[str, int]], fallback_pages: list[int]
+    ) -> int:
         """
         Find the specific page number where a quote appears.
-        
+
         Args:
             quote: The quote to search for
             original_pages: List of (text, page_num) tuples
             fallback_pages: Pages from the LLM chunk to use if quote not found
-            
+
         Returns:
             The page number where the quote was found, or fallback to first page
         """
         if not original_pages or not quote:
-            return fallback_pages[0] if fallback_pages else 1
+            return fallback_pages[len(fallback_pages) // 2] if fallback_pages else 1
 
         # Clean the quote for better matching
         clean_quote = quote.strip()
-        if len(clean_quote) < 20:  # Too short for reliable matching
-            return fallback_pages[0] if fallback_pages else 1
+        if len(clean_quote) < 15:  # Too short for reliable matching
+            return fallback_pages[len(fallback_pages) // 2] if fallback_pages else 1
 
         # Try to find a significant portion of the quote (at least 50 chars)
-        search_text = clean_quote[:min(100, len(clean_quote))]
+        search_text = clean_quote[: min(100, len(clean_quote))]
 
         best_match_page = None
         best_match_score = 0.0
@@ -814,12 +870,12 @@ def add_source_attributions(
                     best_match_score = score
                     best_match_page = page_num
 
-        # Use best match if reasonably good (>60%), otherwise fallback
-        if best_match_page and best_match_score > 0.6:
+        # Use best match if reasonably good (above threshold), otherwise fallback
+        if best_match_page and best_match_score > QUOTE_MATCH_THRESHOLD:
             return best_match_page
         else:
-            # Fallback to first page of the LLM chunk
-            return fallback_pages[0] if fallback_pages else 1
+            # Fallback to middle page of the LLM chunk
+            return fallback_pages[len(fallback_pages) // 2] if fallback_pages else 1
 
     enhanced_results = []
 
@@ -848,16 +904,18 @@ def add_source_attributions(
                     if quote and chunk_pages:
                         # Find the specific page where this quote appears
                         if original_page_text:
-                            page_number = find_quote_page(quote, original_page_text, chunk_pages)
+                            page_number = find_quote_page(
+                                quote, original_page_text, chunk_pages
+                            )
                         else:
-                            # Fallback to first page of the LLM chunk
-                            page_number = chunk_pages[0]
+                            # Fallback to middle page of the LLM chunk
+                            page_number = chunk_pages[len(chunk_pages) // 2]
 
-                        project_sources.append(SourceAttribution(
-                            page_number=page_number,
-                            quote=quote,
-                            chunk_id=chunk_id
-                        ))
+                        project_sources.append(
+                            SourceAttribution(
+                                page_number=page_number, quote=quote, chunk_id=chunk_id
+                            )
+                        )
 
             # Also search for measures and indicators
             for measure in project.get("measures", []):
@@ -876,27 +934,37 @@ def add_source_attributions(
                         if quote and chunk_pages:
                             # Find the specific page where this quote appears
                             if original_page_text:
-                                page_number = find_quote_page(quote, original_page_text, chunk_pages)
+                                page_number = find_quote_page(
+                                    quote, original_page_text, chunk_pages
+                                )
                             else:
-                                # Fallback to first page of the LLM chunk
-                                page_number = chunk_pages[0]
+                                # Fallback to middle page of the LLM chunk
+                                page_number = chunk_pages[len(chunk_pages) // 2]
 
                             # Avoid duplicate pages
-                            existing_pages = {src.page_number for src in project_sources}
+                            existing_pages = {
+                                src.page_number for src in project_sources
+                            }
                             if page_number not in existing_pages:
-                                project_sources.append(SourceAttribution(
-                                    page_number=page_number,
-                                    quote=quote,
-                                    chunk_id=chunk_id
-                                ))
+                                project_sources.append(
+                                    SourceAttribution(
+                                        page_number=page_number,
+                                        quote=quote,
+                                        chunk_id=chunk_id,
+                                    )
+                                )
                                 break
 
             # Add sources to project if found
             if project_sources:
                 # Sort by page number and limit to top 3 sources
                 project_sources.sort(key=lambda x: x.page_number)
-                enhanced_project["sources"] = [source.model_dump() for source in project_sources[:3]]
-                print(f"   ✅ Found {len(enhanced_project['sources'])} sources for '{project_title}'")
+                enhanced_project["sources"] = [
+                    source.model_dump() for source in project_sources[:3]
+                ]
+                print(
+                    f"   ✅ Found {len(enhanced_project['sources'])} sources for '{project_title}'"
+                )
             else:
                 print(f"   ⚠️ No sources found for '{project_title}'")
 
@@ -908,13 +976,16 @@ def add_source_attributions(
     attribution_stats = {
         "total_projects": sum(len(af["projects"]) for af in enhanced_results),
         "projects_with_sources": sum(
-            1 for af in enhanced_results
+            1
+            for af in enhanced_results
             for project in af["projects"]
             if project.get("sources")
-        )
+        ),
     }
 
-    print(f"📊 Attribution complete: {attribution_stats['projects_with_sources']}/{attribution_stats['total_projects']} projects have sources")
+    print(
+        f"📊 Attribution complete: {attribution_stats['projects_with_sources']}/{attribution_stats['total_projects']} projects have sources"
+    )
 
     return enhanced_results
 
@@ -935,13 +1006,15 @@ def measure_appears_in_chunk(measure: str, chunk_text: str) -> bool:
     chunk_lower = chunk_text.lower()
 
     # Check if most measure words appear in chunk
-    found_words = sum(1 for word in measure_words if len(word) > 3 and word in chunk_lower)
+    found_words = sum(
+        1 for word in measure_words if len(word) > 3 and word in chunk_lower
+    )
     return found_words >= len(measure_words) * 0.6  # 60% of words must match
 
 
-def extract_relevant_quote(text: str, search_term: str, max_length: int = 200) -> str:
+def extract_relevant_quote(text: str, search_term: str, max_length: int = 300) -> str:
     """
-    Extract a relevant quote from text around the search term.
+    Extract the most relevant quote from text around the search term.
 
     Args:
         text: The full text to search in
@@ -949,38 +1022,93 @@ def extract_relevant_quote(text: str, search_term: str, max_length: int = 200) -
         max_length: Maximum length of quote
 
     Returns:
-        Relevant quote or empty string if not found
+        Most relevant quote or empty string if not found
     """
     text_lower = text.lower()
     search_lower = search_term.lower()
 
-    # Find the position of search term
-    pos = text_lower.find(search_lower)
-    if pos == -1:
-        # Try fuzzy matching for partial matches
-        lines = text.split('\n')
+    # Find all occurrences
+    occurrences = []
+    pattern = re.escape(search_lower)
+    for match in re.finditer(pattern, text_lower):
+        occurrences.append(match.start())
+
+    if not occurrences:
+        # Fallback to fuzzy matching (existing code)
+        lines = text.split("\n")
         for line in lines:
-            if any(word in line.lower() for word in search_lower.split() if len(word) > 3):
-                # Return a cleaned version of this line
+            if any(
+                word in line.lower() for word in search_lower.split() if len(word) > 3
+            ):
                 clean_line = line.strip()
                 if len(clean_line) > max_length:
                     clean_line = clean_line[:max_length] + "..."
                 return clean_line
         return ""
 
-    # Extract context around the search term
-    start = max(0, pos - max_length // 2)
-    end = min(len(text), pos + len(search_term) + max_length // 2)
+    # Find best occurrence by checking for sentence boundaries
+    best_quote = ""
+    best_score = 0.0
 
-    quote = text[start:end].strip()
+    for pos in occurrences:
+        # Extract context
+        start = max(0, pos - max_length // 2)
+        end = min(len(text), pos + len(search_term) + max_length // 2)
+
+        # Try to find sentence boundaries
+        quote_start = start
+        quote_end = end
+
+        # Look for sentence start
+        for i in range(start, max(0, start - 100), -1):
+            if i == 0 or text[i - 1] in ".!?\n":
+                quote_start = i
+                break
+
+        # Look for sentence end
+        for i in range(end, min(len(text), end + 100)):
+            if i == len(text) - 1 or text[i] in ".!?\n":
+                quote_end = i + 1
+                break
+
+        quote = text[quote_start:quote_end].strip()
+
+        # Score based on completeness and relevance
+        score = 1.0
+        if quote_start > 0:
+            score *= 0.9  # Penalty for truncated start
+        if quote_end < len(text):
+            score *= 0.9  # Penalty for truncated end
+
+        # Bonus for complete sentences
+        if quote.endswith((".", "!", "?")):
+            score *= 1.1
+
+        # Bonus for quotes that contain the search term in the middle (not at edges)
+        term_pos_in_quote = quote.lower().find(search_lower)
+        if (
+            term_pos_in_quote > 10
+            and term_pos_in_quote < len(quote) - len(search_term) - 10
+        ):
+            score *= 1.2
+
+        if score > best_score:
+            best_score = score
+            best_quote = quote
 
     # Clean up the quote
-    if start > 0:
-        quote = "..." + quote
-    if end < len(text):
-        quote = quote + "..."
+    if len(best_quote) > max_length:
+        # Truncate at word boundary
+        truncated = best_quote[:max_length].rsplit(" ", 1)[0]
+        best_quote = truncated + "..."
+
+    # Add ellipsis if needed
+    if best_quote and not best_quote.startswith(text[:10]):
+        best_quote = "..." + best_quote
+    if best_quote and not best_quote.endswith(text[-10:]):
+        best_quote = best_quote + "..."
 
     # Remove excessive whitespace
-    quote = ' '.join(quote.split())
+    best_quote = " ".join(best_quote.split())
 
-    return quote
+    return best_quote

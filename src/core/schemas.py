@@ -8,7 +8,9 @@ class SourceAttribution(BaseModel):
 
     page_number: int = Field(..., description="Page number in original PDF (1-based)")
     quote: str = Field(..., description="Relevant excerpt from original text")
-    chunk_id: int | None = Field(default=None, description="Internal chunk ID for debugging")
+    chunk_id: int | None = Field(
+        default=None, description="Internal chunk ID for debugging"
+    )
 
 
 class Project(BaseModel):
