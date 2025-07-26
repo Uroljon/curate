@@ -748,7 +748,7 @@ def add_source_attributions(
 
     Args:
         final_results: Final extraction results after deduplication
-        page_aware_chunks: Original chunks with page metadata
+        page_aware_chunks: LLM chunks with page metadata (text, pages, chunk_id)
 
     Returns:
         Enhanced results with source attribution
@@ -758,7 +758,7 @@ def add_source_attributions(
 
     from src.core.schemas import SourceAttribution
 
-    print(f"🔍 Adding source attribution for {len(final_results)} action fields using {len(page_aware_chunks)} chunks")
+    print(f"🔍 Adding source attribution for {len(final_results)} action fields using {len(page_aware_chunks)} LLM chunks")
 
     enhanced_results = []
 

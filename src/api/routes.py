@@ -6,8 +6,8 @@ import time
 from typing import Any
 
 from fastapi import Request, UploadFile
-from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
 from src.core import (
     CHUNK_MAX_CHARS,
@@ -334,14 +334,38 @@ async def extract_structure_fast(
         # Get all chunks for fast but comprehensive extraction
         chunks = get_all_chunks_for_document(source_id)
         raw_texts = [c["text"] for c in chunks]
+
+        # Check if we have page-aware chunks and convert to page_aware_text format
+        page_aware_chunks = [chunk for chunk in chunks if chunk.get("pages")]
+        if page_aware_chunks:
+            print(f"🔍 Using page-aware chunking with {len(page_aware_chunks)} chunks")
+            # Convert chunks to page_aware_text format for new chunker
+            page_aware_text: list[tuple[str, int]] = []
+            for chunk in page_aware_chunks:
+                chunk_text = chunk["text"]
+                chunk_pages = chunk["pages"]
+                if chunk_pages:
+                    # For multi-page chunks, assign the text to the first page
+                    # This is a simplification but preserves the page attribution
+                    primary_page = chunk_pages[0]
+                    page_aware_text.append((chunk_text, primary_page))
+        else:
+            # Fallback: create page_aware_text with page 1 for all chunks
+            print("⚠️ No page information available, using fallback chunking")
+            page_aware_text = [(text, 1) for text in raw_texts]
+
         monitor.end_stage("chunk_retrieval", chunks_retrieved=len(raw_texts))
 
         # Stage 2: LLM chunk preparation
         monitor.start_stage("llm_chunk_preparation")
-        # Use simple size-based chunking
-        optimized_chunks = chunk_for_llm(
-            raw_texts, max_chars=max_chars, min_chars=min_chars
+        # Use page-aware chunking
+        from src.processing.chunker import chunk_for_llm_with_pages
+        optimized_chunks_with_pages = chunk_for_llm_with_pages(
+            page_aware_text, max_chars=max_chars, min_chars=min_chars
         )
+
+        # Extract just the text for compatibility with existing code
+        optimized_chunks = [chunk_text for chunk_text, _ in optimized_chunks_with_pages]
 
         # Analyze LLM chunk quality
         llm_chunk_metrics = ChunkQualityMonitor.analyze_chunks(optimized_chunks, "llm")
@@ -355,6 +379,7 @@ async def extract_structure_fast(
         # Apply chunk limit if configured
         if FAST_EXTRACTION_MAX_CHUNKS > 0:
             optimized_chunks = optimized_chunks[:FAST_EXTRACTION_MAX_CHUNKS]
+            optimized_chunks_with_pages = optimized_chunks_with_pages[:FAST_EXTRACTION_MAX_CHUNKS]
             print(f"⚡ Fast mode: Processing only first {len(optimized_chunks)} chunks")
 
         # Save LLM chunks as separate file
@@ -397,6 +422,9 @@ async def extract_structure_fast(
             chunk_timings.append(chunk_time)
 
             if chunk_data:
+                # Add chunk_id to each extracted action field
+                for action_field in chunk_data:
+                    action_field["_source_chunk_id"] = i
                 all_chunk_results.extend(chunk_data)
                 print(
                     f"   ✅ Found {len(chunk_data)} action fields in {chunk_time:.2f}s"
@@ -435,12 +463,19 @@ async def extract_structure_fast(
             "attribution_success_rate": 0.0,
         }
 
-        # Check if we have page-aware chunks
-        page_aware_chunks = [chunk for chunk in chunks if chunk.get("pages")]
-
+        # Create page-aware LLM chunks for source attribution
         if page_aware_chunks:
-            print(f"\n🔍 Adding source attribution using {len(page_aware_chunks)} page-aware chunks...")
-            final_structures = add_source_attributions(final_action_fields, page_aware_chunks)
+            # Create chunks that map LLM chunk IDs to their page numbers
+            llm_page_aware_chunks = []
+            for chunk_id, (chunk_text, chunk_pages) in enumerate(optimized_chunks_with_pages):
+                llm_page_aware_chunks.append({
+                    "text": chunk_text,
+                    "pages": chunk_pages,
+                    "chunk_id": chunk_id
+                })
+
+            print(f"\n🔍 Adding source attribution using {len(llm_page_aware_chunks)} LLM page-aware chunks...")
+            final_structures = add_source_attributions(final_action_fields, llm_page_aware_chunks)
 
             # Count attribution statistics
             attribution_stats["total_projects"] = sum(len(af["projects"]) for af in final_structures)
@@ -463,12 +498,12 @@ async def extract_structure_fast(
         else:
             print("INFO: No page attribution data available - using legacy chunks")
             final_structures = final_action_fields
-            
+
             # Calculate stats even without attribution for accurate reporting
             attribution_stats["total_projects"] = sum(len(af["projects"]) for af in final_structures)
             attribution_stats["projects_with_sources"] = 0  # No sources without page-aware chunks
             attribution_stats["attribution_success_rate"] = 0.0  # No attribution possible
-            
+
             monitor.end_stage("source_attribution", page_aware_chunks=0, attribution_enabled=False)
 
         # Calculate extraction time

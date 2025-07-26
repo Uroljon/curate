@@ -421,6 +421,92 @@ def chunk_for_llm(
     return final_chunks
 
 
+def chunk_for_llm_with_pages(
+    page_aware_text: list[tuple[str, int]], max_chars: int = 20000, min_chars: int = 15000
+) -> list[tuple[str, list[int]]]:
+    """
+    Prepare page-aware chunks for LLM processing.
+
+    This takes page-aware text and creates larger chunks optimized for LLM context windows
+    while preserving information about which pages each chunk came from.
+
+    Args:
+        page_aware_text: List of (text, page_number) tuples from parser
+        max_chars: Maximum characters per LLM chunk
+        min_chars: Target minimum characters per LLM chunk
+
+    Returns:
+        List of (chunk_text, page_numbers) tuples
+    """
+    if not page_aware_text:
+        return []
+
+    result_chunks: list[tuple[str, list[int]]] = []
+    current_texts: list[str] = []
+    current_pages: set[int] = set()
+    current_size = 0
+
+    for page_text, page_num in page_aware_text:
+        page_text = page_text.strip()
+        if not page_text:
+            continue
+
+        text_size = len(page_text)
+
+        # Decide whether to merge with current chunk or start new
+        if not current_texts:
+            # First chunk
+            current_texts = [page_text]
+            current_pages = {page_num}
+            current_size = text_size
+        elif text_size > max_chars:
+            # Single page too large - flush current and add oversized page as-is
+            if current_texts:
+                result_chunks.append(("\n\n".join(current_texts), sorted(current_pages)))
+            result_chunks.append((page_text, [page_num]))
+            current_texts = []
+            current_pages = set()
+            current_size = 0
+        elif current_size + text_size + 2 > max_chars:
+            # Would exceed max size - flush current and start new
+            result_chunks.append(("\n\n".join(current_texts), sorted(current_pages)))
+            current_texts = [page_text]
+            current_pages = {page_num}
+            current_size = text_size
+        else:
+            # Can merge
+            current_texts.append(page_text)
+            current_pages.add(page_num)
+            current_size += text_size + 2  # +2 for \n\n separator
+
+    # Don't forget the last chunk
+    if current_texts:
+        result_chunks.append(("\n\n".join(current_texts), sorted(current_pages)))
+
+    # Post-process: try to merge very small chunks
+    final_chunks: list[tuple[str, list[int]]] = []
+    for chunk_text, chunk_pages in result_chunks:
+        chunk_text = chunk_text.strip()
+        if not chunk_text:
+            continue
+
+        # If chunk is too small and we have a previous chunk, try to merge
+        if (
+            len(chunk_text) < min_chars
+            and final_chunks
+            and len(final_chunks[-1][0]) + len(chunk_text) + 2 <= max_chars
+        ):
+            # Merge with previous chunk
+            prev_text, prev_pages = final_chunks[-1]
+            merged_text = prev_text + "\n\n" + chunk_text
+            merged_pages = sorted(set(prev_pages + chunk_pages))
+            final_chunks[-1] = (merged_text, merged_pages)
+        else:
+            final_chunks.append((chunk_text, chunk_pages))
+
+    return final_chunks
+
+
 def analyze_chunk_quality(chunks: list[str], stage: str = "unknown") -> dict:
     """Analyze the quality of prepared chunks."""
     if not chunks:
@@ -874,7 +960,8 @@ def chunk_for_embedding_enhanced(
         # This is page-aware text format: list[tuple[str, int]]
         print(f"Using page-aware text chunking with {len(text_or_path)} pages")
         page_chunks = chunk_for_embedding_with_pages(text_or_path, max_chars)
-        return [chunk["text"] for chunk in page_chunks]  # Return only text for compatibility
+        # Always return only text for compatibility
+        return [chunk["text"] for chunk in page_chunks]
 
     # Check if we can use structure-aware chunking
     if (

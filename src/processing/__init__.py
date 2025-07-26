@@ -7,6 +7,7 @@ from .chunker import (
     chunk_for_embedding_enhanced,
     chunk_for_embedding_with_pages,
     chunk_for_llm,
+    chunk_for_llm_with_pages,
     contains_indicator_context,
     extract_chunk_topic,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "chunk_for_embedding_enhanced",
     "chunk_for_embedding_with_pages",
     "chunk_for_llm",
+    "chunk_for_llm_with_pages",
     "contains_indicator_context",
     "extract_chunk_topic",
     # Embedder exports
