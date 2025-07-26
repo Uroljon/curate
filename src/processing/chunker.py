@@ -787,8 +787,72 @@ def create_structure_aware_chunks(
     return chunker.chunk_pdf(pdf_path, max_pages=max_pages)
 
 
+def chunk_for_embedding_with_pages(
+    page_aware_text: list[tuple[str, int]],
+    max_chars: int = 5000,
+) -> list[dict[str, Any]]:
+    """
+    Page-aware chunking that preserves page number information.
+
+    Args:
+        page_aware_text: List of (text, page_number) tuples
+        max_chars: Maximum characters per chunk
+
+    Returns:
+        List of chunks with metadata: [{"text": str, "pages": List[int], "chunk_id": int}]
+    """
+    chunks_with_pages = []
+    chunk_id = 0
+
+    # First, combine all page texts with page markers
+    combined_segments = []
+    for text, page_num in page_aware_text:
+        combined_segments.append((text, page_num))
+
+    # Convert to single text while tracking page boundaries
+    full_text = ""
+    page_positions = []  # List of (start_pos, end_pos, page_num)
+    current_pos = 0
+
+    for text, page_num in combined_segments:
+        if full_text:  # Add separator between pages
+            full_text += "\n\n"
+            current_pos += 2
+
+        start_pos = current_pos
+        full_text += text
+        current_pos += len(text)
+        end_pos = current_pos
+
+        page_positions.append((start_pos, end_pos, page_num))
+
+    # Use existing chunking logic
+    text_chunks = chunk_for_embedding(full_text, max_chars)
+
+    # Map chunks back to pages
+    for chunk_text in text_chunks:
+        chunk_start = full_text.find(chunk_text)
+        chunk_end = chunk_start + len(chunk_text)
+
+        # Find which pages this chunk spans
+        chunk_pages = set()
+        for start_pos, end_pos, page_num in page_positions:
+            # Check if chunk overlaps with this page
+            if not (chunk_end <= start_pos or chunk_start >= end_pos):
+                chunk_pages.add(page_num)
+
+        chunks_with_pages.append({
+            "text": chunk_text,
+            "pages": sorted(chunk_pages),
+            "chunk_id": chunk_id
+        })
+        chunk_id += 1
+
+    return chunks_with_pages
+
+
 def chunk_for_embedding_enhanced(
-    text_or_path: str | Path,
+    text_or_path: str | Path | list[tuple[str, int]],
     max_chars: int = 5000,
     use_structure_aware: bool = True,
     pdf_path: str | None = None,
@@ -797,7 +861,7 @@ def chunk_for_embedding_enhanced(
     Enhanced chunking that can use structure-aware approach when PDF is available.
 
     Args:
-        text_or_path: Either extracted text (str) or path to PDF file
+        text_or_path: Either extracted text (str), path to PDF file, or page-aware text list
         max_chars: Maximum characters per chunk
         use_structure_aware: Whether to use structure-aware chunking if possible
         pdf_path: Optional PDF path if text_or_path is text
@@ -805,6 +869,13 @@ def chunk_for_embedding_enhanced(
     Returns:
         List of chunks (strings only for compatibility)
     """
+    # Handle page-aware text input (new functionality)
+    if isinstance(text_or_path, list) and all(isinstance(item, tuple) and len(item) == 2 for item in text_or_path):
+        # This is page-aware text format: list[tuple[str, int]]
+        print(f"Using page-aware text chunking with {len(text_or_path)} pages")
+        page_chunks = chunk_for_embedding_with_pages(text_or_path, max_chars)
+        return [chunk["text"] for chunk in page_chunks]  # Return only text for compatibility
+
     # Check if we can use structure-aware chunking
     if (
         use_structure_aware
@@ -865,9 +936,9 @@ def chunk_for_embedding_enhanced(
     if len(text) < 500 and text.endswith(".pdf"):
         try:
             if Path(text).exists():
-                from .parser import extract_text_with_ocr_fallback
+                from .parser import extract_text_legacy
 
-                text, _ = extract_text_with_ocr_fallback(text)
+                text, _ = extract_text_legacy(text)
         except:
             # Not a valid path, use as text
             pass

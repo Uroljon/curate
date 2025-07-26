@@ -69,7 +69,7 @@ def query_ollama_structured(
 
         if "message" in data and "content" in data["message"]:
             content = data["message"]["content"].strip()
-            
+
             # Log the dialog if log file path is provided
             if log_file_path:
                 _log_llm_dialog(log_file_path, system_message, prompt, content, log_context, model, temperature)
@@ -111,11 +111,11 @@ def _log_llm_dialog(
 ) -> None:
     """
     Log LLM dialog to file with formatted structure.
-    
+
     Args:
         log_file_path: Path to the log file
         system_message: System message sent to LLM
-        user_prompt: User prompt sent to LLM  
+        user_prompt: User prompt sent to LLM
         llm_response: Raw response from LLM
         log_context: Context information (stage, chunk info, etc.)
         model: Model name used
@@ -123,15 +123,15 @@ def _log_llm_dialog(
     """
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+
         # Read existing content if file exists to get interaction counter
         interaction_num = 1
         if os.path.exists(log_file_path):
-            with open(log_file_path, "r", encoding="utf-8") as f:
+            with open(log_file_path, encoding="utf-8") as f:
                 content = f.read()
                 # Count existing interactions
                 interaction_num = content.count("LLM INTERACTION #") + 1
-        
+
         # Format the log entry
         log_entry = f"""
 ========================================
@@ -141,16 +141,16 @@ MODEL: {model} (temp: {temperature})
 ========================================
 
 """
-        
+
         if system_message:
             log_entry += f"SYSTEM MESSAGE:\n{system_message}\n\n"
-        
+
         log_entry += f"USER PROMPT:\n{user_prompt}\n\n"
         log_entry += f"LLM RESPONSE:\n{llm_response}\n\n"
-        
+
         # Append to log file
         with open(log_file_path, "a", encoding="utf-8") as f:
             f.write(log_entry)
-            
+
     except Exception as e:
         print(f"⚠️ Failed to log LLM dialog: {e!s}")

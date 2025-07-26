@@ -751,3 +751,180 @@ def simple_deduplication_fallback(
             deduplicated_data[field_name] = item
 
     return list(deduplicated_data.values())
+
+
+def add_source_attributions(
+    final_results: list[dict[str, Any]],
+    page_aware_chunks: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """
+    Add source attribution with page numbers to extracted results.
+
+    Args:
+        final_results: Final extraction results after deduplication
+        page_aware_chunks: Original chunks with page metadata
+
+    Returns:
+        Enhanced results with source attribution
+    """
+    import re
+    from difflib import SequenceMatcher
+
+    from src.core.schemas import SourceAttribution
+
+    print(f"🔍 Adding source attribution for {len(final_results)} action fields using {len(page_aware_chunks)} chunks")
+
+    enhanced_results = []
+
+    for action_field in final_results:
+        enhanced_field = action_field.copy()
+        enhanced_projects = []
+
+        for project in action_field.get("projects", []):
+            enhanced_project = project.copy()
+            project_title = project.get("title", "")
+
+            # Find source chunks for this project
+            project_sources = []
+
+            # Search for project title in chunks
+            for chunk in page_aware_chunks:
+                chunk_text = chunk.get("text", "")
+                chunk_pages = chunk.get("pages", [])
+                chunk_id = chunk.get("chunk_id")
+
+                # Check if project title appears in chunk (case-insensitive)
+                if project_title.lower() in chunk_text.lower():
+                    # Find the best matching excerpt around the project title
+                    quote = extract_relevant_quote(chunk_text, project_title)
+
+                    if quote and chunk_pages:
+                        # For multi-page chunks, use the first page as primary reference
+                        primary_page = chunk_pages[0]
+
+                        project_sources.append(SourceAttribution(
+                            page_number=primary_page,
+                            quote=quote,
+                            chunk_id=chunk_id
+                        ))
+
+            # Also search for measures and indicators
+            for measure in project.get("measures", []):
+                if len(project_sources) >= 3:  # Limit to avoid too many sources
+                    break
+
+                for chunk in page_aware_chunks:
+                    chunk_text = chunk.get("text", "")
+                    chunk_pages = chunk.get("pages", [])
+                    chunk_id = chunk.get("chunk_id")
+
+                    # Check for measure content (partial matching)
+                    if measure_appears_in_chunk(measure, chunk_text):
+                        quote = extract_relevant_quote(chunk_text, measure)
+
+                        if quote and chunk_pages:
+                            primary_page = chunk_pages[0]
+
+                            # Avoid duplicate pages
+                            existing_pages = {src.page_number for src in project_sources}
+                            if primary_page not in existing_pages:
+                                project_sources.append(SourceAttribution(
+                                    page_number=primary_page,
+                                    quote=quote,
+                                    chunk_id=chunk_id
+                                ))
+                                break
+
+            # Add sources to project if found
+            if project_sources:
+                # Sort by page number and limit to top 3 sources
+                project_sources.sort(key=lambda x: x.page_number)
+                enhanced_project["sources"] = [source.model_dump() for source in project_sources[:3]]
+                print(f"   ✅ Found {len(enhanced_project['sources'])} sources for '{project_title}'")
+            else:
+                print(f"   ⚠️ No sources found for '{project_title}'")
+
+            enhanced_projects.append(enhanced_project)
+
+        enhanced_field["projects"] = enhanced_projects
+        enhanced_results.append(enhanced_field)
+
+    attribution_stats = {
+        "total_projects": sum(len(af["projects"]) for af in enhanced_results),
+        "projects_with_sources": sum(
+            1 for af in enhanced_results
+            for project in af["projects"]
+            if project.get("sources")
+        )
+    }
+
+    print(f"📊 Attribution complete: {attribution_stats['projects_with_sources']}/{attribution_stats['total_projects']} projects have sources")
+
+    return enhanced_results
+
+
+def measure_appears_in_chunk(measure: str, chunk_text: str) -> bool:
+    """
+    Check if a measure appears in chunk text using fuzzy matching.
+
+    Args:
+        measure: The measure text to search for
+        chunk_text: The chunk text to search in
+
+    Returns:
+        True if measure likely appears in chunk
+    """
+    # Simple keyword-based matching for German text
+    measure_words = measure.lower().split()
+    chunk_lower = chunk_text.lower()
+
+    # Check if most measure words appear in chunk
+    found_words = sum(1 for word in measure_words if len(word) > 3 and word in chunk_lower)
+    return found_words >= len(measure_words) * 0.6  # 60% of words must match
+
+
+def extract_relevant_quote(text: str, search_term: str, max_length: int = 200) -> str:
+    """
+    Extract a relevant quote from text around the search term.
+
+    Args:
+        text: The full text to search in
+        search_term: The term to search for
+        max_length: Maximum length of quote
+
+    Returns:
+        Relevant quote or empty string if not found
+    """
+    text_lower = text.lower()
+    search_lower = search_term.lower()
+
+    # Find the position of search term
+    pos = text_lower.find(search_lower)
+    if pos == -1:
+        # Try fuzzy matching for partial matches
+        lines = text.split('\n')
+        for line in lines:
+            if any(word in line.lower() for word in search_lower.split() if len(word) > 3):
+                # Return a cleaned version of this line
+                clean_line = line.strip()
+                if len(clean_line) > max_length:
+                    clean_line = clean_line[:max_length] + "..."
+                return clean_line
+        return ""
+
+    # Extract context around the search term
+    start = max(0, pos - max_length // 2)
+    end = min(len(text), pos + len(search_term) + max_length // 2)
+
+    quote = text[start:end].strip()
+
+    # Clean up the quote
+    if start > 0:
+        quote = "..." + quote
+    if end < len(text):
+        quote = quote + "..."
+
+    # Remove excessive whitespace
+    quote = ' '.join(quote.split())
+
+    return quote

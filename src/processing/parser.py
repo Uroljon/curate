@@ -21,7 +21,7 @@ spell_checkers = {
 }
 
 
-def extract_text_with_ocr_fallback(pdf_path: str) -> tuple[str, dict]:
+def extract_text_with_ocr_fallback(pdf_path: str) -> tuple[list[tuple[str, int]], dict]:
     doc = fitz.open(pdf_path)
     total_pages = len(doc)
     page_texts = [""] * total_pages
@@ -53,14 +53,19 @@ def extract_text_with_ocr_fallback(pdf_path: str) -> tuple[str, dict]:
                     )
                     page_texts[i] = ocr_cleaned
 
-    combined_text = "\n\n".join(page_texts)
-    cleaned_text = clean_text(combined_text)
+    # Create page-aware text list with 1-based page numbers
+    page_aware_text = []
+    for i, text in enumerate(page_texts):
+        if text.strip():  # Only include pages with actual content
+            cleaned_page_text = clean_text(text)
+            page_aware_text.append((cleaned_page_text, i + 1))  # 1-based page numbers
 
     # Prepare metadata
     metadata = {
         "total_pages": total_pages,
         "ocr_pages": len(scanned_pages),
         "native_pages": total_pages - len(scanned_pages),
+        "pages_with_content": len(page_aware_text),
         "ocr_page_numbers": [
             p + 1 for p in scanned_pages
         ],  # 1-based for human readability
@@ -76,4 +81,18 @@ def extract_text_with_ocr_fallback(pdf_path: str) -> tuple[str, dict]:
         },
     }
 
-    return cleaned_text, metadata
+    return page_aware_text, metadata
+
+
+def extract_text_legacy(pdf_path: str) -> tuple[str, dict]:
+    """
+    Legacy function that returns combined text for backward compatibility.
+
+    This function maintains the old interface while using the new page-aware parser.
+    """
+    page_aware_text, metadata = extract_text_with_ocr_fallback(pdf_path)
+
+    # Combine all page texts into a single string
+    combined_text = "\n\n".join(text for text, _ in page_aware_text)
+
+    return combined_text, metadata

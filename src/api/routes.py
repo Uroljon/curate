@@ -19,8 +19,11 @@ from src.core import (
 from src.extraction import extract_structures_with_retry, extract_with_accumulation
 from src.processing import (
     chunk_for_embedding_enhanced,
+    chunk_for_embedding_with_pages,
     chunk_for_llm,
     embed_chunks,
+    embed_chunks_with_pages,
+    extract_text_legacy,
     extract_text_with_ocr_fallback,
     get_all_chunks_for_document,
 )
@@ -33,6 +36,7 @@ from src.utils import (
 
 from .extraction_helpers import (
     ExtractionChangeTracker,
+    add_source_attributions,
     aggregate_extraction_results,
     deduplicate_extraction_results,
     extract_all_action_fields,
@@ -44,8 +48,118 @@ from .extraction_helpers import (
 )
 
 
+async def upload_pdf_with_pages(request: Request, file: UploadFile):
+    """Handle PDF upload and processing with page attribution support."""
+    start_time = time.time()
+
+    # Log API request
+    log_api_request("/upload_with_pages", "POST", {"filename": file.filename}, request.client.host)
+
+    # Get monitor for this extraction
+    monitor = get_extraction_monitor(file.filename)
+
+    try:
+        # Stage 1: File upload
+        monitor.start_stage("file_upload", filename=file.filename, size=file.size)
+        file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        with open(file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+        monitor.end_stage("file_upload", file_size=len(content))
+
+        # Stage 2: Page-aware text extraction
+        monitor.start_stage("text_extraction")
+        page_aware_text, extraction_metadata = extract_text_with_ocr_fallback(file_path)
+
+        # Save page-aware text as .txt file (for debugging)
+        txt_filename = os.path.splitext(file.filename)[0] + "_pages.txt"
+        txt_path = os.path.join(UPLOAD_FOLDER, txt_filename)
+        with open(txt_path, "w", encoding="utf-8") as txt_file:
+            for text, page_num in page_aware_text:
+                txt_file.write(f"\n\n# ====== PAGE {page_num} ======\n\n")
+                txt_file.write(text)
+
+        total_text_length = sum(len(text) for text, _ in page_aware_text)
+        monitor.end_stage(
+            "text_extraction",
+            text_length=total_text_length,
+            total_pages=extraction_metadata["total_pages"],
+            pages_with_content=extraction_metadata["pages_with_content"],
+            ocr_pages=extraction_metadata["ocr_pages"],
+            native_pages=extraction_metadata["native_pages"],
+            ocr_percentage=extraction_metadata["extraction_method_ratio"]["ocr_percentage"],
+        )
+
+        # Stage 3: Page-aware semantic chunking
+        monitor.start_stage("semantic_chunking")
+        chunks_with_pages = chunk_for_embedding_with_pages(
+            page_aware_text,
+            max_chars=SEMANTIC_CHUNK_TARGET_CHARS,
+        )
+
+        # Analyze chunk quality (using text only for compatibility)
+        chunk_texts = [chunk["text"] for chunk in chunks_with_pages]
+        chunk_metrics = ChunkQualityMonitor.analyze_chunks(chunk_texts, "semantic")
+
+        # Save chunked text with page info
+        chunks_filename = os.path.splitext(file.filename)[0] + "_chunks_with_pages.txt"
+        chunks_path = os.path.join(UPLOAD_FOLDER, chunks_filename)
+        with open(chunks_path, "w", encoding="utf-8") as chunks_file:
+            for i, chunk in enumerate(chunks_with_pages, 1):
+                chunks_file.write(f"\n\n# ====== CHUNK {i} (Pages: {chunk['pages']}) ======\n\n")
+                chunks_file.write(chunk["text"])
+
+        monitor.end_stage(
+            "semantic_chunking",
+            chunk_count=len(chunks_with_pages),
+            chunk_metrics=chunk_metrics,
+            page_aware=True
+        )
+
+        # Stage 4: Page-aware embedding generation
+        monitor.start_stage("embedding_generation")
+        embed_chunks_with_pages(chunks_with_pages, source_id=file.filename)
+        monitor.end_stage("embedding_generation", chunks_embedded=len(chunks_with_pages))
+
+        # Prepare response
+        page_stats = {}
+        for chunk in chunks_with_pages:
+            for page in chunk["pages"]:
+                page_stats[page] = page_stats.get(page, 0) + 1
+
+        response_data = {
+            "chunks": len(chunks_with_pages),
+            "total_text_length": total_text_length,
+            "pages_processed": len(page_aware_text),
+            "page_attribution_enabled": True,
+            "chunk_quality": {
+                "avg_size": chunk_metrics["size_stats"]["avg"],
+                "with_structure": chunk_metrics["structural_stats"].get("chunks_with_structure", 0),
+            },
+            "page_coverage": {
+                "total_pages": len(page_stats),
+                "chunks_per_page": dict(sorted(page_stats.items())),
+            }
+        }
+
+        # Log successful completion
+        monitor.finalize({"upload_result": response_data})
+
+        # Log API response
+        response_time = time.time() - start_time
+        log_api_response("/upload_with_pages", 200, response_time)
+
+        return JSONResponse(content=response_data)
+
+    except Exception as e:
+        monitor.log_error("upload", e)
+        response_time = time.time() - start_time
+        log_api_response("/upload_with_pages", 500, response_time)
+        raise
+
+
 async def upload_pdf(request: Request, file: UploadFile):
-    """Handle PDF upload and processing."""
+    """Handle PDF upload and processing (legacy version for backward compatibility)."""
     start_time = time.time()
 
     # Log API request
@@ -65,14 +179,14 @@ async def upload_pdf(request: Request, file: UploadFile):
 
         # Stage 2: Text extraction
         monitor.start_stage("text_extraction")
-        extracted_text, extraction_metadata = extract_text_with_ocr_fallback(file_path)
-        
+        extracted_text, extraction_metadata = extract_text_legacy(file_path)
+
         # Save extracted text as .txt file
         txt_filename = os.path.splitext(file.filename)[0] + ".txt"
         txt_path = os.path.join(UPLOAD_FOLDER, txt_filename)
         with open(txt_path, "w", encoding="utf-8") as txt_file:
             txt_file.write(extracted_text)
-        
+
         monitor.end_stage(
             "text_extraction",
             text_length=len(extracted_text),
@@ -95,7 +209,7 @@ async def upload_pdf(request: Request, file: UploadFile):
 
         # Analyze chunk quality
         chunk_metrics = ChunkQualityMonitor.analyze_chunks(chunks, "semantic")
-        
+
         # Save chunked text as separate file
         chunks_filename = os.path.splitext(file.filename)[0] + "_chunks.txt"
         chunks_path = os.path.join(UPLOAD_FOLDER, chunks_filename)
@@ -103,7 +217,7 @@ async def upload_pdf(request: Request, file: UploadFile):
             for i, chunk in enumerate(chunks, 1):
                 chunks_file.write(f"\n\n# ====== CHUNK {i} ======\n\n")
                 chunks_file.write(chunk)
-        
+
         monitor.end_stage(
             "semantic_chunking", chunk_count=len(chunks), chunk_metrics=chunk_metrics
         )
@@ -119,9 +233,9 @@ async def upload_pdf(request: Request, file: UploadFile):
             "text_length": len(extracted_text),
             "chunk_quality": {
                 "avg_size": chunk_metrics["size_stats"]["avg"],
-                "with_structure": chunk_metrics["structural_stats"][
-                    "chunks_with_structure"
-                ],
+                "with_structure": chunk_metrics["structural_stats"].get(
+                    "chunks_with_structure", 0
+                ),
             },
         }
 
@@ -148,7 +262,7 @@ async def extract_structure(
     # Set up LLM dialog log file path
     llm_dialog_filename = f"{source_id}_llm_dialog.txt"
     llm_dialog_path = os.path.join(UPLOAD_FOLDER, llm_dialog_filename)
-    
+
     # Prepare chunks for extraction
     optimized_chunks = prepare_chunks_for_extraction(source_id, max_chars, min_chars)
 
@@ -156,7 +270,7 @@ async def extract_structure(
 
     # Stage 1: Extract action fields
     action_fields = extract_all_action_fields(
-        optimized_chunks, 
+        optimized_chunks,
         log_file_path=llm_dialog_path,
         log_context_prefix="Regular Extraction"
     )
@@ -166,8 +280,8 @@ async def extract_structure(
 
     # Stage 2 & 3: Extract projects and details
     all_extracted_data = extract_projects_and_details(
-        optimized_chunks, 
-        action_fields, 
+        optimized_chunks,
+        action_fields,
         log_file_path=llm_dialog_path,
         log_context_prefix="Regular Extraction"
     )
@@ -273,7 +387,7 @@ async def extract_structure_fast(
 
             # Extract independently from each chunk
             chunk_data = extract_structures_with_retry(
-                chunk, 
+                chunk,
                 log_file_path=llm_dialog_path,
                 log_context=f"Fast Extraction - Chunk {i+1}/{len(optimized_chunks)} ({len(chunk)} chars)"
             )
@@ -292,7 +406,7 @@ async def extract_structure_fast(
         # Aggregate all results using separate LLM call
         print(f"\n🔄 Aggregating {len(all_chunk_results)} extracted action fields...")
         aggregated_fields = aggregate_extraction_results(
-            all_chunk_results, 
+            all_chunk_results,
             log_file_path=llm_dialog_path,
             log_context_prefix="Fast Extraction Aggregation"
         )
@@ -310,8 +424,39 @@ async def extract_structure_fast(
             total_extraction_time=sum(chunk_timings),
         )
 
-        # Use the aggregated results
-        final_structures = final_action_fields
+        # Stage 4: Source Attribution (if page metadata is available)
+        monitor.start_stage("source_attribution")
+
+        # Check if we have page-aware chunks
+        page_aware_chunks = [chunk for chunk in chunks if chunk.get("pages")]
+
+        if page_aware_chunks:
+            print(f"\n🔍 Adding source attribution using {len(page_aware_chunks)} page-aware chunks...")
+            final_structures = add_source_attributions(final_action_fields, page_aware_chunks)
+
+            # Count attribution statistics
+            attribution_stats = {
+                "total_projects": sum(len(af["projects"]) for af in final_structures),
+                "projects_with_sources": sum(
+                    1 for af in final_structures
+                    for project in af["projects"]
+                    if project.get("sources")
+                )
+            }
+
+            monitor.end_stage(
+                "source_attribution",
+                page_aware_chunks=len(page_aware_chunks),
+                projects_with_sources=attribution_stats["projects_with_sources"],
+                total_projects=attribution_stats["total_projects"],
+                attribution_success_rate=round(
+                    attribution_stats["projects_with_sources"] / attribution_stats["total_projects"] * 100, 1
+                ) if attribution_stats["total_projects"] > 0 else 0
+            )
+        else:
+            print("INFO: No page attribution data available - using legacy chunks")
+            final_structures = final_action_fields
+            monitor.end_stage("source_attribution", page_aware_chunks=0, attribution_enabled=False)
 
         # Calculate extraction time
         extraction_time = time.time() - start_time
@@ -343,6 +488,9 @@ async def extract_structure_fast(
                 "total_projects": total_projects,
                 "projects_with_measures": measures_count,
                 "projects_with_indicators": indicators_count,
+                "page_attribution_enabled": True,
+                "projects_with_sources": attribution_stats["projects_with_sources"],
+                "attribution_success_rate": round(attribution_stats["attribution_success_rate"], 1),
             },
         }
 
@@ -352,7 +500,9 @@ async def extract_structure_fast(
         # Log API response
         log_api_response("/extract_structure_fast", 200, extraction_time)
 
-        return JSONResponse(content=response_data)
+        # Ensure response is JSON serializable
+        from fastapi.encoders import jsonable_encoder
+        return JSONResponse(content=jsonable_encoder(response_data))
 
     except Exception as e:
         monitor.log_error("extraction", e)

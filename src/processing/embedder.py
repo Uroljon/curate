@@ -16,7 +16,47 @@ client = PersistentClient(path=CHROMA_DIR)
 collection = client.get_or_create_collection(name=COLLECTION_NAME)
 
 
+def embed_chunks_with_pages(chunks_with_pages: list[dict], source_id: str) -> None:
+    """
+    Embed chunks that include page information.
+
+    Args:
+        chunks_with_pages: List of dicts with 'text', 'pages', 'chunk_id' keys
+        source_id: Source document identifier
+    """
+    # 🧼 Optional: delete old entries for the same source
+    existing = collection.get(where={"source": source_id}) or {"ids": []}
+    if existing and existing["ids"]:
+        collection.delete(ids=existing["ids"])
+
+    # Extract text for embedding
+    texts = [chunk["text"] for chunk in chunks_with_pages]
+    embeddings = model.encode(texts).tolist()
+
+    namespace_uuid = uuid.UUID("12345678-1234-5678-1234-567812345678")
+    ids = [
+        str(uuid.uuid5(namespace_uuid, f"{source_id}_{chunk['chunk_id']}"))
+        for chunk in chunks_with_pages
+    ]
+
+    # Create metadata including page information
+    metadata: list[Mapping[str, str | int | float | bool | None]] = []
+    for i, chunk in enumerate(chunks_with_pages):
+        meta = {
+            "source": source_id,
+            "chunk_index": i,
+            "chunk_id": chunk["chunk_id"],
+            "pages": str(chunk["pages"]),  # Store as string for ChromaDB compatibility
+            "page_count": len(chunk["pages"])
+        }
+        metadata.append(meta)
+
+    collection.add(documents=texts, embeddings=embeddings, ids=ids, metadatas=metadata)
+    print(f"✅ Stored {len(chunks_with_pages)} page-aware chunks into ChromaDB as '{source_id}'")
+
+
 def embed_chunks(chunks: list[str], source_id: str) -> None:
+    """Legacy function for backward compatibility with string-only chunks."""
     # 🧼 Optional: delete old entries for the same source
     existing = collection.get(where={"source": source_id}) or {"ids": []}
     if existing and existing["ids"]:
@@ -52,13 +92,26 @@ def get_all_chunks_for_document(source_id: str) -> list[dict]:
     chunks = []
     metadatas = results.get("metadatas") or []
     for doc, meta in zip(results["documents"], metadatas, strict=False):
-        chunks.append(
-            {
-                "text": doc,
-                "chunk_index": meta.get("chunk_index", 0),
-                "source": meta.get("source"),
-            }
-        )
+        chunk_info = {
+            "text": doc,
+            "chunk_index": meta.get("chunk_index", 0),
+            "source": meta.get("source"),
+        }
+
+        # Add page information if available
+        if meta.get("pages"):
+            try:
+                # Parse pages from string format
+                import ast
+                pages = ast.literal_eval(meta["pages"])
+                chunk_info["pages"] = pages
+                chunk_info["chunk_id"] = meta.get("chunk_id")
+                chunk_info["page_count"] = meta.get("page_count", len(pages))
+            except (ValueError, SyntaxError):
+                # Fallback for malformed page data
+                chunk_info["pages"] = []
+
+        chunks.append(chunk_info)
 
     # Sort by chunk_index to maintain document order
     chunks.sort(
@@ -108,12 +161,26 @@ def query_chunks(
         else []
     )
 
-    return [
-        {
+    results_list = []
+    for doc, score, meta in zip(docs, distances, metadatas, strict=False):
+        result = {
             "text": doc,
             "score": round(score, 4),
             "chunk_index": meta.get("chunk_index") if isinstance(meta, dict) else 0,
             "source": meta.get("source") if isinstance(meta, dict) else None,
         }
-        for doc, score, meta in zip(docs, distances, metadatas, strict=False)
-    ]
+
+        # Add page information if available
+        if isinstance(meta, dict) and "pages" in meta and meta["pages"]:
+            try:
+                import ast
+                pages = ast.literal_eval(meta["pages"])
+                result["pages"] = pages
+                result["chunk_id"] = meta.get("chunk_id")
+                result["page_count"] = meta.get("page_count", len(pages))
+            except (ValueError, SyntaxError):
+                result["pages"] = []
+
+        results_list.append(result)
+
+    return results_list
