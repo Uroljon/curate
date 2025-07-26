@@ -463,6 +463,12 @@ async def extract_structure_fast(
         else:
             print("INFO: No page attribution data available - using legacy chunks")
             final_structures = final_action_fields
+            
+            # Calculate stats even without attribution for accurate reporting
+            attribution_stats["total_projects"] = sum(len(af["projects"]) for af in final_structures)
+            attribution_stats["projects_with_sources"] = 0  # No sources without page-aware chunks
+            attribution_stats["attribution_success_rate"] = 0.0  # No attribution possible
+            
             monitor.end_stage("source_attribution", page_aware_chunks=0, attribution_enabled=False)
 
         # Calculate extraction time
