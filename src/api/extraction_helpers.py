@@ -319,18 +319,25 @@ def perform_single_aggregation(chunk_data: str, log_file_path: str | None = None
     """
     from src.core import ExtractionResult, query_ollama_structured
 
-    system_message = """KONTEXT: Sie sind Deutschlands führender Experte für kommunale Strategieplanung mit spezieller
-Expertise in HOCHEFFIZIENTER HANDLUNGSFELD-KONSOLIDIERUNG.
+    system_message = """Sie sind ein Experte für die Konsolidierung von Handlungsfeldern aus deutschen kommunalen Strategiedokumenten.
+Ihre Aufgabe ist es, ähnliche Handlungsfelder intelligent zusammenzuführen und eine reduzierte Liste von maximal 12 konsolidierten Handlungsfeldern zu erstellen.
+Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der vorgegebenen Struktur entspricht. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
 
-ZIEL: Reduzieren Sie die Anzahl der Handlungsfelder durch intelligente Zusammenführung ähnlicher Bereiche auf 8-12 finale Kategorien.
+    prompt = f"""Sie erhalten {chunk_data.count('"action_field"')} Handlungsfelder zur Konsolidierung.
 
-KERNAUFTRAG - MAXIMALE KONSOLIDIERUNG:
-🎯 OBERSTE PRIORITÄT: Verschmelzen Sie ähnliche Handlungsfelder zu weniger, umfassenderen Kategorien
-🎯 ZIELWERT: 8-12 Handlungsfelder im Endergebnis (nicht mehr als 12!)
-🎯 ERFOLGSMETRIK: Mindestens 50% Reduktion der ursprünglichen Anzahl
-🎯 STRATEGIE: Gruppieren Sie verwandte Themenbereiche unter gemeinsame Oberkategorien
+Ihre Aufgabe ist es, diese Liste durch intelligente Zusammenführung ähnlicher Bereiche zu reduzieren.
 
-ERWEITERTE KONSOLIDIERUNGSREGELN:
+ZIEL: Erstellen Sie eine Liste von maximal 12 konsolidierten Handlungsfeldern (idealerweise 8-12).
+
+ERFOLGSMETRIK: Erreichen Sie mindestens 50% Reduktion der ursprünglichen Anzahl der Handlungsfelder.
+
+STRATEGIE:
+1. Analysieren Sie die bereitgestellten Handlungsfelder nach Themenähnlichkeit.
+2. Gruppieren Sie verwandte Bereiche unter aussagekräftige Oberkategorien.
+3. Verschmelzen Sie die Inhalte vollständig: Alle Projekte, Maßnahmen und Indikatoren der zusammengeführten Felder müssen erhalten bleiben.
+4. Verwenden Sie ausschließlich deutsche Fachterminologie. Englische Begriffe sind komplett zu eliminieren.
+
+Beachten Sie folgende Konsolidierungsregeln und Beispiele:
 ✅ "Klimaschutz" + "Energie" + "Nachhaltigkeit" + "Umwelt" → "Klimaschutz, Energie und Umwelt"
 ✅ "Mobilität" + "Verkehr" + "ÖPNV" + "Radverkehr" → "Mobilität und Verkehr"
 ✅ "Wohnen" + "Quartiere" + "Stadtentwicklung" + "Bauplanung" → "Wohnen und Quartiersentwicklung"
@@ -340,32 +347,11 @@ ERWEITERTE KONSOLIDIERUNGSREGELN:
 ✅ "Verwaltung" + "Bürgerbeteiligung" + "Transparenz" → "Verwaltung und Bürgerbeteiligung"
 ✅ "Sicherheit" + "Ordnung" + "Katastrophenschutz" → "Sicherheit und Ordnung"
 
-ERFOLGSPARAMETER:
-- Eingabe mit 15+ Feldern → Ziel: 8-10 finale Felder
-- Eingabe mit 20+ Feldern → Ziel: 10-12 finale Felder
-- Vollständige Sammlung aller Projekte und Indikatoren
-- Deutsche Fachterminologie ohne englische Begriffe
-
-ERFOLGSMESSUNG: Sie waren erfolgreich, wenn Sie mindestens 50% Reduktion erreicht haben und maximal 12 finale Felder haben!"""
-
-    prompt = f"""Sie erhalten {chunk_data.count('"action_field"')} Handlungsfelder zur Konsolidierung:
-
+Hier sind die Handlungsfelder zur Konsolidierung:
 {chunk_data}
 
-AUFGABE - MAXIMALE REDUKTION:
-🎯 REDUZIEREN Sie von {chunk_data.count('"action_field"')} auf maximal 12 finale Handlungsfelder (Ziel: 8-12)
-🎯 ERREICHEN Sie mindestens 50% Reduktion durch intelligente Zusammenführung
-🎯 VERSCHMELZEN Sie ähnliche Themenbereiche zu umfassenderen Kategorien
-🎯 SAMMELN Sie alle Projekte, Maßnahmen und Indikatoren vollständig
-
-KONSOLIDIERUNGSSTRATEGIE:
-1. ANALYSIEREN Sie alle {chunk_data.count('"action_field"')} Eingabefelder nach Themenähnlichkeit
-2. GRUPPIEREN Sie verwandte Bereiche unter 8-12 aussagekräftige Oberkategorien
-3. VERSCHMELZEN Sie die Inhalte vollständig (alle Projekte + Indikatoren)
-4. VERWENDEN Sie nur deutsche Fachterminologie
-5. ELIMINIEREN Sie englische Begriffe komplett
-
-ERFOLGSZIEL: Maximal 12 finale Handlungsfelder mit vollständiger Datensammlung und mindestens 50% Reduktion!"""
+Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das die konsolidierten Handlungsfelder enthält. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON.
+"""
 
     try:
         # Check input size

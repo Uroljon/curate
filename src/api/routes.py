@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import Request, UploadFile
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 
 from src.core import (
     CHUNK_MAX_CHARS,
@@ -427,6 +428,13 @@ async def extract_structure_fast(
         # Stage 4: Source Attribution (if page metadata is available)
         monitor.start_stage("source_attribution")
 
+        # Initialize attribution_stats with default values
+        attribution_stats = {
+            "total_projects": 0,
+            "projects_with_sources": 0,
+            "attribution_success_rate": 0.0,
+        }
+
         # Check if we have page-aware chunks
         page_aware_chunks = [chunk for chunk in chunks if chunk.get("pages")]
 
@@ -435,23 +443,22 @@ async def extract_structure_fast(
             final_structures = add_source_attributions(final_action_fields, page_aware_chunks)
 
             # Count attribution statistics
-            attribution_stats = {
-                "total_projects": sum(len(af["projects"]) for af in final_structures),
-                "projects_with_sources": sum(
-                    1 for af in final_structures
-                    for project in af["projects"]
-                    if project.get("sources")
-                )
-            }
+            attribution_stats["total_projects"] = sum(len(af["projects"]) for af in final_structures)
+            attribution_stats["projects_with_sources"] = sum(
+                1 for af in final_structures
+                for project in af["projects"]
+                if project.get("sources")
+            )
+            attribution_stats["attribution_success_rate"] = round(
+                attribution_stats["projects_with_sources"] / attribution_stats["total_projects"] * 100, 1
+            ) if attribution_stats["total_projects"] > 0 else 0.0
 
             monitor.end_stage(
                 "source_attribution",
                 page_aware_chunks=len(page_aware_chunks),
                 projects_with_sources=attribution_stats["projects_with_sources"],
                 total_projects=attribution_stats["total_projects"],
-                attribution_success_rate=round(
-                    attribution_stats["projects_with_sources"] / attribution_stats["total_projects"] * 100, 1
-                ) if attribution_stats["total_projects"] > 0 else 0
+                attribution_success_rate=attribution_stats["attribution_success_rate"]
             )
         else:
             print("INFO: No page attribution data available - using legacy chunks")

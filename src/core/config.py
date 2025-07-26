@@ -20,7 +20,7 @@ OLLAMA_CHAT_URL = f"http://{OLLAMA_HOST}/api/chat"
 # Chunk Configuration - Optimized for qwen3:32b (40960 char context window)
 CHUNK_MAX_CHARS = 25000  # Maximum characters per chunk for LLM (conservative for 32b model stability)
 CHUNK_MIN_CHARS = 20000  # Minimum characters per chunk for LLM
-CHUNK_WARNING_THRESHOLD = 40000  # Warn if chunk exceeds this size
+CHUNK_WARNING_THRESHOLD = 30000  # Warn if chunk exceeds this size
 
 # Semantic Chunk Configuration (for initial document chunking)
 SEMANTIC_CHUNK_MAX_CHARS = 7500  # Maximum characters per semantic chunk
