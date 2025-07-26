@@ -741,7 +741,8 @@ def simple_deduplication_fallback(
 
 def add_source_attributions(
     final_results: list[dict[str, Any]],
-    page_aware_chunks: list[dict[str, Any]]
+    page_aware_chunks: list[dict[str, Any]],
+    original_page_text: list[tuple[str, int]] | None = None
 ) -> list[dict[str, Any]]:
     """
     Add source attribution with page numbers to extracted results.
@@ -749,6 +750,7 @@ def add_source_attributions(
     Args:
         final_results: Final extraction results after deduplication
         page_aware_chunks: LLM chunks with page metadata (text, pages, chunk_id)
+        original_page_text: Optional list of (text, page_num) tuples for precise page attribution
 
     Returns:
         Enhanced results with source attribution
@@ -759,6 +761,65 @@ def add_source_attributions(
     from src.core.schemas import SourceAttribution
 
     print(f"🔍 Adding source attribution for {len(final_results)} action fields using {len(page_aware_chunks)} LLM chunks")
+    if original_page_text:
+        print(f"   📄 Using {len(original_page_text)} original pages for precise attribution")
+
+    def find_quote_page(quote: str, original_pages: list[tuple[str, int]], fallback_pages: list[int]) -> int:
+        """
+        Find the specific page number where a quote appears.
+        
+        Args:
+            quote: The quote to search for
+            original_pages: List of (text, page_num) tuples
+            fallback_pages: Pages from the LLM chunk to use if quote not found
+            
+        Returns:
+            The page number where the quote was found, or fallback to first page
+        """
+        if not original_pages or not quote:
+            return fallback_pages[0] if fallback_pages else 1
+
+        # Clean the quote for better matching
+        clean_quote = quote.strip()
+        if len(clean_quote) < 20:  # Too short for reliable matching
+            return fallback_pages[0] if fallback_pages else 1
+
+        # Try to find a significant portion of the quote (at least 50 chars)
+        search_text = clean_quote[:min(100, len(clean_quote))]
+
+        best_match_page = None
+        best_match_score = 0.0
+
+        for page_text, page_num in original_pages:
+            # Skip if page is not in the LLM chunk's page range
+            if fallback_pages and page_num not in fallback_pages:
+                continue
+
+            # Use SequenceMatcher for fuzzy matching
+            matcher = SequenceMatcher(None, search_text.lower(), page_text.lower())
+
+            # Find the best matching block
+            match = matcher.find_longest_match(0, len(search_text), 0, len(page_text))
+
+            # Calculate match score (ratio of matched length to search length)
+            if match.size > 0:
+                score = match.size / len(search_text)
+
+                # If we find a very good match (>80%), use it immediately
+                if score > 0.8:
+                    return page_num
+
+                # Track the best match
+                if score > best_match_score:
+                    best_match_score = score
+                    best_match_page = page_num
+
+        # Use best match if reasonably good (>60%), otherwise fallback
+        if best_match_page and best_match_score > 0.6:
+            return best_match_page
+        else:
+            # Fallback to first page of the LLM chunk
+            return fallback_pages[0] if fallback_pages else 1
 
     enhanced_results = []
 
@@ -785,11 +846,15 @@ def add_source_attributions(
                     quote = extract_relevant_quote(chunk_text, project_title)
 
                     if quote and chunk_pages:
-                        # For multi-page chunks, use the first page as primary reference
-                        primary_page = chunk_pages[0]
+                        # Find the specific page where this quote appears
+                        if original_page_text:
+                            page_number = find_quote_page(quote, original_page_text, chunk_pages)
+                        else:
+                            # Fallback to first page of the LLM chunk
+                            page_number = chunk_pages[0]
 
                         project_sources.append(SourceAttribution(
-                            page_number=primary_page,
+                            page_number=page_number,
                             quote=quote,
                             chunk_id=chunk_id
                         ))
@@ -809,13 +874,18 @@ def add_source_attributions(
                         quote = extract_relevant_quote(chunk_text, measure)
 
                         if quote and chunk_pages:
-                            primary_page = chunk_pages[0]
+                            # Find the specific page where this quote appears
+                            if original_page_text:
+                                page_number = find_quote_page(quote, original_page_text, chunk_pages)
+                            else:
+                                # Fallback to first page of the LLM chunk
+                                page_number = chunk_pages[0]
 
                             # Avoid duplicate pages
                             existing_pages = {src.page_number for src in project_sources}
-                            if primary_page not in existing_pages:
+                            if page_number not in existing_pages:
                                 project_sources.append(SourceAttribution(
-                                    page_number=primary_page,
+                                    page_number=page_number,
                                     quote=quote,
                                     chunk_id=chunk_id
                                 ))

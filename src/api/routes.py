@@ -474,8 +474,28 @@ async def extract_structure_fast(
                     "chunk_id": chunk_id
                 })
 
+            # Try to load original page-aware text for precise attribution
+            original_page_text = []
+            pages_file = os.path.join(UPLOAD_FOLDER, f"{source_id}_pages.txt")
+            if os.path.exists(pages_file):
+                print(f"📄 Loading original page text from {pages_file}")
+                with open(pages_file, encoding="utf-8") as f:
+                    content = f.read()
+                    # Parse the page-aware text file
+                    page_sections = content.split("\n\n# ====== PAGE ")
+                    for section in page_sections[1:]:  # Skip first empty section
+                        if section.strip():
+                            lines = section.split("\n", 1)
+                            if len(lines) >= 2:
+                                page_num = int(lines[0].split(" ======")[0])
+                                page_text = lines[1] if len(lines) > 1 else ""
+                                original_page_text.append((page_text, page_num))
+                print(f"   ✅ Loaded {len(original_page_text)} pages of original text")
+            else:
+                print(f"   ⚠️ Original page text file not found: {pages_file}")
+
             print(f"\n🔍 Adding source attribution using {len(llm_page_aware_chunks)} LLM page-aware chunks...")
-            final_structures = add_source_attributions(final_action_fields, llm_page_aware_chunks)
+            final_structures = add_source_attributions(final_action_fields, llm_page_aware_chunks, original_page_text)
 
             # Count attribution statistics
             attribution_stats["total_projects"] = sum(len(af["projects"]) for af in final_structures)
