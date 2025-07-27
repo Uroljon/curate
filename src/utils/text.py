@@ -99,14 +99,6 @@ def clean_text(text: str) -> str:
     # Remove standalone numbers that are likely page numbers
     text = re.sub(r"^\s*\d{1,4}\s*$", "", text, flags=re.MULTILINE)
 
-    # Remove common German document headers/footers patterns
-    text = re.sub(
-        r"^.*Handlungsfelder der Stadtentwicklung\s*\|.*$",
-        "",
-        text,
-        flags=re.MULTILINE
-    )
-
     # Merge hyphenated words split across lines (German-aware)
     text = re.sub(r"(\w+)-\n(\w+)", r"\1\2", text)
 
@@ -387,7 +379,7 @@ def remove_duplicate_lines(text: str, threshold: float = 0.9) -> str:
 
 
 def identify_headers_footers(
-    page_texts: list[str], frequency_threshold: float = 0.5
+    page_texts: list[str], frequency_threshold: float = 0.3
 ) -> tuple[list[str], list[str]]:
     """
     Identify repeating headers and footers across pages.
@@ -464,7 +456,7 @@ def identify_headers_footers(
 
 
 def remove_structural_noise(
-    text: str, headers: list[str], footers: list[str]
+    text: str, headers: list[str], footers: list[str], min_content_length: int = 100
 ) -> str:
     """
     Remove identified headers, footers, and other structural noise from text.
@@ -473,11 +465,39 @@ def remove_structural_noise(
         text: Text to clean
         headers: List of header patterns to remove
         footers: List of footer patterns to remove
+        min_content_length: Minimum length of remaining content to proceed with removal
 
     Returns:
         Cleaned text with structural noise removed
     """
+    # First, check if we would have enough content left after cleaning
     lines = text.splitlines()
+    content_lines = []
+
+    for line in lines:
+        line_stripped = line.strip()
+        if not line_stripped:
+            continue
+
+        # Check if this line would be removed
+        normalized_line = re.sub(r'\b\d{1,4}\b', '', line_stripped)
+        normalized_line = ' '.join(normalized_line.split()).strip()
+
+        # Would this line be kept?
+        is_header = any(header in normalized_line for header in headers)
+        is_footer = any(footer in normalized_line for footer in footers)
+        is_page_num = bool(re.match(r'^(Seite\s+)?\d+(\s+(von|of)\s+\d+)?$', line_stripped))
+
+        if not (is_header or is_footer or is_page_num):
+            content_lines.append(line_stripped)
+
+    # Check if we have enough content remaining
+    remaining_content = ' '.join(content_lines)
+    if len(remaining_content) < min_content_length:
+        # Don't remove headers/footers if it would leave too little content
+        return text
+
+    # Proceed with normal cleaning
     cleaned_lines: list[str] = []
 
     for _i, line in enumerate(lines):

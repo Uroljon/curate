@@ -425,20 +425,23 @@ def chunk_for_llm_with_pages(
     page_aware_text: list[tuple[str, int]],
     max_chars: int = 20000,
     min_chars: int = 15000,
+    doc_title: str = "Dokument",
 ) -> list[tuple[str, list[int]]]:
     """
-    Prepare page-aware chunks for LLM processing.
+    Prepare page-aware chunks for LLM processing with context headers.
 
     This takes page-aware text and creates larger chunks optimized for LLM context windows
-    while preserving information about which pages each chunk came from.
+    while preserving information about which pages each chunk came from and adding
+    contextual headers for better LLM understanding.
 
     Args:
         page_aware_text: List of (text, page_number) tuples from parser
         max_chars: Maximum characters per LLM chunk
         min_chars: Target minimum characters per LLM chunk
+        doc_title: Title of the document for context headers
 
     Returns:
-        List of (chunk_text, page_numbers) tuples
+        List of (chunk_text, page_numbers) tuples where chunk_text includes context header
     """
     if not page_aware_text:
         return []
@@ -508,7 +511,28 @@ def chunk_for_llm_with_pages(
         else:
             final_chunks.append((chunk_text, chunk_pages))
 
-    return final_chunks
+    # Add context headers to each chunk
+    chunks_with_headers: list[tuple[str, list[int]]] = []
+    for chunk_text, chunk_pages in final_chunks:
+        # Create context header
+        page_range = f"{min(chunk_pages)}-{max(chunk_pages)}" if len(chunk_pages) > 1 else str(chunk_pages[0])
+
+        # Try to extract section info from the beginning of the chunk
+        section_info = ""
+        lines = chunk_text.splitlines()[:5]  # Check first 5 lines for section headers
+        for line in lines:
+            line = line.strip()
+            if line and is_heading(line):
+                section_info = f" | Sektion: {line}"
+                break
+
+        context_header = f"[Kontext: {doc_title} | Seiten: {page_range}{section_info}]\n\n"
+
+        # Add header to chunk
+        chunk_with_header = context_header + chunk_text
+        chunks_with_headers.append((chunk_with_header, chunk_pages))
+
+    return chunks_with_headers
 
 
 def analyze_chunk_quality(chunks: list[str], stage: str = "unknown") -> dict:
@@ -897,25 +921,74 @@ def chunk_for_embedding_with_pages(
     """
     chunks_with_pages = []
     chunk_id_counter = 0
+    small_pages_buffer = []  # Buffer for accumulating small pages
 
     for page_text, page_num in page_aware_text:
         if not page_text.strip():
             continue
 
-        # Use existing chunking logic on a per-page basis
-        page_chunks = chunk_for_embedding(page_text, max_chars=max_chars)
+        # Check if this page is too small
+        if len(page_text) < min_chars:
+            small_pages_buffer.append((page_text, page_num))
 
-        for i, chunk_text in enumerate(page_chunks):
-            if len(chunk_text) >= min_chars:
+            # Check if accumulated small pages are big enough to form a chunk
+            accumulated_text = "\n\n".join(text for text, _ in small_pages_buffer)
+            if len(accumulated_text) >= min_chars:
+                # Create a chunk from accumulated small pages
+                page_nums = [pn for _, pn in small_pages_buffer]
                 chunks_with_pages.append(
                     {
-                        "text": chunk_text,
-                        "pages": [page_num],  # Each chunk belongs to one page
+                        "text": accumulated_text,
+                        "pages": page_nums,
                         "chunk_id": chunk_id_counter,
-                        "page_chunk_index": i,  # Index of chunk within the page
+                        "page_chunk_index": 0,
                     }
                 )
                 chunk_id_counter += 1
+                small_pages_buffer = []  # Clear the buffer
+        else:
+            # First, flush any accumulated small pages
+            if small_pages_buffer:
+                accumulated_text = "\n\n".join(text for text, _ in small_pages_buffer)
+                page_nums = [pn for _, pn in small_pages_buffer]
+                chunks_with_pages.append(
+                    {
+                        "text": accumulated_text,
+                        "pages": page_nums,
+                        "chunk_id": chunk_id_counter,
+                        "page_chunk_index": 0,
+                    }
+                )
+                chunk_id_counter += 1
+                small_pages_buffer = []
+
+            # Process normal-sized page
+            page_chunks = chunk_for_embedding(page_text, max_chars=max_chars)
+
+            for i, chunk_text in enumerate(page_chunks):
+                if len(chunk_text) >= min_chars:
+                    chunks_with_pages.append(
+                        {
+                            "text": chunk_text,
+                            "pages": [page_num],  # Each chunk belongs to one page
+                            "chunk_id": chunk_id_counter,
+                            "page_chunk_index": i,  # Index of chunk within the page
+                        }
+                    )
+                    chunk_id_counter += 1
+
+    # Don't forget any remaining small pages
+    if small_pages_buffer:
+        accumulated_text = "\n\n".join(text for text, _ in small_pages_buffer)
+        page_nums = [pn for _, pn in small_pages_buffer]
+        chunks_with_pages.append(
+            {
+                "text": accumulated_text,
+                "pages": page_nums,
+                "chunk_id": chunk_id_counter,
+                "page_chunk_index": 0,
+            }
+        )
 
     return chunks_with_pages
 
