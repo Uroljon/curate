@@ -451,15 +451,19 @@ async def extract_structure_fast(
         from src.processing.chunker import chunk_for_llm_with_pages
 
         # Extract document title from source_id (remove timestamp and hash)
-        doc_title = "Regensburg-Plan 2040"  # Default title
+        doc_title = "Dokument"  # Default title
         if source_id:
             # Try to extract meaningful name from source_id
+            # Format: timestamp_hash_filename.pdf
             parts = source_id.split("_")
             if len(parts) >= 3:
                 # Skip timestamp and hash, get the filename part
                 doc_name = "_".join(parts[2:]).replace(".pdf", "")
                 if doc_name:
-                    doc_title = doc_name.title()
+                    # Clean up the title - replace hyphens with spaces, proper case
+                    doc_title = doc_name.replace("-", " ").replace("_", " ")
+                    # Capitalize appropriately for German
+                    doc_title = " ".join(word.capitalize() for word in doc_title.split())
 
         optimized_chunks_with_pages = chunk_for_llm_with_pages(
             page_aware_text, max_chars=max_chars, min_chars=min_chars, doc_title=doc_title
