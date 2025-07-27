@@ -880,61 +880,42 @@ def create_structure_aware_chunks(
 def chunk_for_embedding_with_pages(
     page_aware_text: list[tuple[str, int]],
     max_chars: int = 5000,
+    min_chars: int = 1000,
 ) -> list[dict[str, Any]]:
     """
     Page-aware chunking that preserves page number information.
 
+    This version processes each page individually to ensure correct attribution.
+
     Args:
         page_aware_text: List of (text, page_number) tuples
         max_chars: Maximum characters per chunk
+        min_chars: Minimum characters for a chunk to be kept
 
     Returns:
         List of chunks with metadata: [{"text": str, "pages": List[int], "chunk_id": int}]
     """
     chunks_with_pages = []
-    chunk_id = 0
+    chunk_id_counter = 0
 
-    # First, combine all page texts with page markers
-    combined_segments = []
-    for text, page_num in page_aware_text:
-        combined_segments.append((text, page_num))
+    for page_text, page_num in page_aware_text:
+        if not page_text.strip():
+            continue
 
-    # Convert to single text while tracking page boundaries
-    full_text = ""
-    page_positions = []  # List of (start_pos, end_pos, page_num)
-    current_pos = 0
+        # Use existing chunking logic on a per-page basis
+        page_chunks = chunk_for_embedding(page_text, max_chars=max_chars)
 
-    for text, page_num in combined_segments:
-        if full_text:  # Add separator between pages
-            full_text += "\n\n"
-            current_pos += 2
-
-        start_pos = current_pos
-        full_text += text
-        current_pos += len(text)
-        end_pos = current_pos
-
-        page_positions.append((start_pos, end_pos, page_num))
-
-    # Use existing chunking logic
-    text_chunks = chunk_for_embedding(full_text, max_chars)
-
-    # Map chunks back to pages
-    for chunk_text in text_chunks:
-        chunk_start = full_text.find(chunk_text)
-        chunk_end = chunk_start + len(chunk_text)
-
-        # Find which pages this chunk spans
-        chunk_pages = set()
-        for start_pos, end_pos, page_num in page_positions:
-            # Check if chunk overlaps with this page
-            if not (chunk_end <= start_pos or chunk_start >= end_pos):
-                chunk_pages.add(page_num)
-
-        chunks_with_pages.append(
-            {"text": chunk_text, "pages": sorted(chunk_pages), "chunk_id": chunk_id}
-        )
-        chunk_id += 1
+        for i, chunk_text in enumerate(page_chunks):
+            if len(chunk_text) >= min_chars:
+                chunks_with_pages.append(
+                    {
+                        "text": chunk_text,
+                        "pages": [page_num],  # Each chunk belongs to one page
+                        "chunk_id": chunk_id_counter,
+                        "page_chunk_index": i,  # Index of chunk within the page
+                    }
+                )
+                chunk_id_counter += 1
 
     return chunks_with_pages
 

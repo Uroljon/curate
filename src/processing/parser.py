@@ -12,7 +12,7 @@ from src.core import (
     SUPPORTED_LANGUAGES,
     SYMBOL_FILTER_THRESHOLD,
 )
-from src.utils.text import clean_ocr_text, clean_text
+from src.utils.text import clean_ocr_text, clean_text, identify_headers_footers, remove_structural_noise
 
 # Initialize spell checkers based on config
 spell_checkers = {
@@ -53,12 +53,28 @@ def extract_text_with_ocr_fallback(pdf_path: str) -> tuple[list[tuple[str, int]]
                     )
                     page_texts[i] = ocr_cleaned
 
-    # Create page-aware text list with 1-based page numbers
+    # First pass: basic cleaning on all pages
+    cleaned_page_texts = []
+    for text in page_texts:
+        if text.strip():
+            cleaned_page_texts.append(clean_text(text))
+        else:
+            cleaned_page_texts.append("")
+
+    # Identify headers and footers across all pages
+    headers, footers = identify_headers_footers(cleaned_page_texts)
+
+    # Second pass: remove structural noise and create page-aware text list
     page_aware_text = []
-    for i, text in enumerate(page_texts):
+    for i, text in enumerate(cleaned_page_texts):
         if text.strip():  # Only include pages with actual content
-            cleaned_page_text = clean_text(text)
-            page_aware_text.append((cleaned_page_text, i + 1))  # 1-based page numbers
+            # Remove identified headers/footers
+            if headers or footers:
+                text = remove_structural_noise(text, headers, footers)
+
+            # Only add if there's still content after cleaning
+            if text.strip():
+                page_aware_text.append((text, i + 1))  # 1-based page numbers
 
     # Prepare metadata
     metadata = {
@@ -69,6 +85,8 @@ def extract_text_with_ocr_fallback(pdf_path: str) -> tuple[list[tuple[str, int]]
         "ocr_page_numbers": [
             p + 1 for p in scanned_pages
         ],  # 1-based for human readability
+        "headers_detected": len(headers),
+        "footers_detected": len(footers),
         "extraction_method_ratio": {
             "ocr_percentage": (
                 (len(scanned_pages) / total_pages * 100) if total_pages > 0 else 0

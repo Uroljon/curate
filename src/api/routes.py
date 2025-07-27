@@ -141,9 +141,20 @@ async def upload_pdf_with_pages(request: Request, file: UploadFile):
 
         # Prepare response
         page_stats: dict[int, int] = {}
+        # Initialize all pages found in chunks to 0
+        all_pages_in_chunks = set()
         for chunk in chunks_with_pages:
-            for page in chunk["pages"]:
-                page_stats[page] = page_stats.get(page, 0) + 1
+            all_pages_in_chunks.update(chunk["pages"])
+        for page_num in all_pages_in_chunks:
+            page_stats[page_num] = 0
+
+        # Count how many chunks each page belongs to
+        for page_num in page_stats:
+            count = 0
+            for chunk in chunks_with_pages:
+                if page_num in chunk["pages"]:
+                    count += 1
+            page_stats[page_num] = count
 
         response_data = {
             "chunks": len(chunks_with_pages),
