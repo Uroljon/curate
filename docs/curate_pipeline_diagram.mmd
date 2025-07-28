@@ -16,34 +16,27 @@ graph TB
         F --> F3[Remove Structural Noise]
 
         F --> G[Save Page-Aware Text File]
+        G --> G1[Format: _pages.txt]
+        G --> G2[Page-by-Page Text Storage]
+        G --> G3[Preserves Page Numbers]
 
-        G --> H[Semantic Chunking]
-        H --> H1[Structure-Aware Chunking]
-        H --> H2[Page Attribution Preserved]
-        H --> H3[5K-7.5K chars per chunk]
-
-        H --> I[Save Chunks to File]
-        I --> I1[Chunks with Page Metadata]
-        I --> I2[Stored as Text File]
-        I --> I3[Format: _chunks_with_pages.txt]
-
-        I --> K[Return Response]
-        K --> K1[Chunks Count]
-        K --> K2[Page Coverage Stats]
+        G --> K[Return Response]
+        K --> K1[Pages Extracted Count]
+        K --> K2[Extraction Metadata]
         K --> K3[Source ID for Next Step]
     end
 
     %% Extract Structure Endpoint Flow
     subgraph Extract["/extract_structure Endpoint"]
-        L[Request with Source ID] --> M[Load Chunks from File]
-        M --> M1[Read _chunks_with_pages.txt]
-        M --> M2[Parse Chunk Format]
-        M --> M3[Extract Page Metadata]
+        L[Request with Source ID] --> M[Load Pages from File]
+        M --> M1[Read _pages.txt]
+        M --> M2[Parse Page Format]
+        M --> M3[Extract Page-Aware Text]
 
-        M --> N[Prepare LLM Chunks]
-        N --> N1[Convert to Page-Aware Format]
-        N --> N2[Chunk for LLM Processing]
-        N --> N3[15K-20K chars with Context Headers]
+        M --> N[Create LLM Chunks]
+        N --> N1[Direct Page-Aware Chunking]
+        N --> N2[15K-20K chars per chunk]
+        N --> N3[Add Context Headers]
 
         N --> O[Structure Extraction Loop]
         O --> O1[Process Each Chunk Independently]
@@ -80,9 +73,8 @@ graph TB
     subgraph FileStorage["File Storage"]
         FS[(Upload Folder)]
         FS --> FS1[Original PDFs]
-        FS --> FS2[Extracted Text - _pages.txt]
-        FS --> FS3[Semantic Chunks - _chunks_with_pages.txt]
-        FS --> FS4[Page Metadata Preserved]
+        FS --> FS2[Page-Aware Text - _pages.txt]
+        FS --> FS3[Page Metadata Preserved]
     end
 
     %% Ollama Integration
@@ -95,7 +87,7 @@ graph TB
 
     %% Connect the flows
     K --> L
-    I -.-> FS
+    G -.-> FS
     M -.-> FS
     O2 -.-> LLM
 
@@ -108,4 +100,4 @@ graph TB
     class A,L endpoint
     class FS storage
     class LLM external
-    class B,C,D,E,F,G,H,I,K,M,N,O,P,Q,R,S process
+    class B,C,D,E,F,G,K,M,N,O,P,Q,R,S process

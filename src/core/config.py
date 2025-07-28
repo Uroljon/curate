@@ -49,7 +49,7 @@ EXTRACTION_MAX_RETRIES = 3  # Number of retry attempts for failed extractions
 
 # Text Processing Configuration
 MIN_CHARS_FOR_VALID_PAGE = (
-    10  # Minimum characters to consider page as text (not scanned)
+    50  # Minimum characters to consider page as text (not scanned)
 )
 OCR_LANGUAGE = "deu"  # Tesseract language code for German
 SPELL_CHECK_THRESHOLD = 0.6  # Ratio of misspelled words to filter OCR noise

@@ -99,8 +99,17 @@ def clean_text(text: str) -> str:
     # Remove standalone numbers that are likely page numbers
     text = re.sub(r"^\s*\d{1,4}\s*$", "", text, flags=re.MULTILINE)
 
+    # Remove footnote references with URLs
+    text = re.sub(r"^\d+\)\s*https?://.*$", "", text, flags=re.MULTILINE)
+
     # Merge hyphenated words split across lines (German-aware)
     text = re.sub(r"(\w+)-\n(\w+)", r"\1\2", text)
+
+    # Fix split German place names
+    text = re.sub(r"(Beratz|Ober|Unter|Bad|Neu|Alt|Klein|Groß)-\s+(\w+)", r"\1\2", text)
+
+    # Preserve numbered lists by adding bullets
+    text = re.sub(r"^(\d{1,2})\s+([A-Z])", r"• \1 \2", text, flags=re.MULTILINE)
 
     # Merge lines that were broken mid-sentence (improved logic)
     # Don't merge if next line starts with uppercase (likely new sentence)
@@ -210,12 +219,6 @@ def normalize_german_text(text: str) -> str:
     # Fix common OCR errors in German
     replacements = {
         "ß": "ß",  # Ensure correct eszett
-        "ae": "ä",  # Common OCR substitution
-        "oe": "ö",
-        "ue": "ü",
-        "Ae": "Ä",
-        "Oe": "Ö",
-        "Ue": "Ü",
     }
 
     # Apply replacements only in appropriate contexts
@@ -340,44 +343,6 @@ def detect_language_safe(text: str, default: str = "de") -> str:
     except (LangDetectException, Exception):
         return default
 
-
-def remove_duplicate_lines(text: str, threshold: float = 0.9) -> str:
-    """
-    Remove duplicate or near-duplicate lines.
-
-    Args:
-        text: Text to process
-        threshold: Similarity threshold (0-1) for considering lines as duplicates
-
-    Returns:
-        Text with duplicates removed
-    """
-    lines = text.splitlines()
-    unique_lines = []
-
-    for line in lines:
-        line = line.strip()
-        if not line:
-            unique_lines.append("")
-            continue
-
-        # Check if this line is similar to any existing line
-        is_duplicate = False
-        for existing in unique_lines[-10:]:  # Only check recent lines
-            if not existing:
-                continue
-
-            # Simple similarity check based on common characters
-            common = len(set(line) & set(existing))
-            total = len(set(line) | set(existing))
-            if total > 0 and common / total > threshold:
-                is_duplicate = True
-                break
-
-        if not is_duplicate:
-            unique_lines.append(line)
-
-    return "\n".join(unique_lines)
 
 
 def identify_headers_footers(

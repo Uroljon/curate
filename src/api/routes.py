@@ -17,14 +17,10 @@ from src.core import (
     CHUNK_MIN_CHARS,
     FAST_EXTRACTION_ENABLED,
     FAST_EXTRACTION_MAX_CHUNKS,
-    SEMANTIC_CHUNK_TARGET_CHARS,
     UPLOAD_FOLDER,
 )
 from src.extraction import extract_structures_with_retry
-from src.processing import (
-    chunk_for_embedding_with_pages,
-    extract_text_with_ocr_fallback,
-)
+from src.processing import extract_text_with_ocr_fallback
 from src.utils import (
     ChunkQualityMonitor,
     get_extraction_monitor,
@@ -39,43 +35,36 @@ from .extraction_helpers import (
 )
 
 
-def load_chunks_from_file(source_id: str) -> list[dict]:
-    """Load chunks from the saved chunks file."""
-    chunks_filename = os.path.splitext(source_id)[0] + "_chunks_with_pages.txt"
-    chunks_path = os.path.join(UPLOAD_FOLDER, chunks_filename)
+def load_pages_from_file(source_id: str) -> list[tuple[str, int]]:
+    """Load page-aware text from the saved pages file."""
+    pages_filename = os.path.splitext(source_id)[0] + "_pages.txt"
+    pages_path = os.path.join(UPLOAD_FOLDER, pages_filename)
 
-    if not os.path.exists(chunks_path):
-        # Fallback to non-page-aware chunks file if it exists
-        chunks_filename = os.path.splitext(source_id)[0] + "_chunks.txt"
-        chunks_path = os.path.join(UPLOAD_FOLDER, chunks_filename)
-        if not os.path.exists(chunks_path):
-            return []
+    if not os.path.exists(pages_path):
+        error_msg = f"Pages file not found: {pages_filename}"
+        raise FileNotFoundError(error_msg)
 
-    chunks = []
-    with open(chunks_path, encoding="utf-8") as f:
+    page_aware_text = []
+    with open(pages_path, encoding="utf-8") as f:
         content = f.read()
 
-    # Parse chunks from the file
-    chunk_pattern = r"# ====== CHUNK (\d+)(?: \(Pages: \[([\d, ]+)\]\))? ======\n\n(.*?)(?=\n\n# ====== CHUNK|\Z)"
-    matches = re.findall(chunk_pattern, content, re.DOTALL)
+    # Parse pages using regex
+    page_pattern = re.compile(
+        r"\[Page (\d+)\]\n(.*?)(?=\n\n\[Page|\Z)",
+        re.DOTALL,
+    )
+    matches = page_pattern.findall(content)
 
-    for i, (_chunk_num, pages_str, text) in enumerate(matches):
-        chunk = {
-            "text": text.strip(),
-            "chunk_index": i,
-            "source": source_id,
-        }
+    for page_num_str, page_text in matches:
+        try:
+            page_num = int(page_num_str)
+            page_text = page_text.strip()
+            if page_text:  # Only add non-empty pages
+                page_aware_text.append((page_text, page_num))
+        except ValueError:
+            print(f"⚠️ Skipping invalid page number: {page_num_str}")
 
-        # Parse page information if available
-        if pages_str:
-            pages = [int(p.strip()) for p in pages_str.split(",")]
-            chunk["pages"] = pages
-            chunk["page_count"] = len(pages)
-            chunk["chunk_id"] = f"{source_id}_chunk_{i}"
-
-        chunks.append(chunk)
-
-    return chunks
+    return page_aware_text
 
 
 async def upload_pdf(request: Request, file: UploadFile):
@@ -112,7 +101,7 @@ async def upload_pdf(request: Request, file: UploadFile):
         txt_path = os.path.join(UPLOAD_FOLDER, txt_filename)
         with open(txt_path, "w", encoding="utf-8") as txt_file:
             for text, page_num in page_aware_text:
-                txt_file.write(f"\n\n# ====== PAGE {page_num} ======\n\n")
+                txt_file.write(f"\n\n[Page {page_num}]\n\n")
                 txt_file.write(text)
 
         total_text_length = sum(len(text) for text, _ in page_aware_text)
@@ -128,68 +117,13 @@ async def upload_pdf(request: Request, file: UploadFile):
             ],
         )
 
-        # Stage 3: Page-aware semantic chunking
-        monitor.start_stage("semantic_chunking")
-        chunks_with_pages = chunk_for_embedding_with_pages(
-            page_aware_text,
-            max_chars=SEMANTIC_CHUNK_TARGET_CHARS,
-        )
-
-        # Analyze chunk quality (using text only for compatibility)
-        chunk_texts = [chunk["text"] for chunk in chunks_with_pages]
-        chunk_metrics = ChunkQualityMonitor.analyze_chunks(chunk_texts, "semantic")
-
-        # Save chunked text with page info using safe filename
-        chunks_filename = os.path.splitext(safe_filename)[0] + "_chunks_with_pages.txt"
-        chunks_path = os.path.join(UPLOAD_FOLDER, chunks_filename)
-        with open(chunks_path, "w", encoding="utf-8") as chunks_file:
-            for i, chunk in enumerate(chunks_with_pages, 1):
-                chunks_file.write(
-                    f"\n\n# ====== CHUNK {i} (Pages: {chunk['pages']}) ======\n\n"
-                )
-                chunks_file.write(chunk["text"])
-
-        monitor.end_stage(
-            "semantic_chunking",
-            chunk_count=len(chunks_with_pages),
-            chunk_metrics=chunk_metrics,
-            page_aware=True,
-        )
-
-        # Chunks are already saved to file for later retrieval
-
-        # Prepare response
-        page_stats: dict[int, int] = {}
-        # Initialize all pages found in chunks to 0
-        all_pages_in_chunks = set()
-        for chunk in chunks_with_pages:
-            all_pages_in_chunks.update(chunk["pages"])
-        for page_num in all_pages_in_chunks:
-            page_stats[page_num] = 0
-
-        # Count how many chunks each page belongs to
-        for page_num in page_stats:
-            count = 0
-            for chunk in chunks_with_pages:
-                if page_num in chunk["pages"]:
-                    count += 1
-            page_stats[page_num] = count
+        # No more semantic chunking - pages are already saved to file for later retrieval
 
         response_data = {
-            "chunks": len(chunks_with_pages),
+            "pages_extracted": len(page_aware_text),
             "total_text_length": total_text_length,
-            "pages_processed": len(page_aware_text),
             "page_attribution_enabled": True,
-            "chunk_quality": {
-                "avg_size": chunk_metrics["size_stats"]["avg"],
-                "with_structure": chunk_metrics["structural_stats"].get(
-                    "chunks_with_structure", 0
-                ),
-            },
-            "page_coverage": {
-                "total_pages": len(page_stats),
-                "chunks_per_page": dict(sorted(page_stats.items())),
-            },
+            "extraction_metadata": extraction_metadata,
             "source_id": safe_filename,  # Return the safe filename for subsequent API calls
             "original_filename": file.filename,  # Keep original filename for reference
         }
@@ -255,51 +189,12 @@ async def extract_structure(
     monitor = get_extraction_monitor(source_id)
 
     try:
-        # Stage 1: Chunk retrieval
-        monitor.start_stage("chunk_retrieval", source_id=source_id)
-        # Load chunks from saved file instead of ChromaDB
-        chunks = load_chunks_from_file(source_id)
-        raw_texts = [c["text"] for c in chunks]
-
-        # Check if we have page-aware chunks and convert to page_aware_text format
-        page_aware_chunks = [chunk for chunk in chunks if chunk.get("pages")]
-        if page_aware_chunks:
-            print(f"🔍 Using page-aware chunking with {len(page_aware_chunks)} chunks")
-            # Convert chunks to page_aware_text format for new chunker
-            page_aware_text: list[tuple[str, int]] = []
-            for chunk in page_aware_chunks:
-                chunk_text = chunk["text"]
-                chunk_pages = chunk["pages"]
-
-                if not chunk_pages:
-                    # No page info, use page 1
-                    page_aware_text.append((chunk_text, 1))
-                elif len(chunk_pages) == 1:
-                    # Single page chunk
-                    page_aware_text.append((chunk_text, chunk_pages[0]))
-                else:
-                    # Multi-page chunk - distribute text proportionally
-                    # This is still an approximation but better than using only first page
-                    lines = chunk_text.split("\n")
-                    lines_per_page = max(1, len(lines) // len(chunk_pages))
-
-                    for i, page_num in enumerate(chunk_pages):
-                        start_line = i * lines_per_page
-                        if i == len(chunk_pages) - 1:
-                            # Last page gets remaining lines
-                            page_text = "\n".join(lines[start_line:])
-                        else:
-                            end_line = start_line + lines_per_page
-                            page_text = "\n".join(lines[start_line:end_line])
-
-                        if page_text.strip():  # Only add non-empty text
-                            page_aware_text.append((page_text, page_num))
-        else:
-            # Fallback: create page_aware_text with page 1 for all chunks
-            print("⚠️ No page information available, using fallback chunking")
-            page_aware_text = [(text, 1) for text in raw_texts]
-
-        monitor.end_stage("chunk_retrieval", chunks_retrieved=len(raw_texts))
+        # Stage 1: Page retrieval
+        monitor.start_stage("page_retrieval", source_id=source_id)
+        # Load page-aware text from saved file
+        page_aware_text = load_pages_from_file(source_id)
+        print(f"📄 Loaded {len(page_aware_text)} pages from file")
+        monitor.end_stage("page_retrieval", pages_retrieved=len(page_aware_text))
 
         # Stage 2: LLM chunk preparation
         monitor.start_stage("llm_chunk_preparation")
@@ -339,7 +234,7 @@ async def extract_structure(
         llm_chunk_metrics = ChunkQualityMonitor.analyze_chunks(optimized_chunks, "llm")
         monitor.end_stage(
             "llm_chunk_preparation",
-            original_chunks=len(raw_texts),
+            original_pages=len(page_aware_text),
             optimized_chunks=len(optimized_chunks),
             chunk_metrics=llm_chunk_metrics,
         )
@@ -432,111 +327,50 @@ async def extract_structure(
         }
 
         # Create page-aware LLM chunks for source attribution
-        if page_aware_chunks:
-            # Create chunks that map LLM chunk IDs to their page numbers
-            llm_page_aware_chunks = []
-            for chunk_id, (chunk_text, chunk_pages) in enumerate(
-                optimized_chunks_with_pages
-            ):
-                llm_page_aware_chunks.append(
-                    {"text": chunk_text, "pages": chunk_pages, "chunk_id": chunk_id}
-                )
-
-            # Try to load original page-aware text for precise attribution
-            original_page_text = []
-            pages_file = os.path.join(
-                UPLOAD_FOLDER, f"{os.path.splitext(source_id)[0]}_pages.txt"
-            )
-            if os.path.exists(pages_file):
-                print(f"📄 Loading original page text from {pages_file}")
-                try:
-                    with open(pages_file, encoding="utf-8") as f:
-                        content = f.read()
-
-                    # Use regex for more robust parsing
-                    page_pattern = re.compile(
-                        r"# ====== PAGE (\d+) ======\n(.*?)(?=\n\n# ====== PAGE|\Z)",
-                        re.DOTALL,
-                    )
-                    matches = page_pattern.findall(content)
-
-                    for page_num_str, page_text in matches:
-                        try:
-                            page_num = int(page_num_str)
-                            original_page_text.append((page_text.strip(), page_num))
-                        except ValueError:
-                            print(f"   ⚠️ Skipping invalid page number: {page_num_str}")
-
-                    print(
-                        f"   ✅ Loaded {len(original_page_text)} pages of original text"
-                    )
-                except ValueError as e:
-                    print(f"   ⚠️ Error parsing page numbers: {e}")
-                    # Continue without page attribution rather than failing
-                except OSError as e:
-                    print(f"   ⚠️ Error reading page text file: {e}")
-                    # Continue without page attribution rather than failing
-                except Exception as e:
-                    print(
-                        f"   ⚠️ Unexpected error parsing page text: {type(e).__name__}: {e}"
-                    )
-                    # Continue without page attribution rather than failing
-            else:
-                print(f"   ⚠️ Original page text file not found: {pages_file}")
-
-            print(
-                f"\n🔍 Adding source attribution using {len(llm_page_aware_chunks)} LLM page-aware chunks..."
-            )
-            final_structures = add_source_attributions(
-                final_action_fields, llm_page_aware_chunks, original_page_text
+        # Create chunks that map LLM chunk IDs to their page numbers
+        llm_page_aware_chunks = []
+        for chunk_id, (chunk_text, chunk_pages) in enumerate(
+            optimized_chunks_with_pages
+        ):
+            llm_page_aware_chunks.append(
+                {"text": chunk_text, "pages": chunk_pages, "chunk_id": chunk_id}
             )
 
-            # Count attribution statistics
-            attribution_stats["total_projects"] = sum(
-                len(af["projects"]) for af in final_structures
-            )
-            attribution_stats["projects_with_sources"] = sum(
-                1
-                for af in final_structures
-                for project in af["projects"]
-                if project.get("sources")
-            )
-            attribution_stats["attribution_success_rate"] = (
-                round(
-                    attribution_stats["projects_with_sources"]
-                    / attribution_stats["total_projects"]
-                    * 100,
-                    1,
-                )
-                if attribution_stats["total_projects"] > 0
-                else 0.0
-            )
+        print(
+            f"\n🔍 Adding source attribution using {len(llm_page_aware_chunks)} LLM page-aware chunks..."
+        )
+        final_structures = add_source_attributions(
+            final_action_fields, llm_page_aware_chunks, page_aware_text
+        )
 
-            monitor.end_stage(
-                "source_attribution",
-                page_aware_chunks=len(page_aware_chunks),
-                projects_with_sources=attribution_stats["projects_with_sources"],
-                total_projects=attribution_stats["total_projects"],
-                attribution_success_rate=attribution_stats["attribution_success_rate"],
+        # Count attribution statistics
+        attribution_stats["total_projects"] = sum(
+            len(af["projects"]) for af in final_structures
+        )
+        attribution_stats["projects_with_sources"] = sum(
+            1
+            for af in final_structures
+            for project in af["projects"]
+            if project.get("sources")
+        )
+        attribution_stats["attribution_success_rate"] = (
+            round(
+                attribution_stats["projects_with_sources"]
+                / attribution_stats["total_projects"]
+                * 100,
+                1,
             )
-        else:
-            print("INFO: No page attribution data available - using legacy chunks")
-            final_structures = final_action_fields
+            if attribution_stats["total_projects"] > 0
+            else 0.0
+        )
 
-            # Calculate stats even without attribution for accurate reporting
-            attribution_stats["total_projects"] = sum(
-                len(af["projects"]) for af in final_structures
-            )
-            attribution_stats["projects_with_sources"] = (
-                0  # No sources without page-aware chunks
-            )
-            attribution_stats["attribution_success_rate"] = (
-                0.0  # No attribution possible
-            )
-
-            monitor.end_stage(
-                "source_attribution", page_aware_chunks=0, attribution_enabled=False
-            )
+        monitor.end_stage(
+            "source_attribution",
+            page_aware_chunks=len(llm_page_aware_chunks),
+            projects_with_sources=attribution_stats["projects_with_sources"],
+            total_projects=attribution_stats["total_projects"],
+            attribution_success_rate=attribution_stats["attribution_success_rate"],
+        )
 
         # Calculate extraction time
         extraction_time = time.time() - start_time
