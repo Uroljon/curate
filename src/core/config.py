@@ -11,7 +11,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent  # Goes up to curate/
 
 # Model Configuration
-MODEL_NAME = "qwen3:32b"  # Options: "qwen2.5:7b", "qwen2.5:14b", "llama3:8b", etc.
+MODEL_NAME = "qwen3:14b"  # Options: "qwen2.5:7b", "qwen2.5:14b", "llama3:8b", etc.
 MODEL_TEMPERATURE = 0.2  # Research-backed: 0.2-0.3 for PDF extraction (balances determinism with flexibility)
 MODEL_TIMEOUT = 600  # seconds (10 minutes for larger models)
 
