@@ -56,15 +56,6 @@ ENGLISH_FILTER_TERMS = [
     "Initiative",
 ]
 
-# Patterns for detecting quantitative measures that should be indicators
-QUANTITATIVE_PATTERNS = [
-    r"\d+\s*(?:km|m²|€|Ladepunkte|Standorte|Wohneinheiten|Hektar|ha|MW|kW)",  # Numbers with units
-    r"\d+\s*%",  # Percentages
-    r"(?:bis|ab|seit)\s+\d{4}",  # Year references
-    r"\d+\s+\w+(?:,\s*\d+\s+\w+)+",  # Lists of numbered items
-    r"(?:Verdopplung|Halbierung|Steigerung um|Reduktion um)",  # Comparative terms
-    r"\d+(?:\.\d+)?",  # Any number (as fallback)
-]
 
 # File type constants
 SUPPORTED_DOCUMENT_TYPES = [".pdf"]

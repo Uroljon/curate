@@ -14,7 +14,7 @@ from src.core import (
     ProjectList,
     query_ollama_structured,
 )
-from src.core.constants import ENGLISH_FILTER_TERMS, QUANTITATIVE_PATTERNS
+from src.core.constants import ENGLISH_FILTER_TERMS
 
 from .prompts import (
     STAGE1_SYSTEM_MESSAGE,
@@ -269,40 +269,6 @@ def validate_extraction_schema(data: Any) -> bool:
     return True
 
 
-def reclassify_measures_to_indicators(
-    extracted_data: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """
-    Post-process extracted data to move quantitative measures to indicators.
-
-    Scans measures for numbers, percentages, dates, and other quantitative patterns
-    and reclassifies them as indicators.
-    """
-    # Use patterns from constants
-    combined_pattern = "|".join(QUANTITATIVE_PATTERNS)
-
-    for action_field in extracted_data:
-        for project in action_field.get("projects", []):
-            if project.get("measures"):
-                new_measures = []
-                indicators = project.get("indicators", [])
-
-                for measure in project["measures"]:
-                    # Check if measure contains quantitative data
-                    if re.search(combined_pattern, measure, re.IGNORECASE):
-                        # Move to indicators
-                        indicators.append(measure)
-                    else:
-                        # Keep as measure
-                        new_measures.append(measure)
-
-                project["measures"] = new_measures
-                if indicators:  # Only add if there are indicators
-                    project["indicators"] = indicators
-
-    return extracted_data
-
-
 def extract_structures_with_retry(
     chunk_text: str,
     max_retries: int = EXTRACTION_MAX_RETRIES,
@@ -404,12 +370,6 @@ Keine Annahmen oder externes Wissen hinzufügen."""
 
             print(
                 f"✅ Successfully extracted {len(extracted_data)} action fields on attempt {attempt + 1}"
-            )
-
-            # Post-process to reclassify measures containing numbers as indicators
-            extracted_data = reclassify_measures_to_indicators(extracted_data)
-            print(
-                "📊 Post-processing: Reclassified quantitative measures as indicators"
             )
 
             return extracted_data
