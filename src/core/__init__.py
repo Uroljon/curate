@@ -6,12 +6,9 @@
 # Extraction configuration
 # Text processing configuration
 from .config import (
-    CHROMA_DIR,
     CHUNK_MAX_CHARS,
     CHUNK_MIN_CHARS,
     CHUNK_WARNING_THRESHOLD,
-    COLLECTION_NAME,
-    EMBEDDING_MODEL,
     EXTRACTION_MAX_RETRIES,
     FAST_EXTRACTION_ENABLED,
     FAST_EXTRACTION_MAX_CHUNKS,
@@ -50,14 +47,10 @@ from .schemas import (
 )
 
 __all__ = [
-    # Storage configuration
-    "CHROMA_DIR",
     # Chunking configuration
     "CHUNK_MAX_CHARS",
     "CHUNK_MIN_CHARS",
     "CHUNK_WARNING_THRESHOLD",
-    "COLLECTION_NAME",
-    "EMBEDDING_MODEL",
     # Extraction configuration
     "EXTRACTION_MAX_RETRIES",
     "FAST_EXTRACTION_ENABLED",

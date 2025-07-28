@@ -20,7 +20,7 @@ This project extracts structured information (e.g. **action fields**, **projects
 | API Server     | `FastAPI` + `Uvicorn`     |
 | PDF Parsing    | `PyMuPDF` (`fitz`)        |
 | OCR            | `pytesseract` + `pdf2image` |
-| LLM Access     | [`Ollama`](https://ollama.com) running `qwen2.5:14b` |
+| LLM Access     | [`Ollama`](https://ollama.com) running `qwen3:14b` |
 | File Uploads   | `python-multipart`        |
 | HTTP Requests  | `requests`                |
 | Embeddings     | `sentence-transformers`   |
@@ -72,14 +72,14 @@ python -m spacy download de_core_news_lg
 ```
 Note: This model is ~568MB and improves document structure detection for German texts.
 
-**Additional System Packages (macOS example)**  
+**Additional System Packages (macOS example)**
 Ollama -  a tool to easily run local LLMs like Mixtral
 ```
 Go to https://ollama.com and download the installer for your OS.
 ```
-qwen2.5:14b - Optimized for structured output and multilingual tasks
+qwen3:14b - Optimized for structured output and multilingual tasks
 ```
-ollama pull qwen2.5:14b
+ollama pull qwen3:14b
 ```
 tesseract - OCR engine for scanned pages
 poppler - Needed by pdf2image
@@ -88,7 +88,7 @@ brew install tesseract poppler
 ```
 On Windows:
 - Install [Tesseract OCR for Windows](https://github.com/tesseract-ocr/tesseract)
-- Install [Poppler for Windows](https://blog.alivate.com.au/poppler-windows/) - 
+- Install [Poppler for Windows](https://blog.alivate.com.au/poppler-windows/) -
 Add both to your PATH environment variable
 
 ✅ Step 4: Project Structure
@@ -127,7 +127,7 @@ ollama serve
 ```
 Keep this running — this is your local LLM server. Confirm it works:
 ```
-ollama run qwen2.5:14b "Say hello"
+ollama run qwen3:14b "Say hello"
 ```
 Then in another terminal, you start FastAPI:
 ```

@@ -1,0 +1,111 @@
+graph TB
+    %% Upload Endpoint Flow
+    subgraph Upload["/upload Endpoint"]
+        A[PDF Upload] --> B[Generate Unique Filename]
+        B --> C[Save PDF to Upload Folder]
+
+        C --> D[Text Extraction with OCR Fallback]
+        D --> D1[PyMuPDF Native Text Extraction]
+        D --> D2[Pytesseract OCR for Scanned Pages]
+        D1 --> E[Page-Aware Text List]
+        D2 --> E
+
+        E --> F[Text Cleaning & Processing]
+        F --> F1[Clean Text]
+        F --> F2[Identify Headers/Footers]
+        F --> F3[Remove Structural Noise]
+
+        F --> G[Save Page-Aware Text File]
+
+        G --> H[Semantic Chunking]
+        H --> H1[Structure-Aware Chunking]
+        H --> H2[Page Attribution Preserved]
+        H --> H3[5K-7.5K chars per chunk]
+
+        H --> I[Save Chunks to File]
+        I --> I1[Chunks with Page Metadata]
+        I --> I2[Stored as Text File]
+        I --> I3[Format: _chunks_with_pages.txt]
+
+        I --> K[Return Response]
+        K --> K1[Chunks Count]
+        K --> K2[Page Coverage Stats]
+        K --> K3[Source ID for Next Step]
+    end
+
+    %% Extract Structure Endpoint Flow
+    subgraph Extract["/extract_structure Endpoint"]
+        L[Request with Source ID] --> M[Load Chunks from File]
+        M --> M1[Read _chunks_with_pages.txt]
+        M --> M2[Parse Chunk Format]
+        M --> M3[Extract Page Metadata]
+
+        M --> N[Prepare LLM Chunks]
+        N --> N1[Convert to Page-Aware Format]
+        N --> N2[Chunk for LLM Processing]
+        N --> N3[15K-20K chars with Context Headers]
+
+        N --> O[Structure Extraction Loop]
+        O --> O1[Process Each Chunk Independently]
+        O1 --> O2[Query Ollama with Structured Output]
+        O2 --> O3[Extract Action Fields/Projects/Measures/Indicators]
+        O3 --> O4[Accumulate Results]
+        O4 --> O1
+
+        O --> P[Aggregate Extraction Results]
+        P --> P1[Merge Similar Action Fields]
+        P --> P2[Deduplicate Projects]
+        P --> P3[Combine Measures/Indicators]
+        P --> P4[LLM-Based Aggregation]
+
+        P --> Q[Source Attribution]
+        Q --> Q1[Load Original Page Text]
+        Q --> Q2[Find Quote Locations]
+        Q --> Q3[Match to Specific Pages]
+        Q --> Q4[Add Source References]
+
+        Q --> R[Final Processing]
+        R --> R1[Reclassify Quantitative Measures]
+        R --> R2[Validate German Content]
+        R --> R3[Calculate Statistics]
+
+        R --> S[Return Structured Data]
+        S --> S1[Action Fields with Projects]
+        S --> S2[Measures and Indicators]
+        S --> S3[Page-Level Source Attribution]
+        S --> S4[Extraction Metadata]
+    end
+
+    %% File Storage
+    subgraph FileStorage["File Storage"]
+        FS[(Upload Folder)]
+        FS --> FS1[Original PDFs]
+        FS --> FS2[Extracted Text - _pages.txt]
+        FS --> FS3[Semantic Chunks - _chunks_with_pages.txt]
+        FS --> FS4[Page Metadata Preserved]
+    end
+
+    %% Ollama Integration
+    subgraph Ollama["Ollama LLM Service"]
+        LLM[qwen3:14b Model]
+        LLM --> LLM1[Structured Output Mode]
+        LLM --> LLM2[Pydantic Schema Validation]
+        LLM --> LLM3[German Language Processing]
+    end
+
+    %% Connect the flows
+    K --> L
+    I -.-> FS
+    M -.-> FS
+    O2 -.-> LLM
+
+    %% Styling
+    classDef endpoint fill:#e1f5fe,stroke:#01579b,stroke-width:3px
+    classDef process fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef storage fill:#c8e6c9,stroke:#1b5e20,stroke-width:2px
+    classDef external fill:#ffccbc,stroke:#bf360c,stroke-width:2px
+
+    class A,L endpoint
+    class FS storage
+    class LLM external
+    class B,C,D,E,F,G,H,I,K,M,N,O,P,Q,R,S process

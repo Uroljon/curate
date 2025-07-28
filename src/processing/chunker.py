@@ -515,7 +515,11 @@ def chunk_for_llm_with_pages(
     chunks_with_headers: list[tuple[str, list[int]]] = []
     for chunk_text, chunk_pages in final_chunks:
         # Create context header with clear structure
-        page_range = f"{min(chunk_pages)}-{max(chunk_pages)}" if len(chunk_pages) > 1 else str(chunk_pages[0])
+        page_range = (
+            f"{min(chunk_pages)}-{max(chunk_pages)}"
+            if len(chunk_pages) > 1
+            else str(chunk_pages[0])
+        )
 
         # Try to extract section info from the beginning of the chunk
         section_info = ""
@@ -537,10 +541,7 @@ def chunk_for_llm_with_pages(
         if section_info:
             context_lines.append(f"ABSCHNITT: {section_info}")
 
-        context_lines.extend([
-            "=" * 80,
-            ""  # Empty line before content
-        ])
+        context_lines.extend(["=" * 80, ""])  # Empty line before content
 
         context_header = "\n".join(context_lines)
 

@@ -21,27 +21,6 @@ from src.extraction.structure_extractor import (
     extract_projects_for_field,
     extract_structures_with_retry,
 )
-from src.processing.chunker import chunk_for_llm
-from src.processing.embedder import get_all_chunks_for_document
-
-
-def prepare_chunks_for_extraction(
-    source_id: str, max_chars: int, min_chars: int
-) -> list[str]:
-    """
-    Prepare optimized chunks for LLM extraction.
-
-    Args:
-        source_id: Document identifier
-        max_chars: Maximum characters per chunk
-        min_chars: Minimum characters per chunk
-
-    Returns:
-        List of optimized text chunks
-    """
-    chunks = get_all_chunks_for_document(source_id)
-    raw_texts = [c["text"] for c in chunks]
-    return chunk_for_llm(raw_texts, max_chars=max_chars, min_chars=min_chars)
 
 
 def extract_all_action_fields(

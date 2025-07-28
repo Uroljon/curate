@@ -5,8 +5,6 @@ python-multipart
 pytesseract
 pdf2image
 requests
-sentence-transformers
-chromadb
 langdetect
 pyspellchecker
 json5

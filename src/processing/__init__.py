@@ -11,12 +11,6 @@ from .chunker import (
     contains_indicator_context,
     extract_chunk_topic,
 )
-from .embedder import (
-    embed_chunks,
-    embed_chunks_with_pages,
-    get_all_chunks_for_document,
-    query_chunks,
-)
 from .parser import extract_text_legacy, extract_text_with_ocr_fallback
 
 __all__ = sorted(
@@ -31,11 +25,6 @@ __all__ = sorted(
         "chunk_for_llm_with_pages",
         "contains_indicator_context",
         "extract_chunk_topic",
-        # Embedder exports
-        "embed_chunks",
-        "embed_chunks_with_pages",
-        "get_all_chunks_for_document",
-        "query_chunks",
         # Parser exports
         "extract_text_legacy",
         "extract_text_with_ocr_fallback",

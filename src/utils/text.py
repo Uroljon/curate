@@ -93,7 +93,7 @@ def clean_text(text: str) -> str:
         r"^(Seite|Page|S\.|Blatt)\s*\d+(\s+(von|of|\/)\s*\d+)?\s*$",
         "",
         text,
-        flags=re.MULTILINE
+        flags=re.MULTILINE,
     )
 
     # Remove standalone numbers that are likely page numbers
@@ -120,7 +120,9 @@ def clean_text(text: str) -> str:
 
         # Skip empty lines
         if not line:
-            if i > 0 and cleaned_lines and cleaned_lines[-1]:  # Preserve paragraph breaks
+            if (
+                i > 0 and cleaned_lines and cleaned_lines[-1]
+            ):  # Preserve paragraph breaks
                 cleaned_lines.append("")
             continue
 
@@ -420,9 +422,9 @@ def identify_headers_footers(
     # Normalize lines for comparison (remove page numbers, whitespace)
     def normalize_for_comparison(line: str) -> str:
         # Remove page numbers
-        normalized = re.sub(r'\b\d{1,4}\b', '', line)
+        normalized = re.sub(r"\b\d{1,4}\b", "", line)
         # Remove extra whitespace
-        normalized = ' '.join(normalized.split())
+        normalized = " ".join(normalized.split())
         return normalized.strip()
 
     # Count normalized line frequencies
@@ -443,13 +445,11 @@ def identify_headers_footers(
     min_occurrences = int(len(page_texts) * frequency_threshold)
 
     headers = [
-        pattern for pattern, count in header_counts.items()
-        if count >= min_occurrences
+        pattern for pattern, count in header_counts.items() if count >= min_occurrences
     ]
 
     footers = [
-        pattern for pattern, count in footer_counts.items()
-        if count >= min_occurrences
+        pattern for pattern, count in footer_counts.items() if count >= min_occurrences
     ]
 
     return headers, footers
@@ -480,19 +480,21 @@ def remove_structural_noise(
             continue
 
         # Check if this line would be removed
-        normalized_line = re.sub(r'\b\d{1,4}\b', '', line_stripped)
-        normalized_line = ' '.join(normalized_line.split()).strip()
+        normalized_line = re.sub(r"\b\d{1,4}\b", "", line_stripped)
+        normalized_line = " ".join(normalized_line.split()).strip()
 
         # Would this line be kept?
         is_header = any(header in normalized_line for header in headers)
         is_footer = any(footer in normalized_line for footer in footers)
-        is_page_num = bool(re.match(r'^(Seite\s+)?\d+(\s+(von|of)\s+\d+)?$', line_stripped))
+        is_page_num = bool(
+            re.match(r"^(Seite\s+)?\d+(\s+(von|of)\s+\d+)?$", line_stripped)
+        )
 
         if not (is_header or is_footer or is_page_num):
             content_lines.append(line_stripped)
 
     # Check if we have enough content remaining
-    remaining_content = ' '.join(content_lines)
+    remaining_content = " ".join(content_lines)
     if len(remaining_content) < min_content_length:
         # Don't remove headers/footers if it would leave too little content
         return text
@@ -509,8 +511,8 @@ def remove_structural_noise(
             continue
 
         # Check if line matches any header/footer pattern
-        normalized_line = re.sub(r'\b\d{1,4}\b', '', line_stripped)
-        normalized_line = ' '.join(normalized_line.split()).strip()
+        normalized_line = re.sub(r"\b\d{1,4}\b", "", line_stripped)
+        normalized_line = " ".join(normalized_line.split()).strip()
 
         # Skip if matches header pattern
         if any(header in normalized_line for header in headers):
@@ -521,7 +523,7 @@ def remove_structural_noise(
             continue
 
         # Remove standalone page numbers
-        if re.match(r'^(Seite\s+)?\d+(\s+(von|of)\s+\d+)?$', line_stripped):
+        if re.match(r"^(Seite\s+)?\d+(\s+(von|of)\s+\d+)?$", line_stripped):
             continue
 
         cleaned_lines.append(line)
@@ -532,7 +534,7 @@ def remove_structural_noise(
 def score_text_quality(
     text: str,
     language: str = "de",
-    spell_checkers: dict[str, SpellChecker] | None = None
+    spell_checkers: dict[str, SpellChecker] | None = None,
 ) -> dict[str, float]:
     """
     Score the quality of text based on multiple metrics.
@@ -559,7 +561,7 @@ def score_text_quality(
             "coherence_score": 0.0,
             "spelling_score": 0.0,
             "structure_score": 0.0,
-            "length_score": 0.0
+            "length_score": 0.0,
         }
 
     # Length score - very short or very long texts get lower scores
@@ -578,15 +580,16 @@ def score_text_quality(
     else:
         # Check how many sentences end properly
         complete_sentences = sum(
-            1 for s in sentences
-            if s and (s[-1] in '.!?' or s[-2:] in ['.»', '."', '."'])
+            1
+            for s in sentences
+            if s and (s[-1] in ".!?" or s[-2:] in [".»", '."', '."'])
         )
         coherence_score = complete_sentences / len(sentences) if sentences else 0
 
     # Spelling score - if spell checkers provided
     spelling_score = 1.0  # Default if no spell checker
     if spell_checkers and language in spell_checkers:
-        words = re.findall(r'\b\w+\b', text)
+        words = re.findall(r"\b\w+\b", text)
         if words:
             spell_checker = spell_checkers[language]
             known_words = len([w for w in words if w in spell_checker])
@@ -596,7 +599,7 @@ def score_text_quality(
     structure_factors = []
 
     # Check for reasonable paragraph structure
-    paragraphs = text.split('\n\n')
+    paragraphs = text.split("\n\n")
     if 1 <= len(paragraphs) <= 20:
         structure_factors.append(1.0)
     else:
@@ -614,17 +617,21 @@ def score_text_quality(
     # Check for excessive repetition
     unique_lines = {line.strip() for line in lines if line.strip()}
     if lines:
-        repetition_ratio = len(unique_lines) / len([line for line in lines if line.strip()])
+        repetition_ratio = len(unique_lines) / len(
+            [line for line in lines if line.strip()]
+        )
         structure_factors.append(repetition_ratio)
 
-    structure_score = sum(structure_factors) / len(structure_factors) if structure_factors else 0.5
+    structure_score = (
+        sum(structure_factors) / len(structure_factors) if structure_factors else 0.5
+    )
 
     # Calculate overall score (weighted average)
     overall_score = (
-        length_score * 0.15 +
-        coherence_score * 0.35 +
-        spelling_score * 0.25 +
-        structure_score * 0.25
+        length_score * 0.15
+        + coherence_score * 0.35
+        + spelling_score * 0.25
+        + structure_score * 0.25
     )
 
     return {
@@ -632,5 +639,5 @@ def score_text_quality(
         "coherence_score": round(coherence_score, 3),
         "spelling_score": round(spelling_score, 3),
         "structure_score": round(structure_score, 3),
-        "length_score": round(length_score, 3)
+        "length_score": round(length_score, 3),
     }

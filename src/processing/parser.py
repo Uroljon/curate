@@ -12,7 +12,12 @@ from src.core import (
     SUPPORTED_LANGUAGES,
     SYMBOL_FILTER_THRESHOLD,
 )
-from src.utils.text import clean_ocr_text, clean_text, identify_headers_footers, remove_structural_noise
+from src.utils.text import (
+    clean_ocr_text,
+    clean_text,
+    identify_headers_footers,
+    remove_structural_noise,
+)
 
 # Initialize spell checkers based on config
 spell_checkers = {
