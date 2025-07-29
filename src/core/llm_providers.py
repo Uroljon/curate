@@ -274,23 +274,25 @@ class VLLMProvider(LLMProvider):
                 api_key=self.api_key,
                 base_url=self.base_url,
             )
-            
+
             # Try to get model info to determine actual context length
             try:
                 models = self.client.models.list()
                 for model in models.data:
                     if model.id == self.model_name:
-                        self.max_model_len = getattr(model, 'max_model_len', 16384)
+                        self.max_model_len = getattr(model, "max_model_len", 16384)
                         # Conservative: assume input uses 60% of context, leave 40% for output
                         # For 16K model: ~6.5K tokens for output
                         self.max_tokens = min(max_tokens, int(self.max_model_len * 0.4))
-                        print(f"📊 vLLM Model: {self.model_name}, Context: {self.max_model_len}, Max output: {self.max_tokens}")
+                        print(
+                            f"📊 vLLM Model: {self.model_name}, Context: {self.max_model_len}, Max output: {self.max_tokens}"
+                        )
                         break
             except Exception:
                 # If we can't get model info, use conservative defaults
                 self.max_model_len = 16384
                 self.max_tokens = min(max_tokens, 8192)
-                
+
         except ImportError:
             raise ImportError(
                 "OpenAI client library required for vLLM. Install with: pip install openai"
@@ -311,13 +313,13 @@ class VLLMProvider(LLMProvider):
 
             # For structured output, we need to include the schema in the prompt
             schema_str = json.dumps(response_model.model_json_schema(), indent=2)
-            
+
             # Check if this is a Qwen3 model - if so, add /no_think to disable thinking mode for JSON
             # Thinking mode can interfere with structured JSON output
             no_think_suffix = ""
             if "qwen3" in self.model_name.lower():
                 no_think_suffix = " /no_think"
-            
+
             structured_prompt = f"""{prompt}
 
 IMPORTANT: You must respond with valid JSON that matches this exact schema:
@@ -332,17 +334,17 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
 
             # Use structured output with vLLM
             # vLLM supports guided_json in extra_body or json_schema format
-            
+
             # Use Qwen3-specific parameters if applicable
             temperature = self.temperature
             top_p = 0.95
             top_k = 20
-            
+
             # For Qwen3 AWQ models, adjust parameters per documentation
             if "qwen3" in self.model_name.lower() and "awq" in self.model_name.lower():
                 temperature = 0.7  # Non-thinking mode recommendation
                 top_p = 0.8
-                
+
             try:
                 # First try: Use guided_json in extra_body (recommended for vLLM)
                 response = self.client.chat.completions.create(
@@ -371,15 +373,17 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
                             "type": "json_schema",
                             "json_schema": {
                                 "name": response_model.__name__,
-                                "schema": response_model.model_json_schema()
-                            }
+                                "schema": response_model.model_json_schema(),
+                            },
                         },
                         extra_body={"top_k": top_k, "min_p": 0},
                         timeout=self.timeout,
                     )
                 except Exception as e2:
                     # Final fallback: Use prompt-based JSON generation
-                    print("⚠️ vLLM structured output not available, using prompt-based JSON generation")
+                    print(
+                        "⚠️ vLLM structured output not available, using prompt-based JSON generation"
+                    )
                     response = self.client.chat.completions.create(
                         model=self.model_name,
                         messages=messages,
@@ -391,14 +395,14 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
                     )
 
             content = response.choices[0].message.content.strip()
-            
+
             # Handle Qwen3 thinking mode output if present
             # Even with /no_think, sometimes the model may include thinking tags
             if "<think>" in content and "</think>" in content:
                 # Extract content after thinking block
                 think_end = content.find("</think>")
                 if think_end != -1:
-                    actual_content = content[think_end + 8:].strip()
+                    actual_content = content[think_end + 8 :].strip()
                     if actual_content:
                         content = actual_content
 
@@ -429,7 +433,10 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
                 except Exception as repair_error:
                     print(f"❌ JSON repair failed: {repair_error!s}")
                     # Debug: Check if response is empty JSON
-                    if content.strip() in ['{"action_fields": []}', '{"action_fields":[]}']:
+                    if content.strip() in [
+                        '{"action_fields": []}',
+                        '{"action_fields":[]}',
+                    ]:
                         print("⚠️ Model returned empty action fields")
                     return None
 

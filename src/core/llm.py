@@ -22,7 +22,7 @@ def query_ollama_with_thinking_mode(
 ) -> T | None:
     """
     Enhanced LLM query with qwen3 thinking modes for complex reasoning.
-    
+
     Args:
         prompt: The input prompt
         response_model: Pydantic model class for the expected response structure
@@ -41,7 +41,7 @@ def query_ollama_with_thinking_mode(
     Returns:
         Validated Pydantic model instance or None if failed
     """
-    
+
     thinking_prompts = {
         "analytical": """<think>
 Ich analysiere diesen Text systematisch:
@@ -51,7 +51,6 @@ Ich analysiere diesen Text systematisch:
 4. Welche Unsicherheiten bestehen?
 5. Welche Konfidenz ist angemessen?
 </think>""",
-        
         "comparative": """<think>
 Ich vergleiche jeden gefundenen Punkt:
 - Handelt es sich um eine Aktion oder ein Messwert?
@@ -59,7 +58,6 @@ Ich vergleiche jeden gefundenen Punkt:
 - Welche Kategorie passt besser und warum?
 - Wie sicher bin ich bei dieser Einschätzung?
 </think>""",
-        
         "systematic": """<think>
 Ich gehe systematisch vor:
 1. Alle Textabschnitte identifizieren
@@ -68,7 +66,6 @@ Ich gehe systematisch vor:
 4. Konfidenz basierend auf Klarheit der Hinweise
 5. Gesamtvalidierung der Ergebnisse
 </think>""",
-        
         "contextual": """<think>
 Ich berücksichtige den Kontext vollständig:
 1. Dokumentstruktur und Hierarchie verstehen
@@ -76,11 +73,11 @@ Ich berücksichtige den Kontext vollständig:
 3. Verwaltungslogik und Amtssprache anwenden
 4. Typische Muster in deutschen Strategiedokumenten
 5. Konfidenz durch Kontextklarheit bestimmen
-</think>"""
+</think>""",
     }
-    
+
     enhanced_prompt = f"{thinking_prompts.get(thinking_mode, thinking_prompts['analytical'])}\n\n{prompt}"
-    
+
     return query_ollama_structured(
         prompt=enhanced_prompt,
         response_model=response_model,
@@ -88,7 +85,11 @@ Ich berücksichtige den Kontext vollständig:
         temperature=temperature,
         system_message=system_message,
         log_file_path=log_file_path,
-        log_context=f"{log_context} (thinking_mode: {thinking_mode})" if log_context else f"thinking_mode: {thinking_mode}",
+        log_context=(
+            f"{log_context} (thinking_mode: {thinking_mode})"
+            if log_context
+            else f"thinking_mode: {thinking_mode}"
+        ),
         override_num_predict=override_num_predict,
     )
 
@@ -105,7 +106,7 @@ def query_ollama_structured(
 ) -> T | None:
     """
     Query LLM with structured output using Pydantic models.
-    
+
     This function maintains backward compatibility while using the new provider abstraction.
 
     Args:
@@ -123,7 +124,7 @@ def query_ollama_structured(
     """
     # Get the appropriate provider
     provider = get_llm_provider(model_name=model, temperature=temperature)
-    
+
     # Use the provider to query with structured output
     return provider.query_structured(
         prompt=prompt,

@@ -65,6 +65,19 @@ Or, you can also install libraries manually:
 pip install fastapi uvicorn pymupdf python-multipart pytesseract pdf2image requests... (check full list in requirements.txt)
 ```
 
+✅ Step 4: Configure Environment (Optional)
+CURATE uses environment variables for configuration. Copy the example configuration:
+```bash
+cp example.env .env
+```
+Then edit `.env` to match your setup. Key settings:
+- `LLM_BACKEND`: Choose 'ollama' (default) or 'vllm' for high-performance
+- `OLLAMA_HOST`: Ollama server address (default: localhost:11434)
+- `VLLM_HOST`: vLLM server address if using vLLM
+- `MODEL_NAME`: Override default model (optional)
+
+The `.env` file is automatically loaded when you start CURATE.
+
 **German Language Model for Structure-Aware Chunking**
 After installing the requirements, download the German spaCy model:
 ```
@@ -91,7 +104,7 @@ On Windows:
 - Install [Poppler for Windows](https://blog.alivate.com.au/poppler-windows/) -
 Add both to your PATH environment variable
 
-✅ Step 4: Project Structure
+✅ Step 5: Project Structure
 ```
 curate/
 ├── src/                      # Source code
@@ -111,7 +124,7 @@ curate/
 └── requirements.txt          # Python dependencies
 ```
 
-✅ Step 5: Code Quality (Development)
+✅ Step 6: Code Quality (Development)
 Format and lint your code:
 ```bash
 black .              # Format code
@@ -119,7 +132,7 @@ ruff check --fix .   # Fix linting issues
 mypy .              # Type checking
 ```
 
-✅ Step 6: Run the Servers
+✅ Step 7: Run the Servers
 
 ### Option A: Using Ollama (Default)
 Manually run Ollama before starting FastAPI:
@@ -140,11 +153,13 @@ CURATE now supports vLLM as an alternative to Ollama for better performance. To 
 # Install vLLM
 pip install vllm
 
-# Run vLLM server
+# Run vLLM server with AWQ model
 python -m vllm.entrypoints.openai.api_server \
-    --model RedHatAI/Qwen3-14B-quantized.w4a16 \
+    --model Qwen/Qwen3-14B-AWQ \
     --host 0.0.0.0 \
-    --port 8001
+    --port 8001 \
+    --gpu-memory-utilization 0.95 \
+    --max-model-len 32768
 ```
 
 2. Configure CURATE to use vLLM:

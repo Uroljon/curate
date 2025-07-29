@@ -7,6 +7,15 @@ All tunable parameters should be defined here.
 import os
 from pathlib import Path
 
+# Load environment variables from .env file if it exists
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    # dotenv not installed, skip loading .env file
+    pass
+
 # Get the project root directory (where config.py is located)
 PROJECT_ROOT = Path(__file__).parent.parent.parent  # Goes up to curate/
 
@@ -30,7 +39,9 @@ OLLAMA_CHAT_URL = f"http://{OLLAMA_HOST}/api/chat"
 # vLLM Configuration
 VLLM_HOST = os.getenv("VLLM_HOST", "10.67.142.34:8001")
 VLLM_API_KEY = os.getenv("VLLM_API_KEY", "EMPTY")
-VLLM_MAX_TOKENS = int(os.getenv("VLLM_MAX_TOKENS", "6000"))  # Conservative for 16K context with input overhead
+VLLM_MAX_TOKENS = int(
+    os.getenv("VLLM_MAX_TOKENS", "6000")
+)  # Conservative for 16K context with input overhead
 
 # Model name mappings between Ollama and vLLM
 MODEL_MAPPINGS = {
