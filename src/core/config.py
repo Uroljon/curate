@@ -10,22 +10,49 @@ from pathlib import Path
 # Get the project root directory (where config.py is located)
 PROJECT_ROOT = Path(__file__).parent.parent.parent  # Goes up to curate/
 
+# API Configuration
+# LLM Backend Selection ('ollama' or 'vllm')
+LLM_BACKEND = os.getenv("LLM_BACKEND", "ollama")
+
 # Model Configuration
 MODEL_NAME = "qwen3:14b"  # Options: "qwen3:7b", "qwen3:14b", "llama3:8b", etc.
-MODEL_TEMPERATURE = 0.2  # Research-backed: 0.2-0.3 for PDF extraction (balances determinism with flexibility)
+# Temperature settings - different for different backends
+# For Qwen3 models: 0.7 for non-thinking mode (JSON), 0.6 for thinking mode
+# For other models: 0.2-0.3 for PDF extraction
+MODEL_TEMPERATURE = 0.7 if LLM_BACKEND == "vllm" else 0.2
 MODEL_TIMEOUT = 600  # seconds (10 minutes for larger models)
 
-# API Configuration
-
+# Ollama Configuration
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "localhost:11434")
 OLLAMA_API_URL = f"http://{OLLAMA_HOST}/api/generate"
 OLLAMA_CHAT_URL = f"http://{OLLAMA_HOST}/api/chat"
 
+# vLLM Configuration
+VLLM_HOST = os.getenv("VLLM_HOST", "10.67.142.34:8001")
+VLLM_API_KEY = os.getenv("VLLM_API_KEY", "EMPTY")
+VLLM_MAX_TOKENS = int(os.getenv("VLLM_MAX_TOKENS", "6000"))  # Conservative for 16K context with input overhead
+
+# Model name mappings between Ollama and vLLM
+MODEL_MAPPINGS = {
+    "qwen3:14b": "Qwen/Qwen3-14B-AWQ",  # Updated to new AWQ model
+    "qwen3:7b": "Qwen/Qwen3-7B-Instruct",
+    "qwen3:8b": "Qwen/Qwen3-8B-Instruct",
+}
+
 # Chunk Configuration - Optimized to prevent LLM output truncation
-CHUNK_MAX_CHARS = (
-    15000  # Maximum characters per chunk for LLM (reduced to prevent JSON truncation)
-)
-CHUNK_MIN_CHARS = 12000  # Minimum characters per chunk for LLM
+# Adjust chunk size based on backend
+if LLM_BACKEND == "vllm":
+    # With 32K context (Qwen3-14B-AWQ), we have much more room:
+    # - Input chunk (~3K tokens per 12K chars)
+    # - JSON schema + prompts (~1K tokens)
+    # - Output JSON (~4-6K tokens)
+    # Total: ~8-10K tokens, leaving plenty of headroom
+    CHUNK_MAX_CHARS = 12000  # Can use larger chunks with 32K context
+    CHUNK_MIN_CHARS = 10000
+else:
+    CHUNK_MAX_CHARS = 15000  # Larger chunks for Ollama with bigger context windows
+    CHUNK_MIN_CHARS = 12000
+
 CHUNK_WARNING_THRESHOLD = 20000  # Warn if chunk exceeds this size
 
 # Semantic Chunk Configuration (for initial document chunking)

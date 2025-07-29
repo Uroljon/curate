@@ -20,7 +20,7 @@ This project extracts structured information (e.g. **action fields**, **projects
 | API Server     | `FastAPI` + `Uvicorn`     |
 | PDF Parsing    | `PyMuPDF` (`fitz`)        |
 | OCR            | `pytesseract` + `pdf2image` |
-| LLM Access     | [`Ollama`](https://ollama.com) running `qwen3:14b` |
+| LLM Access     | [`Ollama`](https://ollama.com) or [`vLLM`](https://github.com/vllm-project/vllm) |
 | File Uploads   | `python-multipart`        |
 | HTTP Requests  | `requests`                |
 | Embeddings     | `sentence-transformers`   |
@@ -120,6 +120,8 @@ mypy .              # Type checking
 ```
 
 ✅ Step 6: Run the Servers
+
+### Option A: Using Ollama (Default)
 Manually run Ollama before starting FastAPI:
 (If you downloaded Ollama as a macOS app, just open the app, no need for the code)
 ```
@@ -129,8 +131,47 @@ Keep this running — this is your local LLM server. Confirm it works:
 ```
 ollama run qwen3:14b "Say hello"
 ```
-Then in another terminal, you start FastAPI:
+
+### Option B: Using vLLM (High Performance)
+CURATE now supports vLLM as an alternative to Ollama for better performance. To use vLLM:
+
+1. Set up vLLM server (on a machine with GPU):
+```bash
+# Install vLLM
+pip install vllm
+
+# Run vLLM server
+python -m vllm.entrypoints.openai.api_server \
+    --model RedHatAI/Qwen3-14B-quantized.w4a16 \
+    --host 0.0.0.0 \
+    --port 8001
 ```
+
+2. Configure CURATE to use vLLM:
+```bash
+export LLM_BACKEND=vllm
+export VLLM_HOST=your-vllm-server:8001  # e.g., 10.67.142.34:8001
+```
+
+### Start FastAPI Server
+Then in another terminal, start FastAPI:
+```
+# For Ollama (default)
 uvicorn main:app --reload
+
+# For vLLM
+LLM_BACKEND=vllm VLLM_HOST=your-server:8001 uvicorn main:app --reload
 ```
 Url for local host: http://127.0.0.1:8000/docs
+
+**Benefits of vLLM:**
+- **Higher throughput**: PagedAttention reduces GPU memory waste (<4% vs 60-80%)
+- **Continuous batching**: Better GPU utilization for multiple requests
+- **OpenAI-compatible API**: Easy integration
+- **Production-ready**: Built for high-performance serving
+
+**Model Name Mappings:**
+When using vLLM, Ollama model names are automatically mapped:
+- `qwen3:14b` → `RedHatAI/Qwen3-14B-quantized.w4a16`
+- `qwen3:7b` → `Qwen/Qwen3-7B-Instruct`
+- `qwen3:8b` → `Qwen/Qwen3-8B-Instruct`

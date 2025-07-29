@@ -12,3 +12,4 @@ pydantic
 json-repair
 unstructured[pdf]
 spacy
+openai>=1.0.0
