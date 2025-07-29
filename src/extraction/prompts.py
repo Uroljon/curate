@@ -68,48 +68,58 @@ FEHLERBEHANDLUNG: Falls keine Projekte für "{action_field}" im Quelldokument ve
 
 # Stage 3: Extract details for a specific project
 def get_stage3_system_message(action_field: str, project_title: str) -> str:
-    return f"""Sie sind ein hochspezialisierter KI-Assistent für die Analyse deutscher kommunaler Strategiedokumente.
+    return f"""Sie sind ein Experte für deutsche Kommunalverwaltung mit 20 Jahren Erfahrung in der Strategieanalyse.
 
-IHRE AUFGABE: Klassifizieren Sie JEDEN gefundenen Punkt als Maßnahme oder Indikator für "{project_title}" im Handlungsfeld "{action_field}".
+AUFGABE: Klassifizieren Sie JEDEN gefundenen Punkt als Maßnahme oder Indikator für "{project_title}" im Handlungsfeld "{action_field}".
 
-SCHRITT-FÜR-SCHRITT KLASSIFIKATION (Chain-of-Thought):
+🧠 MEHRSTUFIGER DENKPROZESS (verwenden Sie diese Struktur):
 
-SCHRITT 1 - SCHLÜSSELWÖRTER IDENTIFIZIEREN:
-• Handlungswörter (einrichten, entwickeln, bauen, implementieren, schaffen, fördern, unterstützen) → MASSNAHME
-• Messbegriffe (Anzahl, Prozent, Reduktion um X%, bis Jahr XXXX, km, m², Euro) → INDIKATOR
+SCHRITT 1 - KONTEXT VERSTEHEN:
+• Lesen Sie den gesamten Textabschnitt sorgfältig
+• Identifizieren Sie den Bezug zu "{project_title}"
+• Verstehen Sie den Verwaltungskontext
 
-SCHRITT 2 - STRUKTUR ANALYSIEREN:
-• Beschreibt der Text WAS getan wird? → MASSNAHME
-• Beschreibt der Text WIE ERFOLG gemessen wird? → INDIKATOR
-• Enthält der Text ZAHLEN oder ZEITANGABEN? → Wahrscheinlich INDIKATOR
+SCHRITT 2 - SPRACHLICHE ANALYSE:
+• Identifizieren Sie Handlungsverben (implementieren, schaffen, entwickeln, einrichten) → MASSNAHME
+• Identifizieren Sie Messverben (erreichen, reduzieren um, steigern auf) → INDIKATOR  
+• Identifizieren Sie Quantifizierer (%, Anzahl, km, Euro, bis 2030) → INDIKATOR
 
-SCHRITT 3 - TYPISCHE MUSTER PRÜFEN:
+SCHRITT 3 - VERWALTUNGSLOGIK ANWENDEN:
+• Maßnahmen = WAS die Verwaltung TUT (Handlungen, Projekte, Initiativen)
+• Indikatoren = WIE der Erfolg GEMESSEN wird (Ziele, Kennzahlen, Zeitrahmen)
 
-Maßnahmen-Muster:
-✓ "Bau von..." → Konkrete Aktion
-✓ "Einführung eines..." → Implementierung
-✓ "Entwicklung von..." → Prozess
-✓ "Schaffung von..." → Neue Strukturen
-✓ "Förderung der..." → Unterstützung
-✓ "Ausbau des..." → Erweiterung
+SCHRITT 4 - DEUTSCHE VERWALTUNGSSPRACHE PRÜFEN:
+• Amtsdeutsch-Muster erkennen: "Durchführung von...", "Bereitstellung von...", "Errichtung von..."
+• Planungsinstrumente: "Konzept", "Strategie", "Leitfaden" → meist MASSNAHME
+• Erfolgsmessung: "Zielwert", "Kennzahl", "bis zum Jahr" → meist INDIKATOR
 
-Indikatoren-Muster:
-✓ Prozentangaben: "55% Reduktion", "um 30% steigern"
-✓ Absolute Zahlen: "500 Ladepunkte", "18 km", "1000 Wohneinheiten"
-✓ Zeitangaben: "bis 2030", "ab 2025", "innerhalb von 5 Jahren"
-✓ Vergleiche: "Verdopplung", "Halbierung", "30% weniger als"
-✓ Häufigkeiten: "jährlich", "pro Einwohner", "je km²"
+SCHRITT 5 - KONFIDENZBEWERTUNG:
+• Sehr sicher (0.9-1.0): Eindeutige Kategorisierung
+• Sicher (0.7-0.9): Typische Muster erkannt
+• Unsicher (0.5-0.7): Mehrdeutig, weitere Analyse nötig
 
-KRITISCHE REGEL: Ein Satz kann BEIDE enthalten!
-Beispiel: "Bau von 500 Ladepunkten bis 2030"
-→ Maßnahme: "Bau von Ladepunkten"
-→ Indikator: "500 Ladepunkte bis 2030"
+SCHRITT 6 - BEGRÜNDUNG DOKUMENTIEREN:
+• Welche sprachlichen Hinweise führten zur Entscheidung?
+• Welche Verwaltungslogik wurde angewendet?
+• Warum diese Konfidenz?
 
-WICHTIGE HINWEISE:
-1. NUR Informationen aus dem Quelldokument verwenden
-2. NUR auf "{project_title}" bezogene Punkte extrahieren
-3. Indikatoren können getrennt von Maßnahmen erscheinen
-4. Qualitative Indikatoren (ohne Zahlen) sind auch gültig
+ERWEITERTE MUSTER-ERKENNUNG:
+
+Maßnahmen-Indikatoren (typische Kombinationen):
+✓ "Aufbau von 15 Beratungsstellen bis 2026"
+  → Maßnahme: "Aufbau von Beratungsstellen"
+  → Indikator: "15 Beratungsstellen bis 2026"
+
+✓ "Sanierung städtischer Gebäude zur 40%igen Energieeinsparung"
+  → Maßnahme: "Sanierung städtischer Gebäude"
+  → Indikator: "40% Energieeinsparung"
+
+MEHRDEUTIGE FÄLLE - Entscheidungshilfen:
+• "Verbesserung der Luftqualität" → Ohne Zahlen = MASSNAHME, mit Zahlen = INDIKATOR
+• "Erhöhung des ÖPNV-Anteils" → Allgemein = MASSNAHME, "auf 30%" = INDIKATOR
+• "Entwicklung eines Konzepts" → Immer MASSNAHME (Planungsinstrument)
+
+WICHTIG: Zeigen Sie Ihren Denkprozess explizit in der 'reasoning' Ausgabe.
 
 Antwortformat: Ausschließlich JSON gemäß Schema. KEINE Erklärungen außerhalb des JSON."""
 
@@ -149,8 +159,41 @@ ARBEITSSCHRITTE:
 WICHTIG: Ihre Antwort MUSS ausschließlich ein JSON-Objekt sein, das dem vorgegebenen Schema entspricht."""
 
 
-def get_stage3_prompt(chunk: str, action_field: str, project_title: str) -> str:
-    return f"""KONKRETE BEISPIELE ZUR ORIENTIERUNG:
+def get_stage3_prompt(chunk: str, action_field: str, project_title: str, document_hierarchy: dict = None) -> str:
+    # Add document hierarchy context if available
+    hierarchy_context = ""
+    if document_hierarchy:
+        hierarchy_context = f"""
+DOKUMENTSTRUKTUR-KONTEXT:
+• Aktueller Abschnitt: {document_hierarchy.get('current_section', 'Unbekannt')}
+• Übergeordnetes Kapitel: {document_hierarchy.get('parent_chapter', 'Unbekannt')}
+• Seitenzahl: {document_hierarchy.get('page_number', 'Unbekannt')}
+• Hierarchieebene: {document_hierarchy.get('level', 'Unbekannt')}
+
+Nutzen Sie diese Strukturinformationen für bessere Kontextualisierung.
+"""
+    
+    return f"""ERWEITERTE ANALYSE FÜR "{project_title}":
+
+{hierarchy_context}
+
+DEUTSCHER VERWALTUNGSKONTEXT - Erweiterte Muster:
+
+MASSNAHMEN-INDIKATOREN (typische Kombinationen):
+✓ "Aufbau von 15 Beratungsstellen bis 2026"
+  → Maßnahme: "Aufbau von Beratungsstellen"
+  → Indikator: "15 Beratungsstellen bis 2026"
+
+✓ "Sanierung städtischer Gebäude zur 40%igen Energieeinsparung"
+  → Maßnahme: "Sanierung städtischer Gebäude"
+  → Indikator: "40% Energieeinsparung"
+
+MEHRDEUTIGE FÄLLE - Entscheidungshilfen:
+• "Verbesserung der Luftqualität" → Ohne Zahlen = MASSNAHME, mit Zahlen = INDIKATOR
+• "Erhöhung des ÖPNV-Anteils" → Allgemein = MASSNAHME, "auf 30%" = INDIKATOR
+• "Entwicklung eines Konzepts" → Immer MASSNAHME (Planungsinstrument)
+
+KONKRETE BEISPIELE ZUR ORIENTIERUNG:
 
 MASSNAHMEN (Was wird getan?):
 ✓ "Errichtung einer Mobilitätsstation am Hauptbahnhof" → Konkrete Baumaßnahme

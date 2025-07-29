@@ -36,7 +36,7 @@ from .config import (
 )
 
 # LLM functionality
-from .llm import query_ollama_structured
+from .llm import query_ollama_structured, query_ollama_with_thinking_mode
 
 # Data schemas
 from .schemas import (
@@ -85,4 +85,5 @@ __all__ = [
     "ProjectDetailsEnhanced",
     "ProjectList",
     "query_ollama_structured",
+    "query_ollama_with_thinking_mode",
 ]
