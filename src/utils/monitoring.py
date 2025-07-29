@@ -182,9 +182,16 @@ class ChunkQualityMonitor:
             # Enhanced structural markers
             has_double_newline = "\n\n" in chunk
             has_page_marker = "[OCR Page" in chunk or "[Page" in chunk
-            has_bullet_points = "• " in chunk or re.search(r"^[-*]\s", chunk, re.MULTILINE) is not None
-            has_numbered_list = re.search(r"^[•\s]*\d+[\.\)]\s", chunk, re.MULTILINE) is not None
-            has_heading = re.search(r"^#{1,6}\s|^[A-ZÄÖÜ][^.!?]{3,50}$", chunk, re.MULTILINE) is not None
+            has_bullet_points = (
+                "• " in chunk or re.search(r"^[-*]\s", chunk, re.MULTILINE) is not None
+            )
+            has_numbered_list = (
+                re.search(r"^[•\s]*\d+[\.\)]\s", chunk, re.MULTILINE) is not None
+            )
+            has_heading = (
+                re.search(r"^#{1,6}\s|^[A-ZÄÖÜ][^.!?]{3,50}$", chunk, re.MULTILINE)
+                is not None
+            )
 
             structural_stats.append(
                 {
@@ -222,7 +229,8 @@ class ChunkQualityMonitor:
                 "chunks_with_lists": sum(
                     1
                     for stat in structural_stats
-                    if stat.get("has_bullet_points", False) or stat.get("has_numbered_list", False)
+                    if stat.get("has_bullet_points", False)
+                    or stat.get("has_numbered_list", False)
                 ),
                 "chunks_with_headings": sum(
                     1 for stat in structural_stats if stat.get("has_heading", False)

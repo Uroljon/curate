@@ -288,9 +288,10 @@ VERFAHREN (Quote-Before-Answer):
 2. ANALYSE: Basieren Sie Ihre Extraktion ausschließlich auf diesen Zitaten
 3. VALIDIERUNG: Jeder extrahierte Punkt muss direkt im Quelltext nachweisbar sein
 
-DEUTSCHE VERWALTUNGSSPRACHE - NUR FOLGENDE INHALTE:
-✓ Deutsche Handlungsfelder: "Mobilität und Verkehr", "Klimaschutz und Energie", "Wohnen und Quartiersentwicklung"
-✓ Offizielle Projektbezeichnungen: "Stadtbahn Regensburg", "Klimaschutzkonzept 2030"
+DEUTSCHE VERWALTUNGSSPRACHE - BEISPIELE (nicht limitierend):
+✓ Handlungsfelder können vielfältig sein: Mobilität, Klimaschutz, Energie, Wohnen, Bildung,
+  Soziales, Wirtschaft, Kultur, Sport, Digitalisierung, Gesundheit, Sicherheit, Verwaltung, etc.
+✓ Extrahieren Sie ALLE im Text gefundenen Handlungsfelder, nicht nur die genannten Beispiele
 ✓ Verwaltungsterminologie: Bescheid, Verordnung, Verwaltungsakt, Maßnahme, Indikator
 
 ABSOLUT VERBOTEN - Englische Begriffe:
@@ -320,13 +321,18 @@ ARBEITSSCHRITTE:
 Suchen Sie alle Textpassagen, die Handlungsfelder, Projekte, Maßnahmen oder Indikatoren erwähnen.
 
 2. DEUTSCHE HANDLUNGSFELDER EXTRAHIEREN:
-Basierend nur auf den gefundenen Zitaten - identifizieren Sie deutsche Handlungsfelder.
+Basierend nur auf den gefundenen Zitaten - identifizieren Sie ALLE unterschiedlichen Handlungsfelder.
+KRITISCH: Extrahieren Sie JEDES einzigartige Handlungsfeld aus diesem Chunk, auch wenn es nur einmal erwähnt wird!
+Verschiedene Chunks können verschiedene Handlungsfelder enthalten - erfassen Sie die Vielfalt!
 
 3. PROJEKTE UND DETAILS ZUORDNEN:
-Für jedes Handlungsfeld - extrahieren Sie nur die im Text explizit erwähnten Projekte und Details.
+Für jedes gefundene Handlungsfeld - extrahieren Sie nur die im Text explizit erwähnten Projekte und Details.
 
-WICHTIG: Verwenden Sie ausschließlich Informationen aus dem obigen Quelldokument.
-Keine Annahmen oder externes Wissen hinzufügen."""
+WICHTIG:
+- Verwenden Sie ausschließlich Informationen aus dem obigen Quelldokument
+- Extrahieren Sie ALLE Handlungsfelder, die Sie im Text finden
+- Begrenzen Sie sich NICHT auf Standard-Handlungsfelder
+- Jeder Chunk kann unterschiedliche Handlungsfelder enthalten"""
 
     # Validate chunk size
     if len(chunk_text) > CHUNK_WARNING_THRESHOLD:

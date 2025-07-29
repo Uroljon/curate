@@ -344,7 +344,6 @@ def detect_language_safe(text: str, default: str = "de") -> str:
         return default
 
 
-
 def identify_headers_footers(
     page_texts: list[str], frequency_threshold: float = 0.3
 ) -> tuple[list[str], list[str]]:

@@ -144,6 +144,16 @@ def deduplicate_extraction_results(
     """
     deduplicated_data: dict[str, Any] = {}
 
+    # Log the input for debugging
+    print(f"\n📊 Deduplicating {len(extracted_data)} action fields...")
+    field_names = [item["action_field"] for item in extracted_data]
+    unique_names = set(field_names)
+    print(f"   Found {len(unique_names)} unique action field names")
+    if len(unique_names) < len(extracted_data):
+        print(
+            f"   ⚠️ Duplicate names found: {len(extracted_data) - len(unique_names)} duplicates will be merged"
+        )
+
     for item in extracted_data:
         field_name: str = str(item["action_field"])
 
@@ -163,7 +173,12 @@ def deduplicate_extraction_results(
         else:
             deduplicated_data[field_name] = item
 
-    return list(deduplicated_data.values())
+    result = list(deduplicated_data.values())
+    print(
+        f"   ✅ Deduplication complete: {len(extracted_data)} → {len(result)} action fields"
+    )
+
+    return result
 
 
 def validate_german_only_content(
@@ -248,35 +263,49 @@ def validate_german_only_content(
 
 def chunked_aggregation(
     all_chunk_results: list[dict[str, Any]],
-    chunk_size: int = AGGREGATION_CHUNK_SIZE,
+    chunk_size: int = AGGREGATION_CHUNK_SIZE,  # Keep parameter for compatibility
     recursion_depth: int = 0,
-    max_recursion: int = 2,
+    max_recursion: int = 3,  # Increased for binary split depth
     log_file_path: str | None = None,
     log_context_prefix: str | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Handle large datasets by recursively processing them in smaller chunks.
+    Handle large datasets by recursively processing them using binary splitting.
+    Always processes ALL input data by splitting in half for balanced aggregation.
     """
+    num_fields = len(all_chunk_results)
     print(
-        f"🔄 Processing {len(all_chunk_results)} action fields in chunks of {chunk_size} (recursion depth: {recursion_depth})"
+        f"🔄 Processing {num_fields} action fields (recursion depth: {recursion_depth})"
     )
 
+    # Base cases
     if recursion_depth >= max_recursion:
         print(
             f"⚠️ Maximum recursion depth ({max_recursion}) reached - falling back to simple deduplication"
         )
         return simple_deduplication_fallback(all_chunk_results)
 
-    intermediate_results = []
-    for i in range(0, len(all_chunk_results), chunk_size):
-        chunk = all_chunk_results[i : i + chunk_size]
+    if num_fields <= 20:
+        print(f"✅ Already at target size ({num_fields} ≤ 20), returning as is")
+        return all_chunk_results
+
+    # Binary split for balanced processing
+    if num_fields > 20:
+        mid_point = num_fields // 2
+        first_half = all_chunk_results[:mid_point]
+        second_half = all_chunk_results[mid_point:]
+
         print(
-            f"📋 Processing chunk {i//chunk_size + 1} with {len(chunk)} action fields"
+            f"📊 Splitting into two halves: {len(first_half)} and {len(second_half)} action fields"
         )
 
-        chunk_data = json.dumps(chunk, indent=2, ensure_ascii=False)
+        intermediate_results = []
+
+        # Process first half
+        print(f"📋 Processing first half with {len(first_half)} action fields")
+        chunk_data = json.dumps(first_half, indent=2, ensure_ascii=False)
         log_context = (
-            f"{log_context_prefix} - Aggregation Pass {recursion_depth + 1}, Chunk {i//chunk_size + 1} ({len(chunk)} fields)"
+            f"{log_context_prefix} - Aggregation Pass {recursion_depth + 1}, First Half ({len(first_half)} fields)"
             if log_context_prefix
             else None
         )
@@ -284,36 +313,49 @@ def chunked_aggregation(
 
         if result:
             intermediate_results.extend(result)
-            print(
-                f"   ✅ Chunk {i//chunk_size + 1} aggregated to {len(result)} action fields"
-            )
+            print(f"   ✅ First half aggregated to {len(result)} action fields")
         else:
-            print(
-                f"   ❌ Chunk {i//chunk_size + 1} aggregation failed, retaining original chunk data"
-            )
-            intermediate_results.extend(chunk)
+            print("   ❌ First half aggregation failed, retaining original data")
+            intermediate_results.extend(first_half)
 
-    print(
-        f"✅ Pass {recursion_depth + 1} completed: {len(intermediate_results)} intermediate results"
-    )
+        # Process second half
+        print(f"📋 Processing second half with {len(second_half)} action fields")
+        chunk_data = json.dumps(second_half, indent=2, ensure_ascii=False)
+        log_context = (
+            f"{log_context_prefix} - Aggregation Pass {recursion_depth + 1}, Second Half ({len(second_half)} fields)"
+            if log_context_prefix
+            else None
+        )
+        result = perform_single_aggregation(chunk_data, log_file_path, log_context)
 
-    if len(intermediate_results) > 12 and len(intermediate_results) < len(
-        all_chunk_results
-    ):
-        return chunked_aggregation(
-            intermediate_results,
-            chunk_size,
-            recursion_depth + 1,
-            max_recursion,
-            log_file_path,
-            log_context_prefix,
+        if result:
+            intermediate_results.extend(result)
+            print(f"   ✅ Second half aggregated to {len(result)} action fields")
+        else:
+            print("   ❌ Second half aggregation failed, retaining original data")
+            intermediate_results.extend(second_half)
+
+        print(
+            f"✅ Pass {recursion_depth + 1} completed: {len(intermediate_results)} intermediate results"
         )
 
-    elif len(intermediate_results) > 12:
-        print("⚠️ Aggregation stalled, falling back to simple deduplication")
-        return simple_deduplication_fallback(intermediate_results)
+        # Recursively aggregate if still too many
+        if len(intermediate_results) > 20 and len(intermediate_results) < num_fields:
+            return chunked_aggregation(
+                intermediate_results,
+                chunk_size,
+                recursion_depth + 1,
+                max_recursion,
+                log_file_path,
+                log_context_prefix,
+            )
+        elif len(intermediate_results) > 20:
+            print("⚠️ Aggregation stalled, falling back to simple deduplication")
+            return simple_deduplication_fallback(intermediate_results)
 
-    return intermediate_results
+        return intermediate_results
+
+    return all_chunk_results
 
 
 def perform_single_aggregation(
@@ -326,41 +368,61 @@ def perform_single_aggregation(
     from src.core.llm import query_ollama_structured
     from src.core.schemas import ExtractionResult
 
-    system_message = """Sie sind ein Experte für die Konsolidierung von Handlungsfeldern aus deutschen kommunalen Strategiedokumenten.
-Ihre Aufgabe ist es, ähnliche Handlungsfelder intelligent zusammenzuführen und eine reduzierte Liste von
-maximal 12 konsolidierten Handlungsfeldern zu erstellen.
+    system_message = """Sie sind ein Experte für die KONSERVATIVE Deduplizierung von Handlungsfeldern aus deutschen kommunalen Strategiedokumenten.
+Ihre Hauptaufgabe ist es, DUPLIKATE zu entfernen und die GRANULARITÄT zu erhalten.
+Konsolidieren Sie NUR offensichtliche Duplikate oder fast identische Felder.
+Behalten Sie die meisten Handlungsfelder bei - Reduzierung um maximal 30-40%.
 Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der vorgegebenen Struktur entspricht.
 KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
 
-    prompt = f"""Sie erhalten {chunk_data.count('"action_field"')} Handlungsfelder zur Konsolidierung.
+    # Count the actual action fields
+    action_field_count = chunk_data.count('"action_field"')
 
-Ihre Aufgabe ist es, diese Liste durch intelligente Zusammenführung ähnlicher Bereiche zu reduzieren.
+    # Calculate target range (keep 70-80% of fields)
+    min_target = int(action_field_count * 0.7)
+    max_target = int(action_field_count * 0.8)
 
-ZIEL: Erstellen Sie eine Liste von maximal 12 konsolidierten Handlungsfeldern (idealerweise 8-12).
+    prompt = f"""Sie erhalten {action_field_count} Handlungsfelder zur Konsolidierung.
 
-ERFOLGSMETRIK: Konsolidieren Sie nur wirklich ähnliche Bereiche. Behalten Sie die Vielfalt und
-Granularität der kommunalen Handlungsfelder bei. Streben Sie 10-15 konsolidierte Handlungsfelder an.
+KRITISCH: Sie MÜSSEN mindestens {min_target} bis {max_target} Handlungsfelder in Ihrer Antwort zurückgeben!
 
-STRATEGIE:
-1. Analysieren Sie die bereitgestellten Handlungsfelder nach Themenähnlichkeit.
-2. Gruppieren Sie verwandte Bereiche unter aussagekräftige Oberkategorien.
-3. Verschmelzen Sie die Inhalte vollständig: Alle Projekte, Maßnahmen und Indikatoren der zusammengeführten Felder müssen erhalten bleiben.
-4. Verwenden Sie ausschließlich deutsche Fachterminologie. Englische Begriffe sind komplett zu eliminieren.
-5. Behalten Sie die Granularität bei: Verschiedene kommunale Fachbereiche sollten getrennt bleiben.
+Ihre Aufgabe:
+1. Entfernen Sie NUR exakte Duplikate (identischer Name)
+2. Konsolidieren Sie NUR fast identische Felder (>90% Überlappung)
+3. ALLE anderen Felder müssen SEPARAT bleiben
 
-Beachten Sie folgende Konsolidierungsregeln und Beispiele:
-✅ "Klimaschutz" + "Energie" + "Nachhaltigkeit" + "Umwelt" → "Klimaschutz, Energie und Umwelt"
-✅ "Mobilität" + "Verkehr" + "ÖPNV" + "Radverkehr" → "Mobilität und Verkehr"
-✅ "Wohnen" + "Quartiere" + "Stadtentwicklung" + "Bauplanung" → "Wohnen und Quartiersentwicklung"
-✅ "Wirtschaft" + "Innovation" + "Wissenschaft" + "Digitalisierung" → "Wirtschaft, Innovation und Digitalisierung"
-✅ "Kultur" + "Bildung" + "Sport" + "Freizeit" → "Kultur, Bildung und Sport"
-✅ "Soziales" + "Integration" + "Teilhabe" + "Gesundheit" → "Soziales, Integration und Gesundheit"
-✅ "Verwaltung" + "Bürgerbeteiligung" + "Transparenz" → "Verwaltung und Bürgerbeteiligung"
-✅ "Sicherheit" + "Ordnung" + "Katastrophenschutz" → "Sicherheit und Ordnung"
+STRENGE VORGABE:
+- Input: {action_field_count} Felder
+- Output: MINDESTENS {min_target} Felder (besser {max_target})
+- Wenn Sie weniger als {min_target} Felder zurückgeben, ist die Aufgabe NICHT erfüllt!
 
-❌ "Jugendarbeit" und "Seniorenbetreuung" → Bleiben getrennt (verschiedene Zielgruppen)
-❌ "Digitalisierung der Verwaltung" und "Digitale Bildung" → Bleiben getrennt (verschiedene Bereiche)
-❌ "Stadtplanung" und "Denkmalschutz" → Bleiben getrennt (unterschiedliche Fachbereiche)
+BEISPIELE was NICHT konsolidiert werden darf:
+❌ "Klimaschutz" und "Energie" → MÜSSEN getrennt bleiben
+❌ "Mobilität" und "Verkehr" → MÜSSEN getrennt bleiben
+❌ "Umwelt" und "Nachhaltigkeit" → MÜSSEN getrennt bleiben
+❌ "Stadtentwicklung" und "Wohnen" → MÜSSEN getrennt bleiben
+
+NUR diese Fälle dürfen konsolidiert werden:
+✅ "Mobilität" + "Mobilität" → "Mobilität" (identisch)
+✅ "Klimaschutz und Energie" + "Energie und Klimaschutz" → "Klimaschutz und Energie" (gleicher Inhalt)
+
+Beachten Sie folgende KONSERVATIVE Konsolidierungsregeln:
+
+NUR DIESE FÄLLE konsolidieren:
+✅ "Mobilität" + "Mobilität" → "Mobilität" (exaktes Duplikat)
+✅ "Verkehr und Mobilität" + "Mobilität und Verkehr" → "Mobilität und Verkehr" (fast identisch)
+✅ "Klimaschutz" + "Klimaschutz und Energie" → "Klimaschutz und Energie" (eines ist Teilmenge)
+
+DIESE FÄLLE NICHT konsolidieren:
+❌ "Klimaschutz" und "Energie" → Bleiben getrennt (verschiedene Schwerpunkte)
+❌ "Umwelt" und "Nachhaltigkeit" → Bleiben getrennt (unterschiedliche Aspekte)
+❌ "Mobilität" und "ÖPNV" → Bleiben getrennt (allgemein vs. spezifisch)
+❌ "Verkehr" und "Radverkehr" → Bleiben getrennt (allgemein vs. spezifisch)
+❌ "Wirtschaft" und "Innovation" → Bleiben getrennt (verschiedene Bereiche)
+❌ "Kultur" und "Bildung" → Bleiben getrennt (verschiedene Ressorts)
+❌ "Wohnen" und "Stadtentwicklung" → Bleiben getrennt (verschiedene Planungsebenen)
+❌ "Soziales" und "Gesundheit" → Bleiben getrennt (verschiedene Zuständigkeiten)
+❌ "Integration" und "Teilhabe" → Bleiben getrennt (verschiedene Konzepte)
 
 Hier sind die Handlungsfelder zur Konsolidierung:
 {chunk_data}
@@ -373,13 +435,28 @@ Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das die konsolidierten Hand
         data_size = len(chunk_data)
         print(f"   🔍 Attempting aggregation with {data_size} characters of JSON")
 
+        # Calculate dynamic num_predict based on input size
+        # Rule of thumb: 1 token ≈ 3 characters (more conservative), add 100% buffer for output expansion
+        estimated_tokens = int(data_size / 3 * 2.0)
+        # Ensure minimum of 20480 (default), cap at 30720 (75% of context) for qwen3:14b
+        dynamic_num_predict = max(20480, min(estimated_tokens, 30720))
+        print(f"   📊 Using dynamic num_predict: {dynamic_num_predict} tokens")
+
+        # Update log context to include token info
+        enhanced_log_context = (
+            f"{log_context} - Dynamic tokens: {dynamic_num_predict}"
+            if log_context
+            else f"Dynamic tokens: {dynamic_num_predict}"
+        )
+
         result = query_ollama_structured(
             prompt=prompt,
             response_model=ExtractionResult,
             system_message=system_message,
             temperature=MODEL_TEMPERATURE,
             log_file_path=log_file_path,
-            log_context=log_context,
+            log_context=enhanced_log_context,
+            override_num_predict=dynamic_num_predict,
         )
 
         if result:
@@ -399,9 +476,23 @@ Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das die konsolidierten Hand
                     action_field_dict["projects"].append(project_dict)
                 aggregated_data.append(action_field_dict)
 
-            print(
-                f"   ✅ LLM aggregation successful: {len(aggregated_data)} action fields"
-            )
+            # Check if aggregation was too aggressive
+            input_count = chunk_data.count('"action_field"')
+            output_count = len(aggregated_data)
+            reduction_percent = ((input_count - output_count) / input_count) * 100
+
+            if reduction_percent > 40:
+                print(
+                    f"   ⚠️ WARNING: Aggregation too aggressive! {input_count} → {output_count} fields ({reduction_percent:.1f}% reduction)"
+                )
+                print(
+                    f"   ⚠️ Target was {int(input_count * 0.7)}-{int(input_count * 0.8)} fields"
+                )
+            else:
+                print(
+                    f"   ✅ LLM aggregation successful: {output_count} action fields ({reduction_percent:.1f}% reduction)"
+                )
+
             return aggregated_data
         else:
             print("   ❌ LLM returned None - structured output failed")

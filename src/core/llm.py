@@ -25,6 +25,7 @@ def query_ollama_structured(
     system_message: str | None = None,
     log_file_path: str | None = None,
     log_context: str | None = None,
+    override_num_predict: int | None = None,
 ) -> T | None:
     """
     Query Ollama with structured output using Pydantic models.
@@ -37,6 +38,7 @@ def query_ollama_structured(
         system_message: Optional system message for role definition
         log_file_path: Optional path to log dialog to file
         log_context: Optional context info for the log entry
+        override_num_predict: Optional override for num_predict tokens (for large outputs)
 
     Returns:
         Validated Pydantic model instance or None if failed
@@ -51,6 +53,10 @@ def query_ollama_structured(
 
         options = STRUCTURED_OUTPUT_OPTIONS.copy()
         options["temperature"] = temperature
+
+        # Override num_predict if specified (e.g., for large aggregations)
+        if override_num_predict:
+            options["num_predict"] = override_num_predict
 
         request_body = {
             "model": model,
