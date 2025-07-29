@@ -393,9 +393,38 @@ async def extract_structure(
             f"📊 {measures_count} projects with measures, {indicators_count} projects with indicators"
         )
 
-        # Prepare response
+        # Save intermediate extraction JSON for two-layer pipeline
+        intermediate_filename = f"{source_id}_intermediate_extraction.json"
+        intermediate_path = os.path.join(UPLOAD_FOLDER, intermediate_filename)
+
+        # Prepare intermediate data structure (the "flawed nested JSON")
+        intermediate_data = {
+            "structures": final_structures,
+            "metadata": {
+                "extraction_time_seconds": round(extraction_time, 2),
+                "chunks_processed": len(optimized_chunks),
+                "action_fields_found": len(final_structures),
+                "total_projects": total_projects,
+                "projects_with_measures": measures_count,
+                "projects_with_indicators": indicators_count,
+                "page_attribution_enabled": True,
+                "projects_with_sources": attribution_stats["projects_with_sources"],
+                "attribution_success_rate": round(
+                    attribution_stats["attribution_success_rate"], 1
+                ),
+            },
+        }
+
+        # Save intermediate JSON to file
+        with open(intermediate_path, "w", encoding="utf-8") as f:
+            json.dump(intermediate_data, f, ensure_ascii=False, indent=2)
+
+        print(f"💾 Saved intermediate extraction to: {intermediate_filename}")
+
+        # Prepare response (same as before but with file path)
         response_data = {
             "structures": final_structures,
+            "intermediate_file": intermediate_filename,  # Add file path for pipeline
             "metadata": {
                 "extraction_time_seconds": round(extraction_time, 2),
                 "chunks_processed": len(optimized_chunks),
