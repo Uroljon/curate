@@ -306,7 +306,203 @@ def merge_short_chunks(chunks: list[str], min_chars=3000, max_chars=5000) -> lis
     return merged
 
 
-def chunk_for_embedding(cleaned_text: str, max_chars: int = 5000) -> list[str]:
+def add_overlap_to_chunks(
+    chunks: list[str], overlap_percent: float = 0.15
+) -> list[str]:
+    """
+    Add overlap between consecutive chunks to prevent information loss.
+
+    Args:
+        chunks: List of text chunks
+        overlap_percent: Percentage of chunk size to use as overlap (default: 0.15 = 15%)
+
+    Returns:
+        List of chunks with overlap added
+    """
+    if not chunks or len(chunks) < 2:
+        return chunks
+
+    overlapped_chunks = []
+
+    for i, chunk in enumerate(chunks):
+        current_chunk = chunk
+
+        # Add overlap from next chunk (except for last chunk)
+        if i < len(chunks) - 1:
+            next_chunk = chunks[i + 1]
+            overlap_size = int(len(current_chunk) * overlap_percent)
+
+            if overlap_size > 0 and len(next_chunk) > overlap_size:
+                # Get overlap text from beginning of next chunk
+                overlap_text = next_chunk[:overlap_size]
+
+                # Find good sentence boundary to avoid cutting mid-sentence
+                # Look for sentence endings within reasonable range
+                sentence_endings = [". ", ".\n", "! ", "!\n", "? ", "?\n"]
+                best_cut = overlap_size
+
+                for ending in sentence_endings:
+                    pos = overlap_text.rfind(ending)
+                    if pos > overlap_size * 0.5:  # At least 50% of desired overlap
+                        best_cut = pos + len(ending)
+                        break
+
+                # If no good sentence boundary found, look for paragraph break
+                if best_cut == overlap_size:
+                    para_break = overlap_text.rfind("\n\n")
+                    if (
+                        para_break > overlap_size * 0.3
+                    ):  # At least 30% of desired overlap
+                        best_cut = para_break + 2
+
+                overlap_text = overlap_text[:best_cut].strip()
+
+                if overlap_text:
+                    # Add overlap with clear separator
+                    current_chunk = (
+                        current_chunk
+                        + "\n\n[OVERLAP_START]\n"
+                        + overlap_text
+                        + "\n[OVERLAP_END]"
+                    )
+
+        overlapped_chunks.append(current_chunk)
+
+    return overlapped_chunks
+
+
+def add_overlap_to_page_chunks(
+    chunks: list[tuple[str, list[int]]], overlap_percent: float = 0.15
+) -> list[tuple[str, list[int]]]:
+    """
+    Add overlap between consecutive page-aware chunks to prevent information loss.
+
+    Args:
+        chunks: List of (chunk_text, page_numbers) tuples
+        overlap_percent: Percentage of chunk size to use as overlap (default: 0.15 = 15%)
+
+    Returns:
+        List of page-aware chunks with overlap added
+    """
+    if not chunks or len(chunks) < 2:
+        return chunks
+
+    overlapped_chunks = []
+
+    for i, (chunk_text, chunk_pages) in enumerate(chunks):
+        current_chunk = chunk_text
+
+        # Add overlap from next chunk (except for last chunk)
+        if i < len(chunks) - 1:
+            next_chunk_text, _ = chunks[i + 1]
+            overlap_size = int(len(current_chunk) * overlap_percent)
+
+            if overlap_size > 0 and len(next_chunk_text) > overlap_size:
+                # Get overlap text from beginning of next chunk
+                overlap_text = next_chunk_text[:overlap_size]
+
+                # Find good sentence boundary to avoid cutting mid-sentence
+                sentence_endings = [". ", ".\n", "! ", "!\n", "? ", "?\n"]
+                best_cut = overlap_size
+
+                for ending in sentence_endings:
+                    pos = overlap_text.rfind(ending)
+                    if pos > overlap_size * 0.5:  # At least 50% of desired overlap
+                        best_cut = pos + len(ending)
+                        break
+
+                # If no good sentence boundary found, look for paragraph break
+                if best_cut == overlap_size:
+                    para_break = overlap_text.rfind("\n\n")
+                    if (
+                        para_break > overlap_size * 0.3
+                    ):  # At least 30% of desired overlap
+                        best_cut = para_break + 2
+
+                overlap_text = overlap_text[:best_cut].strip()
+
+                if overlap_text:
+                    # Add overlap with clear separator
+                    current_chunk = (
+                        current_chunk
+                        + "\n\n[OVERLAP_START]\n"
+                        + overlap_text
+                        + "\n[OVERLAP_END]"
+                    )
+
+        overlapped_chunks.append((current_chunk, chunk_pages))
+
+    return overlapped_chunks
+
+
+def add_overlap_to_dict_chunks(
+    chunks: list[dict[str, Any]], overlap_percent: float = 0.15
+) -> list[dict[str, Any]]:
+    """
+    Add overlap between consecutive dictionary-based chunks to prevent information loss.
+
+    Args:
+        chunks: List of chunk dictionaries with 'text' key
+        overlap_percent: Percentage of chunk size to use as overlap (default: 0.15 = 15%)
+
+    Returns:
+        List of chunk dictionaries with overlap added to text
+    """
+    if not chunks or len(chunks) < 2:
+        return chunks
+
+    overlapped_chunks = []
+
+    for i, chunk in enumerate(chunks):
+        current_chunk = chunk.copy()
+        current_text = current_chunk["text"]
+
+        # Add overlap from next chunk (except for last chunk)
+        if i < len(chunks) - 1:
+            next_chunk_text = chunks[i + 1]["text"]
+            overlap_size = int(len(current_text) * overlap_percent)
+
+            if overlap_size > 0 and len(next_chunk_text) > overlap_size:
+                # Get overlap text from beginning of next chunk
+                overlap_text = next_chunk_text[:overlap_size]
+
+                # Find good sentence boundary to avoid cutting mid-sentence
+                sentence_endings = [". ", ".\n", "! ", "!\n", "? ", "?\n"]
+                best_cut = overlap_size
+
+                for ending in sentence_endings:
+                    pos = overlap_text.rfind(ending)
+                    if pos > overlap_size * 0.5:  # At least 50% of desired overlap
+                        best_cut = pos + len(ending)
+                        break
+
+                # If no good sentence boundary found, look for paragraph break
+                if best_cut == overlap_size:
+                    para_break = overlap_text.rfind("\n\n")
+                    if (
+                        para_break > overlap_size * 0.3
+                    ):  # At least 30% of desired overlap
+                        best_cut = para_break + 2
+
+                overlap_text = overlap_text[:best_cut].strip()
+
+                if overlap_text:
+                    # Add overlap with clear separator
+                    current_chunk["text"] = (
+                        current_text
+                        + "\n\n[OVERLAP_START]\n"
+                        + overlap_text
+                        + "\n[OVERLAP_END]"
+                    )
+
+        overlapped_chunks.append(current_chunk)
+
+    return overlapped_chunks
+
+
+def chunk_for_embedding(
+    cleaned_text: str, max_chars: int = 5000, add_overlap: bool = False
+) -> list[str]:
     """
     Smart chunking for embeddings that respects document structure.
 
@@ -316,6 +512,7 @@ def chunk_for_embedding(cleaned_text: str, max_chars: int = 5000) -> list[str]:
     Args:
         cleaned_text: The cleaned text to chunk
         max_chars: Maximum characters per chunk (default: 5000)
+        add_overlap: Whether to add 15% overlap between chunks (default: False)
 
     Returns:
         List of text chunks
@@ -340,11 +537,18 @@ def chunk_for_embedding(cleaned_text: str, max_chars: int = 5000) -> list[str]:
         max_chars=max_chars,
     )
 
+    # Step 4: Add overlap if requested
+    if add_overlap:
+        final_chunks = add_overlap_to_chunks(final_chunks)
+
     return final_chunks
 
 
 def chunk_for_llm(
-    chunks: list[str], max_chars: int = 20000, min_chars: int = 15000
+    chunks: list[str],
+    max_chars: int = 20000,
+    min_chars: int = 15000,
+    add_overlap: bool = False,
 ) -> list[str]:
     """
     Prepare chunks for LLM processing using simple size-based merging.
@@ -356,6 +560,7 @@ def chunk_for_llm(
         chunks: List of text chunks from semantic chunker
         max_chars: Maximum characters per LLM chunk
         min_chars: Target minimum characters per LLM chunk
+        add_overlap: Whether to add 15% overlap between chunks (default: False)
 
     Returns:
         List of merged chunks optimized for LLM processing
@@ -418,6 +623,10 @@ def chunk_for_llm(
         else:
             final_chunks.append(chunk)
 
+    # Add overlap if requested
+    if add_overlap:
+        final_chunks = add_overlap_to_chunks(final_chunks)
+
     return final_chunks
 
 
@@ -426,6 +635,7 @@ def chunk_for_llm_with_pages(
     max_chars: int = 20000,
     min_chars: int = 15000,
     doc_title: str = "Dokument",
+    add_overlap: bool = False,
 ) -> list[tuple[str, list[int]]]:
     """
     Prepare page-aware chunks for LLM processing with context headers.
@@ -439,6 +649,7 @@ def chunk_for_llm_with_pages(
         max_chars: Maximum characters per LLM chunk
         min_chars: Target minimum characters per LLM chunk
         doc_title: Title of the document for context headers
+        add_overlap: Whether to add 15% overlap between chunks (default: False)
 
     Returns:
         List of (chunk_text, page_numbers) tuples where chunk_text includes context header
@@ -548,6 +759,10 @@ def chunk_for_llm_with_pages(
         # Add header to chunk
         chunk_with_header = context_header + chunk_text
         chunks_with_headers.append((chunk_with_header, chunk_pages))
+
+    # Add overlap if requested
+    if add_overlap:
+        chunks_with_headers = add_overlap_to_page_chunks(chunks_with_headers)
 
     return chunks_with_headers
 
@@ -922,6 +1137,7 @@ def chunk_for_embedding_with_pages(
     page_aware_text: list[tuple[str, int]],
     max_chars: int = 5000,
     min_chars: int = 1000,
+    add_overlap: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Page-aware chunking that preserves page number information.
@@ -932,6 +1148,7 @@ def chunk_for_embedding_with_pages(
         page_aware_text: List of (text, page_number) tuples
         max_chars: Maximum characters per chunk
         min_chars: Minimum characters for a chunk to be kept
+        add_overlap: Whether to add 15% overlap between chunks (default: False)
 
     Returns:
         List of chunks with metadata: [{"text": str, "pages": List[int], "chunk_id": int}]
@@ -1006,6 +1223,10 @@ def chunk_for_embedding_with_pages(
                 "page_chunk_index": 0,
             }
         )
+
+    # Add overlap if requested
+    if add_overlap:
+        chunks_with_pages = add_overlap_to_dict_chunks(chunks_with_pages)
 
     return chunks_with_pages
 

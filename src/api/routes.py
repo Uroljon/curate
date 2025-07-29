@@ -223,6 +223,7 @@ async def extract_structure(
             max_chars=max_chars,
             min_chars=min_chars,
             doc_title=doc_title,
+            add_overlap=True,  # Enable 15% overlap to prevent information loss at boundaries
         )
 
         # Extract just the text for compatibility with existing code
