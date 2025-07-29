@@ -46,6 +46,10 @@ STRUCTURED_OUTPUT_OPTIONS = {
 
 # Extraction Configuration
 EXTRACTION_MAX_RETRIES = 3  # Number of retry attempts for failed extractions
+USE_CHAIN_OF_THOUGHT = (
+    True  # Enable Chain-of-Thought prompting for better classification
+)
+CONFIDENCE_THRESHOLD = 0.8  # Minimum confidence score for classification (0.0-1.0)
 
 # Text Processing Configuration
 MIN_CHARS_FOR_VALID_PAGE = (

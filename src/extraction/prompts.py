@@ -68,35 +68,50 @@ FEHLERBEHANDLUNG: Falls keine Projekte für "{action_field}" im Quelldokument ve
 
 # Stage 3: Extract details for a specific project
 def get_stage3_system_message(action_field: str, project_title: str) -> str:
-    return f"""Rolle: Sie sind ein hochspezialisierter KI-Assistent für die Analyse deutscher kommunaler Strategiedokumente.
-Ziel: Extrahieren Sie Maßnahmen und Indikatoren für das Projekt "{project_title}" im Handlungsfeld "{action_field}".
-Stil: Direkt, prägnant, objektiv.
-Ton: Formal, professionell.
-Zielgruppe: Fachpersonal in der Stadtverwaltung.
-Antwortformat: Ausschließlich ein JSON-Objekt, das dem vorgegebenen Schema entspricht. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON.
+    return f"""Sie sind ein hochspezialisierter KI-Assistent für die Analyse deutscher kommunaler Strategiedokumente.
 
-KRITISCHE ANWEISUNG: Verwenden Sie AUSSCHLIESSLICH Informationen aus dem bereitgestellten Quelldokument.
+IHRE AUFGABE: Klassifizieren Sie JEDEN gefundenen Punkt als Maßnahme oder Indikator für "{project_title}" im Handlungsfeld "{action_field}".
 
-VERFAHREN (Quote-Before-Answer):
-1. ZITATE EXTRAHIEREN: Identifizieren Sie Textpassagen zu "{project_title}".
-2. ANALYSE: Extrahieren Sie nur Maßnahmen/Indikatoren aus diesen Zitaten.
-3. VALIDIERUNG: Jeder Punkt muss im Quelltext nachweisbar sein.
+SCHRITT-FÜR-SCHRITT KLASSIFIKATION (Chain-of-Thought):
 
-KRITISCHES KONTEXTBEWUSSTSEIN:
-1. Der Text kann Informationen über MEHRERE Projekte und Handlungsfelder enthalten
-2. Fokussiere NUR auf Maßnahmen/Indikatoren zu "{project_title}"
-3. Indikatoren können ÜBERALL im Text erscheinen - vor, nach oder getrennt von der Projekterwähnung
-4. Achte auf Querverweise: "wie oben erwähnt", "siehe auch", "vgl."
+SCHRITT 1 - SCHLÜSSELWÖRTER IDENTIFIZIEREN:
+• Handlungswörter (einrichten, entwickeln, bauen, implementieren, schaffen, fördern, unterstützen) → MASSNAHME
+• Messbegriffe (Anzahl, Prozent, Reduktion um X%, bis Jahr XXXX, km, m², Euro) → INDIKATOR
 
-DEFINITIONEN:
-- Maßnahmen: Konkrete Aktionen, Schritte, Umsetzungen für DIESES Projekt
-- Indikatoren: Quantitative ODER qualitative Kennzahlen, Ziele für DIESES Projekt
+SCHRITT 2 - STRUKTUR ANALYSIEREN:
+• Beschreibt der Text WAS getan wird? → MASSNAHME
+• Beschreibt der Text WIE ERFOLG gemessen wird? → INDIKATOR
+• Enthält der Text ZAHLEN oder ZEITANGABEN? → Wahrscheinlich INDIKATOR
 
-INDIKATOREN (beide Typen erfassen):
-- Quantitativ: "55% Reduktion bis 2030", "500 Ladepunkte", "18 km Radwege"
-- Qualitativ: "Verbesserung der Luftqualität", "Stärkung des Zusammenhalts"
+SCHRITT 3 - TYPISCHE MUSTER PRÜFEN:
 
-FEHLERBEHANDLUNG: Falls keine Maßnahmen/Indikatoren für "{project_title}" im Quelldokument verfügbar sind, geben Sie leere Arrays zurück."""
+Maßnahmen-Muster:
+✓ "Bau von..." → Konkrete Aktion
+✓ "Einführung eines..." → Implementierung
+✓ "Entwicklung von..." → Prozess
+✓ "Schaffung von..." → Neue Strukturen
+✓ "Förderung der..." → Unterstützung
+✓ "Ausbau des..." → Erweiterung
+
+Indikatoren-Muster:
+✓ Prozentangaben: "55% Reduktion", "um 30% steigern"
+✓ Absolute Zahlen: "500 Ladepunkte", "18 km", "1000 Wohneinheiten"
+✓ Zeitangaben: "bis 2030", "ab 2025", "innerhalb von 5 Jahren"
+✓ Vergleiche: "Verdopplung", "Halbierung", "30% weniger als"
+✓ Häufigkeiten: "jährlich", "pro Einwohner", "je km²"
+
+KRITISCHE REGEL: Ein Satz kann BEIDE enthalten!
+Beispiel: "Bau von 500 Ladepunkten bis 2030"
+→ Maßnahme: "Bau von Ladepunkten"
+→ Indikator: "500 Ladepunkte bis 2030"
+
+WICHTIGE HINWEISE:
+1. NUR Informationen aus dem Quelldokument verwenden
+2. NUR auf "{project_title}" bezogene Punkte extrahieren
+3. Indikatoren können getrennt von Maßnahmen erscheinen
+4. Qualitative Indikatoren (ohne Zahlen) sind auch gültig
+
+Antwortformat: Ausschließlich JSON gemäß Schema. KEINE Erklärungen außerhalb des JSON."""
 
 
 # Enhanced prompts for each stage
@@ -135,19 +150,52 @@ WICHTIG: Ihre Antwort MUSS ausschließlich ein JSON-Objekt sein, das dem vorgege
 
 
 def get_stage3_prompt(chunk: str, action_field: str, project_title: str) -> str:
-    return f"""QUELLDOKUMENT:
+    return f"""KONKRETE BEISPIELE ZUR ORIENTIERUNG:
+
+MASSNAHMEN (Was wird getan?):
+✓ "Errichtung einer Mobilitätsstation am Hauptbahnhof" → Konkrete Baumaßnahme
+✓ "Einführung eines digitalen Parkraummanagements" → System-Implementierung
+✓ "Entwicklung eines integrierten Klimaschutzkonzepts" → Konzepterstellung
+✓ "Ausbau der Radwegeinfrastruktur im Innenstadtbereich" → Infrastrukturmaßnahme
+✓ "Förderung von Photovoltaikanlagen auf städtischen Gebäuden" → Förderprogramm
+✓ "Schaffung von Grünflächen in verdichteten Quartieren" → Flächenentwicklung
+✓ "Umstellung der Busflotte auf Elektroantrieb" → Technologiewechsel
+
+INDIKATOREN (Wie wird Erfolg gemessen?):
+✓ "Reduktion der CO2-Emissionen um 55% bis 2030" → Prozentuale Reduktion + Zeitrahmen
+✓ "18 km neue Radwege bis 2025" → Quantität + Zeitrahmen
+✓ "1000 neue Wohneinheiten in energieeffizienter Bauweise" → Absolute Menge
+✓ "Steigerung des ÖPNV-Anteils auf 30%" → Prozentualer Zielwert
+✓ "500 öffentliche Ladepunkte für E-Mobilität" → Konkrete Anzahl
+✓ "Halbierung des Energieverbrauchs städtischer Gebäude" → Relativer Vergleich
+✓ "95% der Haushalte mit Glasfaseranschluss bis 2028" → Abdeckungsgrad + Zeit
+
+KOMBINIERTE BEISPIELE (Maßnahme + Indikator im selben Satz):
+• "Bau von 50 neuen Bushaltestellen bis 2026"
+  → Maßnahme: "Bau von Bushaltestellen"
+  → Indikator: "50 neue Bushaltestellen bis 2026"
+
+• "Sanierung von 20 Schulgebäuden zur Energieeinsparung von 40%"
+  → Maßnahme: "Sanierung von Schulgebäuden zur Energieeinsparung"
+  → Indikator: "20 Schulgebäude" und "40% Energieeinsparung"
+
+QUELLDOKUMENT:
 ========
 {chunk.strip()}
 ========
 
-ARBEITSSCHRITTE:
+IHRE AUFGABE für Projekt "{project_title}":
 
-1. IDENTIFIZIEREN SIE RELEVANTE ZITATE:
-   Listen Sie alle Textpassagen auf, die Maßnahmen oder Indikatoren zu "{project_title}" enthalten.
+1. DURCHSUCHEN Sie den Text nach allen Erwähnungen von "{project_title}"
+2. IDENTIFIZIEREN Sie zugehörige Maßnahmen und Indikatoren
+3. WENDEN Sie die Chain-of-Thought Klassifikation an:
+   - Schritt 1: Welche Schlüsselwörter sind vorhanden?
+   - Schritt 2: Beschreibt es eine Aktion oder eine Messung?
+   - Schritt 3: Welches Muster trifft zu?
+4. TRENNEN Sie kombinierte Aussagen in separate Maßnahmen und Indikatoren
 
-2. EXTRAHIEREN SIE MASSNAHMEN UND INDIKATOREN:
-   Basierend ausschließlich auf den identifizierten Zitaten, extrahieren Sie:
-   - Maßnahmen für "{project_title}"
-   - Indikatoren (quantitativ UND qualitativ) für "{project_title}"
+KRITISCH:
+- Auch wenn Indikatoren weit entfernt von der Projekterwähnung stehen, gehören sie dazu, wenn sie sich inhaltlich auf "{project_title}" beziehen
+- Qualitative Indikatoren ohne Zahlen (z.B. "deutliche Verbesserung der Luftqualität") sind auch gültig
 
-WICHTIG: Ihre Antwort MUSS ausschließlich ein JSON-Objekt sein, das dem vorgegebenen Schema entspricht."""
+Antworten Sie mit einem JSON-Objekt gemäß dem vorgegebenen Schema."""

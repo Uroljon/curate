@@ -68,3 +68,26 @@ class ProjectDetails(BaseModel):
     indicators: list[str] = Field(
         default_factory=list, description="List of indicators/KPIs"
     )
+
+
+class ProjectDetailsEnhanced(BaseModel):
+    """Enhanced project information with confidence scoring and reasoning for Chain-of-Thought extraction."""
+
+    measures: list[str] = Field(
+        default_factory=list, description="List of measures/actions"
+    )
+    indicators: list[str] = Field(
+        default_factory=list, description="List of indicators/KPIs"
+    )
+    confidence_scores: dict[str, float] = Field(
+        default_factory=dict,
+        description="Maps each measure/indicator to confidence score (0.0-1.0)",
+    )
+    reasoning: dict[str, str] = Field(
+        default_factory=dict,
+        description="Maps each measure/indicator to classification reasoning",
+    )
+    key_patterns: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Maps each measure/indicator to detected key patterns",
+    )

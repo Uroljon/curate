@@ -11,6 +11,7 @@ from src.core import (
     ActionFieldList,
     ExtractionResult,
     ProjectDetails,
+    ProjectDetailsEnhanced,
     ProjectList,
     query_ollama_structured,
 )
@@ -210,6 +211,119 @@ def extract_project_details(
 
     print(
         f"   📊 Total: {len(details.measures)} measures, {len(details.indicators)} indicators"
+    )
+
+    return details
+
+
+def extract_project_details_cot(
+    chunks: list[str],
+    action_field: str,
+    project_title: str,
+    confidence_threshold: float = 0.8,
+) -> ProjectDetails:
+    """
+    Stage 3 with Chain-of-Thought: Extract measures and indicators with confidence scoring.
+
+    This enhanced version uses step-by-step reasoning and confidence scores
+    to improve classification accuracy.
+    """
+    all_measures = {}  # measure -> confidence
+    all_indicators = {}  # indicator -> confidence
+    all_reasoning = {}  # item -> reasoning
+
+    # Use enhanced CoT system message
+    system_message = get_stage3_system_message(action_field, project_title)
+
+    print(f"🔬 Stage 3 (CoT): Analyzing {len(chunks)} chunks for {project_title}")
+    print(f"   Using confidence threshold: {confidence_threshold}")
+
+    for i, chunk in enumerate(chunks):
+        if not chunk.strip():
+            continue
+
+        prompt = get_stage3_prompt(chunk, action_field, project_title)
+
+        # Use enhanced schema with confidence scoring
+        result = query_ollama_structured(
+            prompt=prompt,
+            response_model=ProjectDetailsEnhanced,
+            system_message=system_message,
+            temperature=MODEL_TEMPERATURE,
+        )
+
+        if result:
+            # Process measures with confidence
+            for measure in result.measures:
+                confidence = result.confidence_scores.get(measure, 0.5)
+                reasoning = result.reasoning.get(measure, "")
+
+                # Update if new or higher confidence
+                if measure not in all_measures or confidence > all_measures[measure]:
+                    all_measures[measure] = confidence
+                    all_reasoning[measure] = reasoning
+
+            # Process indicators with confidence
+            for indicator in result.indicators:
+                confidence = result.confidence_scores.get(indicator, 0.5)
+                reasoning = result.reasoning.get(indicator, "")
+
+                # Update if new or higher confidence
+                if (
+                    indicator not in all_indicators
+                    or confidence > all_indicators[indicator]
+                ):
+                    all_indicators[indicator] = confidence
+                    all_reasoning[indicator] = reasoning
+
+            # Log findings
+            confident_measures = [
+                m
+                for m in result.measures
+                if result.confidence_scores.get(m, 0) >= confidence_threshold
+            ]
+            confident_indicators = [
+                i
+                for i in result.indicators
+                if result.confidence_scores.get(i, 0) >= confidence_threshold
+            ]
+
+            if confident_measures or confident_indicators:
+                print(
+                    f"   ✓ Chunk {i+1}: {len(confident_measures)} confident measures, "
+                    f"{len(confident_indicators)} confident indicators"
+                )
+
+    # Filter by confidence threshold
+    confident_measures = sorted(
+        [m for m, conf in all_measures.items() if conf >= confidence_threshold]
+    )
+    confident_indicators = sorted(
+        [i for i, conf in all_indicators.items() if conf >= confidence_threshold]
+    )
+
+    # Log low-confidence items for debugging
+    low_conf_measures = [
+        (m, conf) for m, conf in all_measures.items() if conf < confidence_threshold
+    ]
+    low_conf_indicators = [
+        (i, conf) for i, conf in all_indicators.items() if conf < confidence_threshold
+    ]
+
+    if low_conf_measures or low_conf_indicators:
+        print(
+            f"   ⚠️ Filtered out {len(low_conf_measures)} low-confidence measures "
+            f"and {len(low_conf_indicators)} indicators"
+        )
+
+    # Create final result
+    details = ProjectDetails(
+        measures=confident_measures, indicators=confident_indicators
+    )
+
+    print(
+        f"   📊 Final: {len(details.measures)} measures, "
+        f"{len(details.indicators)} indicators (confidence ≥ {confidence_threshold})"
     )
 
     return details

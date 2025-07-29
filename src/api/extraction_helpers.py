@@ -12,12 +12,15 @@ from typing import Any
 
 from src.core.config import (
     AGGREGATION_CHUNK_SIZE,
+    CONFIDENCE_THRESHOLD,
     MIN_QUOTE_LENGTH,
     QUOTE_MATCH_THRESHOLD,
+    USE_CHAIN_OF_THOUGHT,
 )
 from src.extraction.structure_extractor import (
     extract_action_fields_only,
     extract_project_details,
+    extract_project_details_cot,
     extract_projects_for_field,
     extract_structures_with_retry,
 )
@@ -117,7 +120,16 @@ def extract_project_details_for_field(
     for proj_idx, project_title in enumerate(projects):
         print(f"\n📁 Project {proj_idx + 1}/{len(projects)}: {project_title}")
 
-        details = extract_project_details(chunks, action_field, project_title)
+        # Use Chain-of-Thought extraction if enabled
+        if USE_CHAIN_OF_THOUGHT:
+            print(
+                f"   🧠 Using Chain-of-Thought classification (confidence ≥ {CONFIDENCE_THRESHOLD})"
+            )
+            details = extract_project_details_cot(
+                chunks, action_field, project_title, CONFIDENCE_THRESHOLD
+            )
+        else:
+            details = extract_project_details(chunks, action_field, project_title)
 
         project_data: dict[str, Any] = {"title": project_title}
         if details.measures:

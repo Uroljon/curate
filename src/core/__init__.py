@@ -9,6 +9,7 @@ from .config import (
     CHUNK_MAX_CHARS,
     CHUNK_MIN_CHARS,
     CHUNK_WARNING_THRESHOLD,
+    CONFIDENCE_THRESHOLD,
     EXTRACTION_MAX_RETRIES,
     FAST_EXTRACTION_ENABLED,
     FAST_EXTRACTION_MAX_CHUNKS,
@@ -31,6 +32,7 @@ from .config import (
     SUPPORTED_LANGUAGES,
     SYMBOL_FILTER_THRESHOLD,
     UPLOAD_FOLDER,
+    USE_CHAIN_OF_THOUGHT,
 )
 
 # LLM functionality
@@ -43,24 +45,22 @@ from .schemas import (
     ExtractionResult,
     Project,
     ProjectDetails,
+    ProjectDetailsEnhanced,
     ProjectList,
 )
 
 __all__ = [
-    # Chunking configuration
     "CHUNK_MAX_CHARS",
     "CHUNK_MIN_CHARS",
     "CHUNK_WARNING_THRESHOLD",
-    # Extraction configuration
+    "CONFIDENCE_THRESHOLD",
     "EXTRACTION_MAX_RETRIES",
     "FAST_EXTRACTION_ENABLED",
     "FAST_EXTRACTION_MAX_CHUNKS",
     "INDICATOR_AWARE_CHUNKING",
     "INDICATOR_WINDOW_SIZE",
     "LOG_DIR",
-    # Text processing configuration
     "MIN_CHARS_FOR_VALID_PAGE",
-    # Model configuration
     "MODEL_NAME",
     "MODEL_TEMPERATURE",
     "MODEL_TIMEOUT",
@@ -76,13 +76,13 @@ __all__ = [
     "SUPPORTED_LANGUAGES",
     "SYMBOL_FILTER_THRESHOLD",
     "UPLOAD_FOLDER",
-    # Schema exports
+    "USE_CHAIN_OF_THOUGHT",
     "ActionField",
     "ActionFieldList",
     "ExtractionResult",
     "Project",
     "ProjectDetails",
+    "ProjectDetailsEnhanced",
     "ProjectList",
-    # LLM exports
     "query_ollama_structured",
 ]
