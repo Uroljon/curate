@@ -28,8 +28,8 @@ graph TB
         K --> K3[Source ID for Next Step]
     end
 
-    %% Extract Structure Endpoint Flow
-    subgraph Extract["/extract_structure Endpoint"]
+    %% Extract Structure Endpoint Flow (Layer 1 - Extractor LLM)
+    subgraph Extract["/extract_structure Endpoint - Layer 1: Extractor LLM"]
         L[Request with Source ID] --> M[Load Pages from File]
         M --> M1[Read _pages.txt]
         M --> M2[Parse Page Format]
@@ -42,7 +42,7 @@ graph TB
 
         N --> O[Structure Extraction Loop]
         O --> O1[Process Each Chunk Independently]
-        O1 --> O2[Query Ollama with Structured Output]
+        O1 --> O2[Query vLLM/Ollama with Structured Output]
         O2 --> O3[Extract Action Fields/Projects/Measures/Indicators]
         O3 --> O3a{Chain-of-Thought Mode?}
         O3a -->|Yes| O3b[Apply Step-by-Step Classification]
@@ -68,11 +68,58 @@ graph TB
         R --> R1[Validate German Content]
         R --> R2[Calculate Statistics]
 
-        R --> S[Return Structured Data]
-        S --> S1[Action Fields with Projects]
-        S --> S2[Measures and Indicators]
-        S --> S3[Page-Level Source Attribution]
-        S --> S4[Extraction Metadata]
+        R --> S[Save Intermediate Structure]
+        S --> S1[Nested JSON Format]
+        S --> S2[Action Fields with Projects]
+        S --> S3[Measures and Indicators]
+        S --> S4[Page-Level Source Attribution]
+        S --> S5[Save as _intermediate_extraction.json]
+    end
+
+    %% Enhance Structure Endpoint Flow (Layer 2 - Transformer LLM)
+    subgraph Enhance["/enhance_structure Endpoint - Layer 2: Transformer LLM"]
+        T[Request with Source ID] --> U[Load Intermediate File]
+        U --> U1[Read _intermediate_extraction.json]
+        U --> U2[Validate JSON Structure]
+        U --> U3[Extract Nested Data]
+
+        U --> V[Data Size Analysis]
+        V --> V1{Data Size > 22K tokens?}
+        V1 -->|Yes| V2[Use Chunked Processing]
+        V1 -->|No| V3[Process All at Once]
+
+        V2 --> W[Chunked Transformation]
+        W --> W1[Split into 4-6 Action Fields per Chunk]
+        W --> W2[Process Each Chunk with vLLM/Ollama]
+        W --> W3[Thinking Mode: ~8K-10K tokens]
+        W --> W4[JSON Output: ~3K-5K tokens]
+        W --> W5[Handle JSON Truncation Gracefully]
+        W --> W6[Aggregate Chunk Results]
+
+        V3 --> X[Single-Pass Transformation]
+        X --> X1[Full Dataset to LLM]
+        X --> X2[Generate Complete 4-Bucket Structure]
+
+        W6 --> Y[Create Enhanced Structure]
+        X2 --> Y
+        Y --> Y1[Action Fields List with IDs]
+        Y --> Y2[Projects List with IDs]
+        Y --> Y3[Measures List with IDs]
+        Y --> Y4[Indicators List with IDs]
+        Y --> Y5[Connection Matrix with Confidence]
+
+        Y --> Z[Relational Processing]
+        Z --> Z1[Conservative Deduplication]
+        Z --> Z2[Source Validation]
+        Z --> Z3[Connection Confidence Scoring]
+        Z --> Z4[Cross-Entity Relationship Mapping]
+
+        Z --> AA[Save Enhanced Structure]
+        AA --> AA1[4-Bucket Relational JSON]
+        AA --> AA2[Explicit Entity Connections]
+        AA --> AA3[Confidence Scores & Justifications]
+        AA --> AA4[Save as _enhanced_structure.json]
+        AA --> AA5[250+ Entities with 441+ Connections]
     end
 
     %% File Storage
@@ -80,30 +127,58 @@ graph TB
         FS[(Upload Folder)]
         FS --> FS1[Original PDFs]
         FS --> FS2[Page-Aware Text - _pages.txt]
-        FS --> FS3[Page Metadata Preserved]
+        FS --> FS3[LLM Chunks - _llm_chunks.txt]
+        FS --> FS4[Intermediate JSON - _intermediate_extraction.json]
+        FS --> FS5[Enhanced JSON - _enhanced_structure.json]
+        FS --> FS6[Dialog Logs - _llm_dialog.txt & _enhance_dialog.txt]
     end
 
-    %% Ollama Integration
-    subgraph Ollama["Ollama LLM Service"]
-        LLM[qwen3:14b Model]
-        LLM --> LLM1[Structured Output Mode]
-        LLM --> LLM2[Pydantic Schema Validation]
-        LLM --> LLM3[German Language Processing]
+    %% LLM Backend Integration
+    subgraph LLMBackend["LLM Backend (vLLM/Ollama)"]
+        LLM[Qwen3-14B-AWQ Model]
+        LLM --> LLM1[32K Context Window]
+        LLM --> LLM2[~13K Max Output Tokens]
+        LLM --> LLM3[Thinking Mode Support]
+        LLM --> LLM4[Structured Output with Pydantic]
+        LLM --> LLM5[German Language Processing]
+        LLM --> LLM6[JSON Repair & Validation]
+    end
+
+    %% Two-Layer Pipeline Flow
+    subgraph Pipeline["Two-Layer LLM Pipeline Strategy"]
+        Layer1[Layer 1: Extractor LLM<br/>Nested JSON Extraction]
+        Layer2[Layer 2: Transformer LLM<br/>Relational 4-Bucket Structure]
+        Layer1 --> Layer2
+        Layer1 --> PL1[Handles Complex Document Structure]
+        Layer2 --> PL2[Creates Clean Relational Data]
+        Layer2 --> PL3[Explicit Entity Connections]
+        Layer2 --> PL4[Conservative Deduplication]
     end
 
     %% Connect the flows
     K --> L
+    S5 --> T
     G -.-> FS
     M -.-> FS
+    U1 -.-> FS
+    AA4 -.-> FS
     O2 -.-> LLM
+    W2 -.-> LLM
+    X1 -.-> LLM
+    S --> Layer1
+    AA --> Layer2
 
     %% Styling
     classDef endpoint fill:#e1f5fe,stroke:#01579b,stroke-width:3px
     classDef process fill:#fff9c4,stroke:#f57f17,stroke-width:2px
     classDef storage fill:#c8e6c9,stroke:#1b5e20,stroke-width:2px
     classDef external fill:#ffccbc,stroke:#bf360c,stroke-width:2px
+    classDef pipeline fill:#f3e5f5,stroke:#4a148c,stroke-width:3px
+    classDef enhancement fill:#e8f5e8,stroke:#2e7d32,stroke-width:3px
 
-    class A,L endpoint
+    class A,L,T endpoint
     class FS storage
     class LLM external
     class B,C,D,E,F,G,K,M,N,O,P,Q,R,S process
+    class U,V,W,X,Y,Z,AA enhancement
+    class Layer1,Layer2,PL1,PL2,PL3,PL4 pipeline

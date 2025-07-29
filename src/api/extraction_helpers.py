@@ -371,8 +371,8 @@ def chunked_aggregation(
 
 
 def perform_single_aggregation(
-    chunk_data: str, 
-    log_file_path: str | None = None, 
+    chunk_data: str,
+    log_file_path: str | None = None,
     log_context: str | None = None,
     override_output_tokens: int | None = None
 ) -> list[dict[str, Any]] | None:
@@ -796,20 +796,20 @@ def aggregate_extraction_results(
     estimated_tokens = int(data_size / 3.5)  # Conservative token estimation
 
     # qwen3:14b-AWQ: 32K total context
-    # Reserve: 2K prompt + 15K output = 17K overhead  
+    # Reserve: 2K prompt + 15K output = 17K overhead
     # Safe input limit: 15K tokens (32K - 17K overhead)
     context_safety_limit = 15000
 
     print(f"📊 Data analysis: {data_size} characters ≈ {estimated_tokens} tokens")
     print(f"📊 Input limit: {context_safety_limit} tokens (leaves 17K for prompt+output)")
-    
+
     if estimated_tokens <= context_safety_limit:
         # Calculate remaining tokens for output (32K context)
         remaining_tokens = 32768 - estimated_tokens - 2000  # Reserve 2K for prompt
         output_tokens = min(remaining_tokens - 1000, 15000)  # Cap output, leave 1K buffer
         print(f"📊 Output allocation: {output_tokens} tokens available")
         print("✅ Data fits in context window - using single-pass aggregation")
-        
+
         result = perform_single_aggregation(
             chunk_data,
             log_file_path,
@@ -1213,3 +1213,335 @@ def extract_relevant_quote(text: str, search_term: str, max_length: int = 300) -
     best_quote = " ".join(best_quote.split())
 
     return best_quote
+
+
+def transform_to_enhanced_structure(
+    intermediate_data: dict,
+    log_file_path: str | None = None,
+    log_context: str | None = None,
+):
+    """
+    Transform intermediate extraction results into enhanced 4-bucket relational structure.
+
+    This is the "Transformer LLM" from the two-layer pipeline strategy that takes
+    the flawed nested JSON and converts it to clean relational structure.
+
+    Args:
+        intermediate_data: The intermediate extraction JSON data
+        log_file_path: Optional path to log LLM dialog
+        log_context: Optional context for logging
+
+    Returns:
+        EnrichedReviewJSON structure or None if transformation fails
+    """
+    import json
+
+    from src.core.config import MODEL_TEMPERATURE
+    from src.core.llm import query_ollama_structured
+    from src.core.schemas import EnrichedReviewJSON
+
+    # Extract the structures from intermediate data
+    structures = intermediate_data.get("structures", [])
+    if not structures:
+        print("⚠️ No structures found in intermediate data")
+        return None
+
+    print(f"🔄 Transforming {len(structures)} action fields to enhanced structure...")
+
+    system_message = """Sie sind ein Experte für die Transformation von deutschen kommunalen Strategiedokumenten in eine relationale Datenstruktur.
+
+Ihre Aufgabe ist es, die verschachtelte JSON-Struktur in vier separate, miteinander verknüpfte Listen zu konvertieren:
+1. action_fields - Handlungsfelder mit eindeutigen IDs
+2. projects - Projekte mit eindeutigen IDs
+3. measures - Maßnahmen mit eindeutigen IDs
+4. indicators - Indikatoren mit eindeutigen IDs
+
+KRITISCHE Anforderungen:
+1. Konservative Deduplizierung: NUR offensichtliche Duplikate zusammenführen
+2. Quellenvalidierung: Entfernen Sie Dokumentmetadaten, Header, Einzelwörter
+3. Explizite Verbindungen: Jede Verbindung braucht Konfidenz-Score (0.0-1.0) und Begründung
+4. ID-Format: af_1, proj_1, msr_1, ind_1
+
+Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der EnrichedReviewJSON-Struktur entspricht."""
+
+    # Create the transformation prompt
+    structures_json = json.dumps(structures, indent=2, ensure_ascii=False)
+
+    prompt = f"""Transformieren Sie diese verschachtelte Struktur in das neue relationale 4-Bucket-Format:
+
+{structures_json}
+
+TRANSFORMATION REGELN:
+
+1. DEDUPLIZIERUNG (Konservativ):
+   - NUR exakte Duplikate zusammenführen (identischer Name)
+   - NUR fast identische Felder konsolidieren (>90% Überlappung)
+   - ALLE anderen Felder müssen SEPARAT bleiben
+
+   Beispiele NICHT konsolidieren:
+   ❌ "Klimaschutz" und "Energie" → Bleiben getrennt
+   ❌ "Mobilität" und "ÖPNV" → Bleiben getrennt
+   ❌ "Wohnen" und "Stadtentwicklung" → Bleiben getrennt
+
+2. QUELLENVALIDIERUNG:
+   - Entfernen Sie: "Gestaltung: Ibañez Design, Regensburg"
+   - Entfernen Sie: "ABSCHNITT: Handlungsfelder der Stadtentwicklung"
+   - Entfernen Sie: Einzelwörter wie "Mobilitätsstruktur."
+   - Behalten Sie: Vollständige Sätze mit relevantem Inhalt
+
+3. VERBINDUNGEN mit KONFIDENZ:
+   - 0.9-1.0: Explizit im Text genannt oder gruppiert
+   - 0.7-0.8: Starke thematische Verbindung
+   - 0.5-0.6: Schwache/inferierte Verbindung
+   - <0.5: Unsicher, vermeiden
+
+4. ID-GENERIERUNG:
+   - Action Fields: af_1, af_2, af_3...
+   - Projects: proj_1, proj_2, proj_3...
+   - Measures: msr_1, msr_2, msr_3...
+   - Indicators: ind_1, ind_2, ind_3...
+
+BEISPIEL Verbindung:
+"connections": [
+  {{
+    "target_id": "proj_1",
+    "confidence_score": 0.95,
+    "justification": "Projekt explizit unter diesem Handlungsfeld gruppiert"
+  }}
+]
+
+Erstellen Sie die vier separaten Listen mit allen Verbindungen und Konfidenz-Scores."""
+
+    try:
+        # Calculate context size for dynamic token allocation
+        data_size = len(structures_json)
+        estimated_input_tokens = int(data_size / 3.5)  # Conservative estimate
+
+        # For qwen3:14b-AWQ with 32K context, leave room for prompt and output
+        context_safety_limit = 20000  # Conservative limit
+
+        if estimated_input_tokens > context_safety_limit:
+            print(f"⚠️ Data too large ({estimated_input_tokens} tokens) - using chunked processing")
+            return transform_large_dataset_chunked(
+                structures, log_file_path, log_context
+            )
+
+        print(f"📊 Transformation: ~{estimated_input_tokens} input tokens")
+
+        # Call LLM for transformation
+        result = query_ollama_structured(
+            prompt=prompt,
+            response_model=EnrichedReviewJSON,
+            system_message=system_message,
+            temperature=MODEL_TEMPERATURE,
+            log_file_path=log_file_path,
+            log_context=log_context,
+        )
+
+        if result:
+            # Validate the result
+            total_entities = (
+                len(result.action_fields) +
+                len(result.projects) +
+                len(result.measures) +
+                len(result.indicators)
+            )
+            print(f"✅ Enhanced structure created: {total_entities} total entities")
+            print(f"   - Action Fields: {len(result.action_fields)}")
+            print(f"   - Projects: {len(result.projects)}")
+            print(f"   - Measures: {len(result.measures)}")
+            print(f"   - Indicators: {len(result.indicators)}")
+
+            return result
+        else:
+            print("❌ LLM transformation failed - returned None")
+            return None
+
+    except Exception as e:
+        print(f"❌ Transformation error: {type(e).__name__}: {e}")
+        return None
+
+
+def transform_large_dataset_chunked(
+    structures: list,
+    log_file_path: str | None = None,
+    log_context: str | None = None,
+):
+    """
+    Handle large datasets by processing them in chunks and combining results.
+    
+    Args:
+        structures: List of action field structures to transform
+        log_file_path: Optional path to log LLM dialog
+        log_context: Optional context for logging
+        
+    Returns:
+        EnrichedReviewJSON structure or None if transformation fails
+    """
+    import json
+    from src.core.config import MODEL_TEMPERATURE
+    from src.core.llm import query_ollama_structured
+    from src.core.schemas import EnrichedReviewJSON, EnhancedActionField, EnhancedProject, EnhancedMeasure, EnhancedIndicator
+    
+    print(f"🔄 Processing {len(structures)} action fields in chunks...")
+    
+    # Split into chunks of 8-10 action fields each for better JSON completion
+    chunk_size = 4  # Further reduced due to persistent JSON truncation
+    chunks = [structures[i:i + chunk_size] for i in range(0, len(structures), chunk_size)]
+    
+    print(f"📊 Split into {len(chunks)} chunks of ~{chunk_size} action fields each")
+    
+    all_action_fields = []
+    all_projects = []
+    all_measures = []
+    all_indicators = []
+    
+    # Process each chunk with timing
+    chunk_timings = []
+    successful_chunks = 0
+    chunked_start_time = time.time()
+    
+    for i, chunk in enumerate(chunks):
+        chunk_start_time = time.time()
+        print(f"\n🔄 Processing chunk {i+1}/{len(chunks)} ({len(chunk)} action fields)...")
+        
+        # Create simplified prompt for chunk processing
+        chunk_json = json.dumps(chunk, indent=2, ensure_ascii=False)
+        
+        system_message = """Sie sind ein Experte für die Transformation von deutschen kommunalen Strategiedokumenten in eine relationale Datenstruktur.
+
+Transformieren Sie diese Handlungsfelder in vier separate Listen mit eindeutigen IDs und Verbindungen.
+
+KRITISCH: 
+- ID-Format: af_{i}, proj_{i}, msr_{i}, ind_{i} (wobei {i} fortlaufende Nummer ist)
+- Konservative Deduplizierung: NUR offensichtliche Duplikate zusammenführen
+- Quellenvalidierung: Entfernen Sie Dokumentmetadaten, Header, Einzelwörter
+- Verbindungen mit Konfidenz-Score (0.0-1.0) und Begründung
+
+Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der EnrichedReviewJSON-Struktur entspricht."""
+
+        prompt = f"""Transformieren Sie diese {len(chunk)} Handlungsfelder:
+
+{chunk_json}
+
+Erstellen Sie:
+1. action_fields - mit IDs af_{i*chunk_size + 1}, af_{i*chunk_size + 2}, etc.
+2. projects - mit IDs proj_{i*chunk_size + 1}, proj_{i*chunk_size + 2}, etc.  
+3. measures - mit IDs msr_{i*chunk_size + 1}, msr_{i*chunk_size + 2}, etc.
+4. indicators - mit IDs ind_{i*chunk_size + 1}, ind_{i*chunk_size + 2}, etc.
+
+Jede Verbindung braucht confidence_score und justification."""
+
+        try:
+            # Calculate input token estimate for logging
+            data_size = len(chunk_json)
+            estimated_tokens = int(data_size / 3.5)
+            
+            print(f"   📊 Chunk {i+1}: ~{estimated_tokens} input tokens (using full vLLM output space)")
+            
+            result = query_ollama_structured(
+                prompt=prompt,
+                response_model=EnrichedReviewJSON,
+                system_message=system_message,
+                temperature=MODEL_TEMPERATURE,
+                log_file_path=log_file_path,
+                log_context=f"{log_context} - Chunk {i+1}/{len(chunks)}" if log_context else f"Chunk {i+1}/{len(chunks)}",
+            )
+            
+            if result:
+                # Fix IDs to be globally unique across chunks
+                base_af_id = len(all_action_fields) + 1
+                base_proj_id = len(all_projects) + 1 
+                base_msr_id = len(all_measures) + 1
+                base_ind_id = len(all_indicators) + 1
+                
+                # Create ID mapping for this chunk
+                id_mapping = {}
+                
+                # Process action fields
+                for j, af in enumerate(result.action_fields):
+                    old_id = af.id
+                    new_id = f"af_{base_af_id + j}"
+                    id_mapping[old_id] = new_id
+                    af.id = new_id
+                    all_action_fields.append(af)
+                
+                # Process projects  
+                for j, proj in enumerate(result.projects):
+                    old_id = proj.id
+                    new_id = f"proj_{base_proj_id + j}"
+                    id_mapping[old_id] = new_id
+                    proj.id = new_id
+                    all_projects.append(proj)
+                
+                # Process measures
+                for j, msr in enumerate(result.measures):
+                    old_id = msr.id
+                    new_id = f"msr_{base_msr_id + j}"
+                    id_mapping[old_id] = new_id
+                    msr.id = new_id
+                    all_measures.append(msr)
+                
+                # Process indicators
+                for j, ind in enumerate(result.indicators):
+                    old_id = ind.id
+                    new_id = f"ind_{base_ind_id + j}"
+                    id_mapping[old_id] = new_id
+                    ind.id = new_id
+                    all_indicators.append(ind)
+                
+                # Update all connection target_ids with new mapping
+                for entity_list in [all_action_fields, all_projects, all_measures, all_indicators]:
+                    for entity in entity_list:
+                        for connection in entity.connections:
+                            if connection.target_id in id_mapping:
+                                connection.target_id = id_mapping[connection.target_id]
+                
+                chunk_time = time.time() - chunk_start_time
+                chunk_timings.append(chunk_time)
+                successful_chunks += 1
+                print(f"   ✅ Chunk {i+1} processed in {chunk_time:.2f}s: {len(result.action_fields)} AFs, {len(result.projects)} projects, {len(result.measures)} measures, {len(result.indicators)} indicators")
+                
+            else:
+                chunk_time = time.time() - chunk_start_time
+                chunk_timings.append(chunk_time)
+                print(f"   ❌ Chunk {i+1} failed in {chunk_time:.2f}s - LLM returned None")
+                
+        except Exception as e:
+            chunk_time = time.time() - chunk_start_time
+            chunk_timings.append(chunk_time)
+            print(f"   ❌ Chunk {i+1} error in {chunk_time:.2f}s: {type(e).__name__}: {e}")
+            continue
+    
+    # Combine all results
+    if all_action_fields or all_projects or all_measures or all_indicators:
+        combined_result = EnrichedReviewJSON(
+            action_fields=all_action_fields,
+            projects=all_projects, 
+            measures=all_measures,
+            indicators=all_indicators
+        )
+        
+        total_entities = len(all_action_fields) + len(all_projects) + len(all_measures) + len(all_indicators)
+        total_chunked_time = time.time() - chunked_start_time
+        avg_chunk_time = sum(chunk_timings) / len(chunk_timings) if chunk_timings else 0
+        success_rate = (successful_chunks / len(chunks)) * 100 if chunks else 0
+        processing_rate = total_entities / total_chunked_time if total_chunked_time > 0 else 0
+        
+        print(f"\n✅ Chunked processing complete in {total_chunked_time:.2f}s (avg: {avg_chunk_time:.2f}s per chunk): {total_entities} total entities")
+        print(f"   - Action Fields: {len(all_action_fields)}")
+        print(f"   - Projects: {len(all_projects)}")
+        print(f"   - Measures: {len(all_measures)}")
+        print(f"   - Indicators: {len(all_indicators)}")
+        
+        print(f"\n📈 PERFORMANCE SUMMARY:")
+        print(f"   Total time: {total_chunked_time:.2f}s")
+        print(f"   Chunks processed: {successful_chunks}/{len(chunks)} ({success_rate:.1f}% success rate)")
+        print(f"   Average per chunk: {avg_chunk_time:.2f}s")
+        print(f"   Entities created: {total_entities}")
+        print(f"   Processing rate: {processing_rate:.2f} entities/second")
+        
+        return combined_result
+    else:
+        print("\n❌ All chunks failed - no results to combine")
+        return None

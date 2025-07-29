@@ -5,6 +5,7 @@ Supports both Ollama and vLLM (via OpenAI-compatible API).
 
 import json
 import os
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Any, TypeVar
@@ -347,6 +348,7 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
 
             try:
                 # First try: Use guided_json in extra_body (recommended for vLLM)
+                llm_start_time = time.time()
                 response = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
@@ -360,9 +362,12 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
                     },
                     timeout=self.timeout,
                 )
+                llm_response_time = time.time() - llm_start_time
+                print(f"      🤖 LLM response in {llm_response_time:.2f}s")
             except Exception:
                 try:
                     # Second try: Use response_format with json_schema
+                    llm_start_time = time.time()
                     response = self.client.chat.completions.create(
                         model=self.model_name,
                         messages=messages,
@@ -379,11 +384,14 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
                         extra_body={"top_k": top_k, "min_p": 0},
                         timeout=self.timeout,
                     )
+                    llm_response_time = time.time() - llm_start_time
+                    print(f"      🤖 LLM response in {llm_response_time:.2f}s")
                 except Exception:
                     # Final fallback: Use prompt-based JSON generation
                     print(
                         "⚠️ vLLM structured output not available, using prompt-based JSON generation"
                     )
+                    llm_start_time = time.time()
                     response = self.client.chat.completions.create(
                         model=self.model_name,
                         messages=messages,
@@ -393,6 +401,8 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
                         extra_body={"top_k": top_k, "min_p": 0},
                         timeout=self.timeout,
                     )
+                    llm_response_time = time.time() - llm_start_time
+                    print(f"      🤖 LLM response in {llm_response_time:.2f}s")
 
             content = response.choices[0].message.content.strip()
 
@@ -461,6 +471,7 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
 
             messages.append({"role": "user", "content": prompt})
 
+            llm_start_time = time.time()
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
@@ -468,6 +479,8 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
                 max_tokens=override_num_predict or self.max_tokens,
                 timeout=self.timeout,
             )
+            llm_response_time = time.time() - llm_start_time
+            print(f"      🤖 LLM response in {llm_response_time:.2f}s")
 
             content = response.choices[0].message.content.strip()
 

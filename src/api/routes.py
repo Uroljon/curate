@@ -32,6 +32,7 @@ from .extraction_helpers import (
     add_source_attributions,
     aggregate_extraction_results,
     deduplicate_extraction_results,
+    transform_to_enhanced_structure,
 )
 
 
@@ -466,4 +467,174 @@ async def extract_structure(
         monitor.log_error("extraction", e)
         response_time = time.time() - start_time
         log_api_response("/extract_structure", 500, response_time)
+        raise
+
+
+async def enhance_structure(
+    request: Request,
+    source_id: str,
+):
+    """
+    Enhancement endpoint that transforms intermediate extraction to relational 4-bucket structure.
+
+    This implements the "Transformer LLM" from the two-layer pipeline strategy.
+    Takes the intermediate_extraction.json and converts it to the clean relational structure
+    with explicit connections and confidence scores.
+
+    Args:
+        request: FastAPI request object
+        source_id: Source identifier to locate the intermediate extraction file
+
+    Returns:
+        Enhanced JSON structure with 4 separate entity buckets and connections
+    """
+    start_time = time.time()
+
+    # Log API request
+    log_api_request(
+        "/enhance_structure",
+        "GET",
+        {"source_id": source_id},
+        request.client.host,
+    )
+
+    # Get or create monitor for this enhancement
+    monitor = get_extraction_monitor(source_id)
+
+    try:
+        # Stage 1: Load intermediate extraction file
+        monitor.start_stage("file_loading", source_id=source_id)
+
+        intermediate_filename = f"{source_id}_intermediate_extraction.json"
+        intermediate_path = os.path.join(UPLOAD_FOLDER, intermediate_filename)
+
+        if not os.path.exists(intermediate_path):
+            error_msg = f"Intermediate extraction file not found: {intermediate_filename}"
+            raise FileNotFoundError(error_msg)
+
+        with open(intermediate_path, encoding='utf-8') as f:
+            intermediate_data = json.load(f)
+
+        # Validate intermediate data structure
+        structures = intermediate_data.get("structures", [])
+        if not structures:
+            msg = "No structures found in intermediate extraction file"
+            raise ValueError(msg)
+
+        monitor.end_stage(
+            "file_loading",
+            structures_loaded=len(structures),
+            intermediate_file_size=os.path.getsize(intermediate_path)
+        )
+
+        print(f"📄 Loaded intermediate file: {intermediate_filename}")
+        print(f"   - {len(structures)} action fields to transform")
+
+        # Stage 2: LLM transformation to enhanced structure
+        monitor.start_stage("llm_transformation")
+
+        # Set up LLM dialog log file path
+        enhance_dialog_filename = f"{source_id}_enhance_dialog.txt"
+        enhance_dialog_path = os.path.join(UPLOAD_FOLDER, enhance_dialog_filename)
+
+        print("\n🔄 Starting structure enhancement transformation...\n")
+
+        # Call the transformer LLM
+        enhanced_result = transform_to_enhanced_structure(
+            intermediate_data,
+            log_file_path=enhance_dialog_path,
+            log_context="Structure Enhancement - Two-Layer Pipeline"
+        )
+
+        if not enhanced_result:
+            msg = "LLM transformation failed - no enhanced structure returned"
+            raise ValueError(msg)
+
+        # Calculate transformation statistics
+        total_entities = (
+            len(enhanced_result.action_fields) +
+            len(enhanced_result.projects) +
+            len(enhanced_result.measures) +
+            len(enhanced_result.indicators)
+        )
+
+        # Count total connections
+        total_connections = (
+            sum(len(af.connections) for af in enhanced_result.action_fields) +
+            sum(len(p.connections) for p in enhanced_result.projects) +
+            sum(len(m.connections) for m in enhanced_result.measures) +
+            sum(len(i.connections) for i in enhanced_result.indicators)
+        )
+
+        monitor.end_stage(
+            "llm_transformation",
+            total_entities=total_entities,
+            action_fields=len(enhanced_result.action_fields),
+            projects=len(enhanced_result.projects),
+            measures=len(enhanced_result.measures),
+            indicators=len(enhanced_result.indicators),
+            total_connections=total_connections
+        )
+
+        # Stage 3: Save enhanced structure to file
+        monitor.start_stage("file_saving")
+
+        enhanced_filename = f"{source_id}_enhanced_structure.json"
+        enhanced_path = os.path.join(UPLOAD_FOLDER, enhanced_filename)
+
+        enhanced_data = enhanced_result.model_dump()
+        with open(enhanced_path, 'w', encoding='utf-8') as f:
+            json.dump(enhanced_data, f, ensure_ascii=False, indent=2)
+
+        monitor.end_stage(
+            "file_saving",
+            enhanced_file_size=os.path.getsize(enhanced_path)
+        )
+
+        # Calculate total processing time
+        processing_time = time.time() - start_time
+
+        print(f"\n⏱️  Enhancement completed in {processing_time:.2f} seconds")
+        print(f"✅ Results: {total_entities} entities with {total_connections} connections")
+        print(f"💾 Saved enhanced structure to: {enhanced_filename}")
+
+        # Prepare response data
+        response_data = enhanced_data.copy()
+        response_data.update({
+            "enhanced_file": enhanced_filename,
+            "processing_time_seconds": round(processing_time, 2),
+            "transformation_stats": {
+                "total_entities": total_entities,
+                "total_connections": total_connections,
+                "action_fields_count": len(enhanced_result.action_fields),
+                "projects_count": len(enhanced_result.projects),
+                "measures_count": len(enhanced_result.measures),
+                "indicators_count": len(enhanced_result.indicators),
+            }
+        })
+
+        # Finalize monitoring
+        monitor.finalize(response_data)
+
+        # Log API response
+        log_api_response("/enhance_structure", 200, processing_time)
+
+        # Return enhanced structure
+        return JSONResponse(content=jsonable_encoder(response_data))
+
+    except FileNotFoundError as e:
+        monitor.log_error("enhancement", e)
+        response_time = time.time() - start_time
+        log_api_response("/enhance_structure", 404, response_time)
+        raise
+    except ValueError as e:
+        monitor.log_error("enhancement", e)
+        response_time = time.time() - start_time
+        log_api_response("/enhance_structure", 400, response_time)
+        raise
+    except Exception as e:
+        # Final fallback for unexpected errors
+        monitor.log_error("enhancement", e)
+        response_time = time.time() - start_time
+        log_api_response("/enhance_structure", 500, response_time)
         raise

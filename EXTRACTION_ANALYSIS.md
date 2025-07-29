@@ -1092,3 +1092,92 @@ The fundamental purpose of this JSON is to transform the AI's work from a "black
 **Traceability**: All connections link back to specific source evidence and confidence assessments.
 
 By structuring the output of the enhance_structure API this way, we create a powerful, transparent, and interactive data payload. It doesn't just give the user the result; it gives them the context, the confidence, and the control to finalize the data with trust and efficiency.
+
+---
+
+## Graph Theory Analysis of Current JSON Output
+
+### Pure Graph Evaluation Methodology
+
+By evaluating the output as a pure graph—a collection of nodes and edges, ignoring the AI's justifications—we get to the absolute heart of the structural integrity of the data model. This analysis examines the result from a graph theory perspective, focusing on the fundamental architecture and data flow.
+
+### Overall Graph Score: 600 / 1000
+
+From a pure graph theory perspective, this is a functional but deeply flawed graph. It successfully implements the required type of structure (a relational model), but it contains significant structural defects that severely compromise its integrity and utility.
+
+It is a "600" because the basic blueprint is correct—the nodes exist and are connected via edges. It is not higher because the graph is polluted with redundant nodes, null-value nodes, and flawed source attributes, making it an unreliable representation of the real-world data.
+
+---
+
+## Graph Analysis: Strengths and Flaws
+
+### Strengths (What the Graph Gets Right)
+
+#### 1. Correct Node & Edge Schema
+The fundamental architecture is sound. The graph is correctly partitioned into four distinct types of nodes (action_fields, projects, measures, indicators). The edges, represented by the connections array and target_id, correctly create directed links between these nodes. This is the most important structural success.
+
+#### 2. Hierarchical Integrity
+The edges correctly enforce the primary data flow. The connections consistently form logical paths, such as Action Field → Project → Measure → Indicator. There are no glaring hierarchical violations (e.g., an indicator pointing to an action field).
+
+#### 3. Inclusion of Source Attribute
+The nodes in the graph (specifically measures) now possess a sources attribute. From a structural standpoint, this is a critical feature. It means the nodes are capable of holding provenance information, which is a major architectural improvement over the previous version.
+
+---
+
+### Flaws (The Objective Structural Defects)
+
+#### 1. Severe Node Fragmentation
+**Most critical structural defect**: The graph contains a large number of redundant nodes that represent the same conceptual entity.
+
+**Examples**:
+- Distinct nodes for "Klimaschutz", "Klimaanpassung", and "Klimaschutz und Klimaanpassung"
+- Distinct nodes for "Freizeit- und Erholungsachse" and "Freizeit- und Kulturachse"
+
+**Impact**: This fragments the graph into multiple, disconnected or poorly connected sub-graphs where a single, unified component should exist. It makes pathfinding and analysis unreliable. A query for all projects related to "Climate" would fail, as it would have to be run three times on three different nodes.
+
+#### 2. Graph Pollution with "Null" Nodes
+The graph is populated with a significant number of nodes that represent non-information.
+
+**Example**: There are at least eight distinct indicator nodes (ind_18 through ind_25) whose sole content is "Information im Quelldokument nicht verfügbar".
+
+**Impact**: These are "junk nodes." They add clutter and increase the complexity of the graph without adding any value. A clean graph would have no edge at all, rather than an edge pointing to a node that explicitly represents "nothing."
+
+#### 3. Inconsistent Edge Logic
+While the hierarchy is generally correct, the logic for creating edges is inconsistent.
+
+**Example**: proj_1 ("Klimaschutz und Klimaanpassung") has edges connecting it to five different measures. However, proj_26 ("Klimaanpassung als zentrales Aufgabenfeld") has zero edges connecting it to any measures, even though the source document likely contains them.
+
+**Impact**: This creates an unbalanced and unreliable graph. Some nodes are richly connected "hubs," while other, similar nodes are "islands," disconnected from their constituent parts. This suggests the algorithm for creating edges is not being applied consistently across all nodes.
+
+---
+
+## Conclusion
+
+As a pure data structure, the graph is a significant step in the right direction. It correctly uses a relational model instead of a simple nested one. However, the severe issues of node fragmentation and pollution mean that it is not yet a trustworthy or accurate representation of the underlying information.
+
+The next priority must be to refine the AI logic to consolidate redundant nodes and prune null nodes and their associated edges. This will produce a cleaner, more accurate, and ultimately more valuable graph.
+
+---
+
+## Next Steps for Graph Improvement
+
+### Summary of Current Status
+
+**Structural Success (10/10)**: The use of four distinct lists (action_fields, projects, measures, indicators) with ids and connections is correct. The blueprint is perfect.
+
+**Logical Flaws (4/10)**: The AI's reasoning is still naive. The most critical errors are:
+1. **Failure to Consolidate**: Created separate entries for clearly related topics like "Klimaschutz" and "Klimaanpassung" instead of merging them
+2. **Faulty Connections**: Created duplicate links and invented "phantom" indicators for missing information
+3. **Missing Features**: Has not implemented source validation (sources is null) or the "Delta Report" (mapping_proposals is missing)
+
+### Priority Action Items
+
+1. **Address Node Consolidation**: Implement logic to identify and merge duplicate action_fields like "Klimaschutz," "Klimaanpassung," and "Klimaschutz und Klimaanpassung" into a single, correct entity
+
+2. **Eliminate Edge Duplication**: Add deduplication logic to ensure only one connection exists between any two nodes
+
+3. **Remove Semantic Null Nodes**: Filter out placeholder indicators and measures that provide no real information
+
+4. **Implement Missing Features**: Add source validation and mapping_proposals components to complete the Enriched Review JSON specification
+
+The next logical step is to begin fixing these identified problems, starting with the most impactful issue of consolidating redundant entities.

@@ -91,3 +91,90 @@ class ProjectDetailsEnhanced(BaseModel):
         default_factory=dict,
         description="Maps each measure/indicator to detected key patterns",
     )
+
+
+# Enhanced schemas for the two-layer LLM pipeline (enhance_structure endpoint)
+
+class ConnectionWithConfidence(BaseModel):
+    """Represents a connection between entities with confidence scoring."""
+
+    target_id: str = Field(..., description="ID of the target entity")
+    confidence_score: float = Field(..., ge=0.0, le=1.0, description="Confidence score between 0.0 and 1.0")
+    justification: str = Field(..., description="Brief explanation for the connection and confidence level")
+
+
+class EnhancedActionField(BaseModel):
+    """Enhanced action field for relational 4-bucket structure."""
+
+    id: str = Field(..., description="Unique identifier (e.g., 'af_1')")
+    content: dict[str, str | None] = Field(
+        ...,
+        description="Action field content with 'name' and optional 'parent_id'"
+    )
+    connections: list[ConnectionWithConfidence] = Field(
+        default_factory=list,
+        description="Connections to projects and measures"
+    )
+
+
+class EnhancedProject(BaseModel):
+    """Enhanced project for relational 4-bucket structure."""
+
+    id: str = Field(..., description="Unique identifier (e.g., 'proj_1')")
+    content: dict[str, str | None] = Field(
+        ...,
+        description="Project content with 'title' and optional 'description'"
+    )
+    connections: list[ConnectionWithConfidence] = Field(
+        default_factory=list,
+        description="Connections to action fields and measures"
+    )
+
+
+class EnhancedMeasure(BaseModel):
+    """Enhanced measure for relational 4-bucket structure."""
+
+    id: str = Field(..., description="Unique identifier (e.g., 'msr_1')")
+    content: dict[str, str | None] = Field(
+        ...,
+        description="Measure content with 'title' and optional 'description'"
+    )
+    connections: list[ConnectionWithConfidence] = Field(
+        default_factory=list,
+        description="Connections to projects, action fields, and indicators"
+    )
+    sources: list[SourceAttribution] | None = Field(
+        default=None,
+        description="Source attribution with validated quotes"
+    )
+
+
+class EnhancedIndicator(BaseModel):
+    """Enhanced indicator for relational 4-bucket structure."""
+
+    id: str = Field(..., description="Unique identifier (e.g., 'ind_1')")
+    content: dict[str, str] = Field(
+        ...,
+        description="Indicator content with 'name'"
+    )
+    connections: list[ConnectionWithConfidence] = Field(
+        default_factory=list,
+        description="Connections to measures that contribute to this indicator"
+    )
+
+
+class EnrichedReviewJSON(BaseModel):
+    """The complete enhanced review structure with 4 separate entity buckets."""
+
+    action_fields: list[EnhancedActionField] = Field(
+        ..., description="List of all action fields with connections"
+    )
+    projects: list[EnhancedProject] = Field(
+        ..., description="List of all projects with connections"
+    )
+    measures: list[EnhancedMeasure] = Field(
+        ..., description="List of all measures with connections and sources"
+    )
+    indicators: list[EnhancedIndicator] = Field(
+        ..., description="List of all indicators with connections"
+    )
