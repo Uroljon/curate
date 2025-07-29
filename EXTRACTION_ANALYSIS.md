@@ -846,3 +846,249 @@ Once the user clicks "Save," the validated and corrected data is committed to th
 - User maintains final authority over all strategic information
 
 This revised workflow combines the power of AI automation with the essential oversight and control of a human expert, creating a system that is not only intelligent but also trustworthy, transparent, and practical for real-world use.
+
+---
+
+## Enriched Review JSON Specification
+
+### Fundamental Purpose
+
+The fundamental purpose of this JSON is to transform the AI's work from a "black box" into a transparent "glass box." It's not just the final answer; it's a structured proposal that shows the user what the AI did, how it did it, and how confident it is in its own decisions. This is the data that will power the "Review Mode" screen.
+
+### Component-by-Component Breakdown
+
+#### Component 1: The Four Clean Lists
+
+**What it is**: Four separate arrays named `action_fields`, `projects`, `measures`, and `indicators`. Each object in these arrays has a unique id and its core content.
+
+**Why it's important**: This provides the clean, canonical list of all entities that will eventually exist in the database. All redundancy has been removed.
+
+**How it looks in the JSON**:
+```json
+"action_fields": [
+  {
+    "id": "af_1",
+    "content": { "name": "Siedlungs- und Quartiersentwicklung" }
+  },
+  {
+    "id": "af_2", 
+    "content": { "name": "Klimaschutz & Energie" }
+  }
+],
+"measures": [
+  {
+    "id": "msr_1",
+    "content": { "title": "Nachverdichtung" }
+  },
+  {
+    "id": "msr_2",
+    "content": { "title": "Ausbau von Radwegen" }
+  }
+]
+// ...and so on for projects and indicators
+```
+
+#### Component 2: The Proposed Connections
+
+**What it is**: A connections object inside each item that lists the ids of the items it relates to.
+
+**Why it's important**: This is the primary value of the automation. It saves the user from having to manually link hundreds of items.
+
+**How it looks in the JSON**:
+```json
+"measures": [
+  {
+    "id": "msr_1",
+    "content": { "title": "Nachverdichtung" },
+    "connections": {
+      "action_field_ids": ["af_1"], // Belongs to "Siedlungs- und Quartiersentwicklung"
+      "indicator_ids": ["ind_5"]     // Contributes to an indicator with id "ind_5"
+    }
+  }
+]
+```
+
+#### Component 3: The `confidence_score`
+
+**What it is**: A numerical score (e.g., 0.0 to 1.0) and a brief justification attached to every single connection the AI proposes.
+
+**Why it's important**: This is the "steering wheel." It directs the user's attention to where it's needed most. A score of 0.99 means "This is a safe bet," while a score of 0.60 means "I'm guessing here, please check my work." This builds trust and dramatically speeds up the review process.
+
+**How it looks in the JSON**: The connections object becomes an array of objects, each with its own score and justification.
+
+```json
+"measures": [
+  {
+    "id": "msr_2",
+    "content": { "title": "Ausbau von Radwegen" },
+    "connections": [
+      {
+        "target_id": "ind_21", // Connects to indicator "Reduktion des Individualverkehrs"
+        "confidence_score": 0.98,
+        "justification": "The measure and indicator were mentioned in the same sentence in the source document."
+      },
+      {
+        "target_id": "ind_45", // Connects to indicator "Verbesserung der Luftqualität"
+        "confidence_score": 0.75,
+        "justification": "This connection is inferred based on the section context, but not explicitly stated."
+      }
+    ]
+  }
+]
+```
+
+#### Component 4: The `mapping_proposals` (Delta Report)
+
+**What it is**: A separate, top-level array in the JSON that holds all the data the AI found in the source document but could not map to a standard field in the Comuneo schema.
+
+**Why it's important**: This prevents data loss and gives the user control over how to handle unique or unexpected information from their source files. It is the key to making onboarding flexible.
+
+**How it looks in the JSON**:
+```json
+"mapping_proposals": [
+  {
+    "context_item_id": "msr_10", // This data belongs to the measure with id "msr_10"
+    "source_field_name": "Operational Goals",
+    "source_value": "Errichtung von Gebäuden",
+    "ai_suggestion": {
+      "action": "map_to_existing_field",
+      "target_field": "description",
+      "confidence": 0.85
+    }
+  },
+  {
+    "context_item_id": "msr_10",
+    "source_field_name": "Milestone",
+    "source_value": "Q4 2025 - Final Report",
+    "ai_suggestion": {
+      "action": "create_new_custom_field",
+      "suggested_field_name": "milestone",
+      "confidence": 0.99
+    }
+  }
+]
+```
+
+### Complete Enriched Review JSON Example
+
+```json
+{
+  "action_fields": [
+    {
+      "id": "af_1",
+      "content": { 
+        "name": "Siedlungs- und Quartiersentwicklung",
+        "parent_id": null
+      },
+      "connections": [
+        {
+          "target_id": "proj_1",
+          "confidence_score": 0.95,
+          "justification": "Project explicitly categorized under this action field in source document."
+        }
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj_1",
+      "content": {
+        "title": "Innenentwicklung",
+        "description": "Fokussiert auf die Nutzung und Aufwertung bestehender städtischer Flächen."
+      },
+      "connections": [
+        {
+          "target_id": "af_1",
+          "confidence_score": 0.95,
+          "justification": "Direct categorization in source document structure."
+        },
+        {
+          "target_id": "msr_1",
+          "confidence_score": 0.88,
+          "justification": "Measure listed under this project in original document."
+        }
+      ]
+    }
+  ],
+  "measures": [
+    {
+      "id": "msr_1",
+      "content": {
+        "title": "Nachverdichtung",
+        "description": "Erhöhung der Bebauungsdichte in bereits entwickelten Gebieten."
+      },
+      "connections": [
+        {
+          "target_id": "proj_1",
+          "confidence_score": 0.88,
+          "justification": "Measure grouped under this project in source document."
+        },
+        {
+          "target_id": "ind_1",
+          "confidence_score": 0.77,
+          "justification": "Connection inferred from contextual proximity and thematic alignment."
+        }
+      ],
+      "sources": [
+        {
+          "page_number": 7,
+          "quote": "...müssen sämtliche Potenziale der Innenentwicklung in Form von Nachverdichtung und Baulückenschließung konsequent ausgeschöpft werden.",
+          "confidence_score": 0.92,
+          "justification": "Direct mention of measure in source text."
+        }
+      ]
+    }
+  ],
+  "indicators": [
+    {
+      "id": "ind_1",
+      "content": {
+        "name": "Entkopplung von Wachstum und Ressourcenverbrauch"
+      },
+      "connections": [
+        {
+          "target_id": "msr_1",
+          "confidence_score": 0.77,
+          "justification": "Thematic connection based on urban development sustainability principles."
+        }
+      ]
+    }
+  ],
+  "mapping_proposals": [
+    {
+      "context_item_id": "msr_1",
+      "source_field_name": "Timeline",
+      "source_value": "2024-2026",
+      "ai_suggestion": {
+        "action": "create_new_custom_field",
+        "suggested_field_name": "implementation_timeline",
+        "confidence": 0.95
+      }
+    },
+    {
+      "context_item_id": "proj_1", 
+      "source_field_name": "Budget Category",
+      "source_value": "Infrastructure Investment",
+      "ai_suggestion": {
+        "action": "map_to_existing_field",
+        "target_field": "description",
+        "confidence": 0.60
+      }
+    }
+  ]
+}
+```
+
+### Key Benefits of This Structure
+
+**Transparency**: Every AI decision is visible and justified, building user trust.
+
+**Efficiency**: High-confidence connections can be batch-approved; low-confidence ones get focused attention.
+
+**Flexibility**: Unmapped data is preserved and presented with intelligent suggestions for handling.
+
+**Quality Control**: Users maintain final authority while leveraging AI automation for the bulk of the work.
+
+**Traceability**: All connections link back to specific source evidence and confidence assessments.
+
+By structuring the output of the enhance_structure API this way, we create a powerful, transparent, and interactive data payload. It doesn't just give the user the result; it gives them the context, the confidence, and the control to finalize the data with trust and efficiency.
