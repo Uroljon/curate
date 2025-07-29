@@ -7,6 +7,7 @@ the large extraction functions in routes.py.
 
 import json
 import re
+import time
 from functools import lru_cache
 from typing import Any
 
@@ -1368,180 +1369,283 @@ def transform_large_dataset_chunked(
     log_context: str | None = None,
 ):
     """
-    Handle large datasets by processing them in chunks and combining results.
-    
+    Transform large extracted structures in chunks using cumulative context.
+
+    This implementation processes chunks progressively, maintaining global context
+    of the evolving enhanced structure to enable proper entity relationships
+    across chunk boundaries.
+
     Args:
-        structures: List of action field structures to transform
-        log_file_path: Optional path to log LLM dialog
-        log_context: Optional context for logging
-        
+        structures: List of extraction structures to transform
+        log_file_path: Optional path for detailed logging
+        log_context: Context info for logging
+
     Returns:
-        EnrichedReviewJSON structure or None if transformation fails
+        EnrichedReviewJSON: The enhanced structure, or None if transformation fails
     """
-    import json
-    from src.core.config import MODEL_TEMPERATURE
-    from src.core.llm import query_ollama_structured
-    from src.core.schemas import EnrichedReviewJSON, EnhancedActionField, EnhancedProject, EnhancedMeasure, EnhancedIndicator
-    
-    print(f"🔄 Processing {len(structures)} action fields in chunks...")
-    
-    # Split into chunks of 8-10 action fields each for better JSON completion
-    chunk_size = 4  # Further reduced due to persistent JSON truncation
-    chunks = [structures[i:i + chunk_size] for i in range(0, len(structures), chunk_size)]
-    
-    print(f"📊 Split into {len(chunks)} chunks of ~{chunk_size} action fields each")
-    
-    all_action_fields = []
-    all_projects = []
-    all_measures = []
-    all_indicators = []
-    
-    # Process each chunk with timing
+    from ..core.llm import query_ollama_with_thinking_mode
+    from ..core.schemas import EnrichedReviewJSON
+
+    # Initialize progressive enhanced structure
+    enhanced_structure = EnrichedReviewJSON(
+        action_fields=[],
+        projects=[],
+        measures=[],
+        indicators=[]
+    )
+
+    # Global ID counters for consistent numbering
+    global_counters = {
+        'action_fields': 0,
+        'projects': 0,
+        'measures': 0,
+        'indicators': 0
+    }
+
+    success_count = 0
+    timing_summary = {}
     chunk_timings = []
-    successful_chunks = 0
-    chunked_start_time = time.time()
-    
-    for i, chunk in enumerate(chunks):
+
+    # Process each chunk with cumulative context
+    for chunk_idx, chunk_data in enumerate(structures, 1):
         chunk_start_time = time.time()
-        print(f"\n🔄 Processing chunk {i+1}/{len(chunks)} ({len(chunk)} action fields)...")
-        
-        # Create simplified prompt for chunk processing
-        chunk_json = json.dumps(chunk, indent=2, ensure_ascii=False)
-        
-        system_message = """Sie sind ein Experte für die Transformation von deutschen kommunalen Strategiedokumenten in eine relationale Datenstruktur.
+        print(f"  📦 Processing chunk {chunk_idx}/{len(structures)}")
 
-Transformieren Sie diese Handlungsfelder in vier separate Listen mit eindeutigen IDs und Verbindungen.
+        # Build context from existing entities
+        entity_context = build_entity_context_summary(enhanced_structure)
+        available_targets = get_available_connection_targets(enhanced_structure)
+        next_ids = get_next_available_ids(global_counters)
 
-KRITISCH: 
-- ID-Format: af_{i}, proj_{i}, msr_{i}, ind_{i} (wobei {i} fortlaufende Nummer ist)
-- Konservative Deduplizierung: NUR offensichtliche Duplikate zusammenführen
-- Quellenvalidierung: Entfernen Sie Dokumentmetadaten, Header, Einzelwörter
-- Verbindungen mit Konfidenz-Score (0.0-1.0) und Begründung
+        # Create context-aware prompt
+        context_aware_prompt = f"""
+You are transforming extracted data into an enhanced relational structure. You have access to the EXISTING enhanced structure and must build upon it.
 
-Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der EnrichedReviewJSON-Struktur entspricht."""
+EXISTING ENTITIES IN THE ENHANCED STRUCTURE:
+{entity_context}
 
-        prompt = f"""Transformieren Sie diese {len(chunk)} Handlungsfelder:
+AVAILABLE CONNECTION TARGETS:
+{available_targets}
 
-{chunk_json}
+NEXT AVAILABLE IDS:
+{next_ids}
 
-Erstellen Sie:
-1. action_fields - mit IDs af_{i*chunk_size + 1}, af_{i*chunk_size + 2}, etc.
-2. projects - mit IDs proj_{i*chunk_size + 1}, proj_{i*chunk_size + 2}, etc.  
-3. measures - mit IDs msr_{i*chunk_size + 1}, msr_{i*chunk_size + 2}, etc.
-4. indicators - mit IDs ind_{i*chunk_size + 1}, ind_{i*chunk_size + 2}, etc.
+DATA TO TRANSFORM (Chunk {chunk_idx}/{len(structures)}):
+{json.dumps(chunk_data, ensure_ascii=False, indent=2)}
 
-Jede Verbindung braucht confidence_score und justification."""
+INSTRUCTIONS:
+1. Transform the new data into the 4-bucket structure (action_fields, projects, measures, indicators)
+2. Use the NEXT AVAILABLE IDS for new entities
+3. Create connections to EXISTING entities where relationships exist
+4. Ensure all IDs are unique and don't conflict with existing entities
+5. When connecting to existing entities, use their exact IDs from the AVAILABLE CONNECTION TARGETS
+6. Assign confidence scores based on relationship clarity
+7. Only create NEW entities - do not duplicate existing ones
 
-        try:
-            # Calculate input token estimate for logging
-            data_size = len(chunk_json)
-            estimated_tokens = int(data_size / 3.5)
-            
-            print(f"   📊 Chunk {i+1}: ~{estimated_tokens} input tokens (using full vLLM output space)")
-            
-            result = query_ollama_structured(
-                prompt=prompt,
+Respond with the enhanced structure containing ONLY the new entities from this chunk.
+"""
+
+        # Query LLM with cumulative context (with retry)
+        result = None
+        for attempt in range(2):
+            result = query_ollama_with_thinking_mode(
+                prompt=context_aware_prompt,
                 response_model=EnrichedReviewJSON,
-                system_message=system_message,
-                temperature=MODEL_TEMPERATURE,
+                thinking_mode="contextual",
                 log_file_path=log_file_path,
-                log_context=f"{log_context} - Chunk {i+1}/{len(chunks)}" if log_context else f"Chunk {i+1}/{len(chunks)}",
+                log_context=f"{log_context}_chunk_{chunk_idx}" if log_context else f"chunk_{chunk_idx}",
             )
-            
             if result:
-                # Fix IDs to be globally unique across chunks
-                base_af_id = len(all_action_fields) + 1
-                base_proj_id = len(all_projects) + 1 
-                base_msr_id = len(all_measures) + 1
-                base_ind_id = len(all_indicators) + 1
-                
-                # Create ID mapping for this chunk
-                id_mapping = {}
-                
-                # Process action fields
-                for j, af in enumerate(result.action_fields):
-                    old_id = af.id
-                    new_id = f"af_{base_af_id + j}"
-                    id_mapping[old_id] = new_id
-                    af.id = new_id
-                    all_action_fields.append(af)
-                
-                # Process projects  
-                for j, proj in enumerate(result.projects):
-                    old_id = proj.id
-                    new_id = f"proj_{base_proj_id + j}"
-                    id_mapping[old_id] = new_id
-                    proj.id = new_id
-                    all_projects.append(proj)
-                
-                # Process measures
-                for j, msr in enumerate(result.measures):
-                    old_id = msr.id
-                    new_id = f"msr_{base_msr_id + j}"
-                    id_mapping[old_id] = new_id
-                    msr.id = new_id
-                    all_measures.append(msr)
-                
-                # Process indicators
-                for j, ind in enumerate(result.indicators):
-                    old_id = ind.id
-                    new_id = f"ind_{base_ind_id + j}"
-                    id_mapping[old_id] = new_id
-                    ind.id = new_id
-                    all_indicators.append(ind)
-                
-                # Update all connection target_ids with new mapping
-                for entity_list in [all_action_fields, all_projects, all_measures, all_indicators]:
-                    for entity in entity_list:
-                        for connection in entity.connections:
-                            if connection.target_id in id_mapping:
-                                connection.target_id = id_mapping[connection.target_id]
-                
-                chunk_time = time.time() - chunk_start_time
-                chunk_timings.append(chunk_time)
-                successful_chunks += 1
-                print(f"   ✅ Chunk {i+1} processed in {chunk_time:.2f}s: {len(result.action_fields)} AFs, {len(result.projects)} projects, {len(result.measures)} measures, {len(result.indicators)} indicators")
-                
+                break
+            print(f"    ⚠️ Attempt {attempt+1} failed, retrying...")
+
+        chunk_processing_time = time.time() - chunk_start_time
+        chunk_timings.append(chunk_processing_time)
+
+        if result:
+            # Merge new entities into the enhanced structure
+            merge_result = merge_chunk_result(enhanced_structure, result, global_counters)
+            if merge_result:
+                success_count += 1
+                print(f"    ✅ Chunk {chunk_idx} processed in {chunk_processing_time:.2f}s")
             else:
-                chunk_time = time.time() - chunk_start_time
-                chunk_timings.append(chunk_time)
-                print(f"   ❌ Chunk {i+1} failed in {chunk_time:.2f}s - LLM returned None")
-                
-        except Exception as e:
-            chunk_time = time.time() - chunk_start_time
-            chunk_timings.append(chunk_time)
-            print(f"   ❌ Chunk {i+1} error in {chunk_time:.2f}s: {type(e).__name__}: {e}")
-            continue
-    
-    # Combine all results
-    if all_action_fields or all_projects or all_measures or all_indicators:
-        combined_result = EnrichedReviewJSON(
-            action_fields=all_action_fields,
-            projects=all_projects, 
-            measures=all_measures,
-            indicators=all_indicators
+                print(f"    ⚠️ Chunk {chunk_idx} merge failed in {chunk_processing_time:.2f}s")
+        else:
+            print(f"    ❌ Chunk {chunk_idx} transformation failed in {chunk_processing_time:.2f}s")
+
+    # Calculate timing summary
+    if chunk_timings:
+        timing_summary = {
+            "total_chunks": len(structures),
+            "successful_chunks": success_count,
+            "avg_chunk_time": sum(chunk_timings) / len(chunk_timings),
+            "total_processing_time": sum(chunk_timings),
+            "success_rate": success_count / len(structures) if structures else 0,
+        }
+
+        print("\n📊 Processing Summary:")
+        print(f"    Chunks: {success_count}/{len(structures)} ({timing_summary['success_rate']:.1%})")
+        print(f"    Avg time: {timing_summary['avg_chunk_time']:.2f}s/chunk")
+        print(f"    Total time: {timing_summary['total_processing_time']:.2f}s")
+        print(
+            f"    Final entities: {len(enhanced_structure.action_fields)} AF, "
+            f"{len(enhanced_structure.projects)} P, {len(enhanced_structure.measures)} M, "
+            f"{len(enhanced_structure.indicators)} I"
         )
-        
-        total_entities = len(all_action_fields) + len(all_projects) + len(all_measures) + len(all_indicators)
-        total_chunked_time = time.time() - chunked_start_time
-        avg_chunk_time = sum(chunk_timings) / len(chunk_timings) if chunk_timings else 0
-        success_rate = (successful_chunks / len(chunks)) * 100 if chunks else 0
-        processing_rate = total_entities / total_chunked_time if total_chunked_time > 0 else 0
-        
-        print(f"\n✅ Chunked processing complete in {total_chunked_time:.2f}s (avg: {avg_chunk_time:.2f}s per chunk): {total_entities} total entities")
-        print(f"   - Action Fields: {len(all_action_fields)}")
-        print(f"   - Projects: {len(all_projects)}")
-        print(f"   - Measures: {len(all_measures)}")
-        print(f"   - Indicators: {len(all_indicators)}")
-        
-        print(f"\n📈 PERFORMANCE SUMMARY:")
-        print(f"   Total time: {total_chunked_time:.2f}s")
-        print(f"   Chunks processed: {successful_chunks}/{len(chunks)} ({success_rate:.1f}% success rate)")
-        print(f"   Average per chunk: {avg_chunk_time:.2f}s")
-        print(f"   Entities created: {total_entities}")
-        print(f"   Processing rate: {processing_rate:.2f} entities/second")
-        
-        return combined_result
-    else:
-        print("\n❌ All chunks failed - no results to combine")
-        return None
+
+    return enhanced_structure
+
+
+def build_entity_context_summary(enhanced_structure) -> str:
+    """
+    Build a concise summary of existing entities for context-aware prompting.
+
+    Args:
+        enhanced_structure: Current EnrichedReviewJSON structure
+
+    Returns:
+        str: Formatted summary of existing entities
+    """
+    summary_parts = []
+
+    # Action Fields
+    if enhanced_structure.action_fields:
+        af_list = [f"  {af.id}: {af.content.get('name', 'Unnamed')}" for af in enhanced_structure.action_fields]
+        summary_parts.append(f"Action Fields ({len(enhanced_structure.action_fields)}):")
+        summary_parts.extend(af_list)
+
+    # Projects
+    if enhanced_structure.projects:
+        proj_list = [f"  {p.id}: {p.content.get('title', 'Untitled')}" for p in enhanced_structure.projects]
+        summary_parts.append(f"\nProjects ({len(enhanced_structure.projects)}):")
+        summary_parts.extend(proj_list)
+
+    # Measures
+    if enhanced_structure.measures:
+        msr_list = [f"  {m.id}: {m.content.get('title', 'Unnamed')}" for m in enhanced_structure.measures]
+        summary_parts.append(f"\nMeasures ({len(enhanced_structure.measures)}):")
+        summary_parts.extend(msr_list)
+
+    # Indicators
+    if enhanced_structure.indicators:
+        ind_list = [f"  {i.id}: {i.content.get('name', 'Unnamed')}" for i in enhanced_structure.indicators]
+        summary_parts.append(f"\nIndicators ({len(enhanced_structure.indicators)}):")
+        summary_parts.extend(ind_list)
+
+    if not summary_parts:
+        return "No existing entities."
+
+    return "\n".join(summary_parts)
+
+
+def get_available_connection_targets(enhanced_structure) -> str:
+    """
+    Get formatted list of available connection targets with their IDs.
+
+    Args:
+        enhanced_structure: Current EnrichedReviewJSON structure
+
+    Returns:
+        str: Formatted list of connection targets
+    """
+    targets = []
+
+    # Add all entity IDs as potential connection targets
+    for af in enhanced_structure.action_fields:
+        targets.append(f"af: {af.id} ({af.content.get('name', 'Unnamed')})")
+
+    for p in enhanced_structure.projects:
+        targets.append(f"project: {p.id} ({p.content.get('title', 'Untitled')})")
+
+    for m in enhanced_structure.measures:
+        targets.append(f"measure: {m.id} ({m.content.get('title', 'Unnamed')})")
+
+    for i in enhanced_structure.indicators:
+        targets.append(f"indicator: {i.id} ({i.content.get('name', 'Unnamed')})")
+
+    if not targets:
+        return "No existing connection targets."
+
+    return "\n".join(targets)
+
+
+def get_next_available_ids(global_counters: dict) -> str:
+    """
+    Get the next available IDs for each entity type.
+
+    Args:
+        global_counters: Dictionary tracking global ID counters
+
+    Returns:
+        str: Formatted list of next available IDs
+    """
+    return f"""
+Next Action Field ID: af_{global_counters['action_fields'] + 1}
+Next Project ID: proj_{global_counters['projects'] + 1}
+Next Measure ID: msr_{global_counters['measures'] + 1}
+Next Indicator ID: ind_{global_counters['indicators'] + 1}"""
+
+
+def merge_chunk_result(enhanced_structure, chunk_result, global_counters: dict) -> bool:
+    """
+    Merge chunk processing result into the enhanced structure.
+
+    Args:
+        enhanced_structure: Main enhanced structure to update
+        chunk_result: Result from processing a single chunk
+        global_counters: Global ID counters to update
+
+    Returns:
+        bool: True if merge was successful, False otherwise
+    """
+    try:
+        # Add new action fields
+        for af in chunk_result.action_fields:
+            enhanced_structure.action_fields.append(af)
+            # Update counter based on ID
+            if af.id.startswith("af_"):
+                try:
+                    id_num = int(af.id.split("_")[1])
+                    global_counters['action_fields'] = max(global_counters['action_fields'], id_num)
+                except (ValueError, IndexError):
+                    pass
+
+        # Add new projects
+        for proj in chunk_result.projects:
+            enhanced_structure.projects.append(proj)
+            # Update counter based on ID
+            if proj.id.startswith("proj_"):
+                try:
+                    id_num = int(proj.id.split("_")[1])
+                    global_counters['projects'] = max(global_counters['projects'], id_num)
+                except (ValueError, IndexError):
+                    pass
+
+        # Add new measures
+        for msr in chunk_result.measures:
+            enhanced_structure.measures.append(msr)
+            # Update counter based on ID
+            if msr.id.startswith("msr_"):
+                try:
+                    id_num = int(msr.id.split("_")[1])
+                    global_counters['measures'] = max(global_counters['measures'], id_num)
+                except (ValueError, IndexError):
+                    pass
+
+        # Add new indicators
+        for ind in chunk_result.indicators:
+            enhanced_structure.indicators.append(ind)
+            # Update counter based on ID
+            if ind.id.startswith("ind_"):
+                try:
+                    id_num = int(ind.id.split("_")[1])
+                    global_counters['indicators'] = max(global_counters['indicators'], id_num)
+                except (ValueError, IndexError):
+                    pass
+
+        return True
+
+    except Exception as e:
+        print(f"❌ Failed to merge chunk result: {e}")
+        return False
+
+

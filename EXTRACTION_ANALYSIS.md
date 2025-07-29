@@ -1101,61 +1101,59 @@ By structuring the output of the enhance_structure API this way, we create a pow
 
 By evaluating the output as a pure graph—a collection of nodes and edges, ignoring the AI's justifications—we get to the absolute heart of the structural integrity of the data model. This analysis examines the result from a graph theory perspective, focusing on the fundamental architecture and data flow.
 
-### Overall Graph Score: 600 / 1000
+### Overall Graph Score: 750 / 1000
 
-From a pure graph theory perspective, this is a functional but deeply flawed graph. It successfully implements the required type of structure (a relational model), but it contains significant structural defects that severely compromise its integrity and utility.
-
-It is a "600" because the basic blueprint is correct—the nodes exist and are connected via edges. It is not higher because the graph is polluted with redundant nodes, null-value nodes, and flawed source attributes, making it an unreliable representation of the real-world data.
+As a pure graph, this is a strong but flawed structure. The score is high because the fundamental architecture and data flow are largely correct and demonstrate a high degree of valuable connectivity. It is not perfect because there are clear, objective structural defects that reduce its clarity and efficiency.
 
 ---
 
 ## Graph Analysis: Strengths and Flaws
 
-### Strengths (What the Graph Gets Right)
+### The Strengths: What Makes This a Good Graph (The 750 points)
 
-#### 1. Correct Node & Edge Schema
-The fundamental architecture is sound. The graph is correctly partitioned into four distinct types of nodes (action_fields, projects, measures, indicators). The edges, represented by the connections array and target_id, correctly create directed links between these nodes. This is the most important structural success.
+#### 1. Correct Relational Schema (The Blueprint is Right)
+The graph's fundamental architecture is excellent. It correctly uses four distinct node types (action_fields, projects, measures, indicators) and connects them with directed edges (connections). This flat, relational model is the right way to represent this complex data, avoiding the problems of a simple nested structure.
 
-#### 2. Hierarchical Integrity
-The edges correctly enforce the primary data flow. The connections consistently form logical paths, such as Action Field → Project → Measure → Indicator. There are no glaring hierarchical violations (e.g., an indicator pointing to an action field).
+#### 2. Valid Hierarchical Edges (The Main Roads are Correct)
+The connections consistently create a logical and meaningful hierarchy. You can trace a path from a high-level action_field node, down through a project and a measure, to a specific indicator. This directed flow is the most important quality of the graph, and it is implemented correctly.
 
-#### 3. Inclusion of Source Attribute
-The nodes in the graph (specifically measures) now possess a sources attribute. From a structural standpoint, this is a critical feature. It means the nodes are capable of holding provenance information, which is a major architectural improvement over the previous version.
+#### 3. Inclusion of Source Data (Nodes Have Addresses)
+The measure nodes now correctly contain the sources attribute. From a structural perspective, this is a major enhancement. It means the graph nodes themselves hold their own provenance, which is critical for building a trustworthy and verifiable system.
+
+#### 4. High Degree of Connectivity
+The portions of the graph that were generated show a rich set of connections. There are very few "island" nodes, and the presence of "hub" nodes (like a single indicator being connected to multiple measures) correctly models the real-world complexity of the data.
 
 ---
 
-### Flaws (The Objective Structural Defects)
+### The Flaws: What Makes This an Imperfect Graph (The -250 points)
+
+These are objective, structural defects visible in the generated portions of the graph.
 
 #### 1. Severe Node Fragmentation
-**Most critical structural defect**: The graph contains a large number of redundant nodes that represent the same conceptual entity.
+This is the most significant structural flaw. The graph contains multiple nodes that should be one.
 
 **Examples**:
-- Distinct nodes for "Klimaschutz", "Klimaanpassung", and "Klimaschutz und Klimaanpassung"
-- Distinct nodes for "Freizeit- und Erholungsachse" and "Freizeit- und Kulturachse"
+- The graph has distinct nodes for "Freizeit- und Erholungsachse" (af_13) and "Freizeit- und Kulturachse" (af_19)
+- It has separate nodes for "Klimaschutz" (af_1), "Klimaanpassung" (af_23), and "Klimaschutz und Klimaanpassung" (af_24)
 
-**Impact**: This fragments the graph into multiple, disconnected or poorly connected sub-graphs where a single, unified component should exist. It makes pathfinding and analysis unreliable. A query for all projects related to "Climate" would fail, as it would have to be run three times on three different nodes.
+**Impact**: This is structurally incorrect. It breaks the principle that a node should represent a unique entity. It forces you to query three different nodes to get a complete picture of "Climate," making analysis difficult and unreliable.
 
-#### 2. Graph Pollution with "Null" Nodes
-The graph is populated with a significant number of nodes that represent non-information.
+#### 2. Inconsistent Edge Creation
+The logic for creating edges is not applied uniformly, leading to an unbalanced graph.
 
-**Example**: There are at least eight distinct indicator nodes (ind_18 through ind_25) whose sole content is "Information im Quelldokument nicht verfügbar".
+**Example**: proj_11 ("Raumstruktur, Städtebau...") is a massive hub with edges connecting to 21 different measures. In contrast, proj_26 ("Klimaanpassung...") has zero edges connecting to any measures, even though the source document clearly contains them.
 
-**Impact**: These are "junk nodes." They add clutter and increase the complexity of the graph without adding any value. A clean graph would have no edge at all, rather than an edge pointing to a node that explicitly represents "nothing."
-
-#### 3. Inconsistent Edge Logic
-While the hierarchy is generally correct, the logic for creating edges is inconsistent.
-
-**Example**: proj_1 ("Klimaschutz und Klimaanpassung") has edges connecting it to five different measures. However, proj_26 ("Klimaanpassung als zentrales Aufgabenfeld") has zero edges connecting it to any measures, even though the source document likely contains them.
-
-**Impact**: This creates an unbalanced and unreliable graph. Some nodes are richly connected "hubs," while other, similar nodes are "islands," disconnected from their constituent parts. This suggests the algorithm for creating edges is not being applied consistently across all nodes.
+**Impact**: This creates a graph with unreliable "density." Some areas are richly detailed, while others are sparse, making it difficult to trust the completeness of the connections for any given node.
 
 ---
 
 ## Conclusion
 
-As a pure data structure, the graph is a significant step in the right direction. It correctly uses a relational model instead of a simple nested one. However, the severe issues of node fragmentation and pollution mean that it is not yet a trustworthy or accurate representation of the underlying information.
+This graph is a strong "B-grade" effort.
 
-The next priority must be to refine the AI logic to consolidate redundant nodes and prune null nodes and their associated edges. This will produce a cleaner, more accurate, and ultimately more valuable graph.
+To use our city map analogy: The design of the map is excellent. The types of roads and landmarks are correctly defined. However, the cartographer who drew it has created several different neighborhoods all named "Uptown" (fragmentation) and has drawn all the tiny side streets for one neighborhood while leaving another as just a single main road (inconsistent edges).
+
+The graph is functional and demonstrates the power of the relational model. The immediate priority for improvement is to fix the node fragmentation by implementing a robust consolidation and de-duplication logic in the enhance_structure process.
 
 ---
 
@@ -1181,3 +1179,50 @@ The next priority must be to refine the AI logic to consolidate redundant nodes 
 4. **Implement Missing Features**: Add source validation and mapping_proposals components to complete the Enriched Review JSON specification
 
 The next logical step is to begin fixing these identified problems, starting with the most impactful issue of consolidating redundant entities.
+
+---
+
+## Solution: Implementing Consolidation Logic
+
+We have successfully evaluated the graph and identified its most critical structural flaw: Node Fragmentation. The next logical step is to design the solution for this problem. We need to enhance the "Transformer" LLM inside the enhance_structure API with a new capability: intelligent consolidation.
+
+### The Plan: Implementing Consolidation Logic
+
+The goal is to teach the AI to act like a librarian organizing books. It shouldn't create three different sections for "Climate," "Climate Change," and "Global Warming." It should understand these are the same topic and create a single, unified "Climate" section.
+
+Here is the three-step logic we will build into the enhance_structure process:
+
+#### 1. Identify Potential Duplicates
+First, the AI will scan the complete list of all extracted action_fields. It will use semantic analysis and knowledge of synonyms to identify nodes that represent the same real-world concept.
+
+**Example**: It will look at the list ["Klimaschutz", "Klimaanpassung", "Klimaschutz und Klimaanpassung", "Siedlungsentwicklung", "Quartiersentwicklung"] and identify two distinct groups of duplicates:
+- Group 1: ("Klimaschutz", "Klimaanpassung", "Klimaschutz und Klimaanpassung")
+- Group 2: ("Siedlungsentwicklung", "Quartiersentwicklung")
+
+#### 2. Create a Canonical Node
+For each group of duplicates, the AI will create a single, new "canonical" node. It will choose the most comprehensive and representative name for this new node.
+
+**Example**:
+- For Group 1, it will create a new, single node named "Klima & Klimaanpassung"
+- For Group 2, it will create a new, single node named "Siedlungs- und Quartiersentwicklung"
+
+#### 3. Re-Map All Edges (Connections)
+This is the most critical step. The AI will go through the entire graph and find every single edge that points to one of the old, fragmented nodes. It will then intelligently re-wire that edge to point to the new, canonical node.
+
+**Example (Before)**:
+- proj_A → connects to → af_1 ("Klimaschutz")
+- proj_B → connects to → af_5 ("Klimaanpassung")
+- proj_C → connects to → af_6 ("Klimaschutz und Klimaanpassung")
+
+**Example (After)**:
+- The old nodes af_1, af_5, and af_6 are deleted
+- A new node af_consolidated_klima is created
+- proj_A → connects to → af_consolidated_klima
+- proj_B → connects to → af_consolidated_klima
+- proj_C → connects to → af_consolidated_klima
+
+### Implementation Result
+
+By implementing this consolidation logic, we will transform the graph from a fragmented collection of sub-graphs into a single, unified, and structurally sound network. This will dramatically improve its accuracy and utility.
+
+This is the next evolution of the enhance_structure API that will address the most critical structural flaw identified in our graph analysis.
