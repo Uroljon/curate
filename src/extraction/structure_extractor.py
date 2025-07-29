@@ -245,12 +245,14 @@ def extract_project_details_cot(
 
         # Extract document hierarchy information from chunk
         document_hierarchy = _extract_document_hierarchy(chunk)
-        
-        prompt = get_stage3_prompt(chunk, action_field, project_title, document_hierarchy)
+
+        prompt = get_stage3_prompt(
+            chunk, action_field, project_title, document_hierarchy
+        )
 
         # Determine thinking mode based on chunk complexity
         thinking_mode = _determine_thinking_mode(chunk, action_field, project_title)
-        
+
         # Use enhanced schema with confidence scoring and thinking modes
         result = query_ollama_with_thinking_mode(
             prompt=prompt,
@@ -323,20 +325,25 @@ def extract_project_details_cot(
             f"   ⚠️ Found {len(low_conf_measures)} low-confidence measures "
             f"and {len(low_conf_indicators)} indicators - attempting refinement"
         )
-        
+
         # Attempt iterative refinement of uncertain classifications
         refined_results = _refine_uncertain_classifications(
-            chunks, action_field, project_title, 
-            low_conf_measures, low_conf_indicators, 
-            confidence_threshold
+            chunks,
+            action_field,
+            project_title,
+            low_conf_measures,
+            low_conf_indicators,
+            confidence_threshold,
         )
-        
+
         # Merge refined results
         if refined_results:
             confident_measures.extend(refined_results.measures)
             confident_indicators.extend(refined_results.indicators)
-            print(f"   ✅ Refinement recovered {len(refined_results.measures)} measures, "
-                  f"{len(refined_results.indicators)} indicators")
+            print(
+                f"   ✅ Refinement recovered {len(refined_results.measures)} measures, "
+                f"{len(refined_results.indicators)} indicators"
+            )
 
     # Create final result
     details = ProjectDetails(
@@ -641,46 +648,61 @@ Remember: ENHANCE and ADD, never remove."""
 def _determine_thinking_mode(chunk: str, action_field: str, project_title: str) -> str:
     """
     Determine the appropriate thinking mode based on chunk complexity.
-    
+
     Args:
         chunk: Text chunk to analyze
         action_field: The action field context
         project_title: The project being analyzed
-        
+
     Returns:
         str: Thinking mode to use ("analytical", "comparative", "systematic", "contextual")
     """
     chunk_lower = chunk.lower()
-    
+
     # Count complexity indicators
     complexity_score = 0
-    
+
     # Multiple projects mentioned - needs comparative analysis
     if chunk_lower.count("projekt") > 1 or chunk_lower.count("maßnahme") > 3:
         complexity_score += 2
-        
+
     # Contains tables or structured data - needs systematic approach
     if any(indicator in chunk for indicator in ["|-", "|:", "Tabelle", "Tab.", "Nr."]):
         complexity_score += 2
-        
+
     # Multiple Handlungsfelder - needs contextual understanding
     action_keywords = ["handlungsfeld", "bereich", "themenfeld", "schwerpunkt"]
     if sum(chunk_lower.count(keyword) for keyword in action_keywords) > 1:
         complexity_score += 1
-        
+
     # Complex numerical data - needs analytical precision
-    import re
-    numerical_patterns = [r'\d+%', r'\d+\s*Euro', r'\d+\s*km', r'bis\s+\d{4}', r'\d+\.\d+']
-    numerical_matches = sum(len(re.findall(pattern, chunk)) for pattern in numerical_patterns)
+
+    numerical_patterns = [
+        r"\d+%",
+        r"\d+\s*Euro",
+        r"\d+\s*km",
+        r"bis\s+\d{4}",
+        r"\d+\.\d+",
+    ]
+    numerical_matches = sum(
+        len(re.findall(pattern, chunk)) for pattern in numerical_patterns
+    )
     if numerical_matches > 3:
         complexity_score += 2
-        
+
     # Mixed measures and indicators - needs comparative analysis
-    measure_indicators = ["entwicklung", "einführung", "umsetzung", "anzahl", "prozent", "reduktion"]
+    measure_indicators = [
+        "entwicklung",
+        "einführung",
+        "umsetzung",
+        "anzahl",
+        "prozent",
+        "reduktion",
+    ]
     mixed_count = sum(1 for indicator in measure_indicators if indicator in chunk_lower)
     if mixed_count > 4:
         complexity_score += 1
-        
+
     # Choose thinking mode based on complexity
     if complexity_score >= 5:
         return "contextual"  # Highest complexity - deep context understanding
@@ -695,10 +717,10 @@ def _determine_thinking_mode(chunk: str, action_field: str, project_title: str) 
 def _extract_document_hierarchy(chunk: str) -> dict:
     """
     Extract document hierarchy information from a chunk.
-    
+
     Args:
         chunk: Text chunk to analyze for structure information
-        
+
     Returns:
         dict: Dictionary with hierarchy information including:
             - current_section: Current section title if found
@@ -706,49 +728,50 @@ def _extract_document_hierarchy(chunk: str) -> dict:
             - page_number: Page number if available in chunk headers
             - level: Document hierarchy level (1-5)
     """
-    import re
     from src.utils.text import is_heading
-    
+
     hierarchy = {
         "current_section": None,
         "parent_chapter": None,
         "page_number": None,
-        "level": 0
+        "level": 0,
     }
-    
-    lines = chunk.split('\n')[:10]  # Check first 10 lines for structure info
-    
+
+    lines = chunk.split("\n")[:10]  # Check first 10 lines for structure info
+
     # Look for page information in document headers
     for line in lines:
         line = line.strip()
         if not line:
             continue
-            
+
         # Extract page number from headers like "SEITEN: 15-18" or "Seite 23"
-        page_match = re.search(r'SEITEN?:\s*(\d+(?:-\d+)?)|Seite\s+(\d+)', line, re.IGNORECASE)
+        page_match = re.search(
+            r"SEITEN?:\s*(\d+(?:-\d+)?)|Seite\s+(\d+)", line, re.IGNORECASE
+        )
         if page_match:
             hierarchy["page_number"] = page_match.group(1) or page_match.group(2)
-        
+
         # Extract section information from ABSCHNITT headers
-        section_match = re.search(r'ABSCHNITT:\s*(.+)', line, re.IGNORECASE)
+        section_match = re.search(r"ABSCHNITT:\s*(.+)", line, re.IGNORECASE)
         if section_match:
             hierarchy["current_section"] = section_match.group(1).strip()
             continue
-            
+
         # Check if line is a heading and extract hierarchy information
         if is_heading(line):
             # Determine hierarchy level based on numbering pattern
-            if re.match(r'^\d+\.?\s+', line):  # "1. Hauptkapitel"
+            if re.match(r"^\d+\.?\s+", line):  # "1. Hauptkapitel"
                 hierarchy["level"] = 1
                 hierarchy["parent_chapter"] = line.strip()
-            elif re.match(r'^\d+\.\d+\.?\s+', line):  # "1.1 Unterkapitel"
+            elif re.match(r"^\d+\.\d+\.?\s+", line):  # "1.1 Unterkapitel"
                 hierarchy["level"] = 2
                 hierarchy["current_section"] = line.strip()
                 # Extract parent from numbering
-                parent_match = re.match(r'^(\d+)\.', line)
+                parent_match = re.match(r"^(\d+)\.", line)
                 if parent_match:
                     hierarchy["parent_chapter"] = f"Kapitel {parent_match.group(1)}"
-            elif re.match(r'^\d+\.\d+\.\d+\.?\s+', line):  # "1.1.1 Sub-Unterkapitel"
+            elif re.match(r"^\d+\.\d+\.\d+\.?\s+", line):  # "1.1.1 Sub-Unterkapitel"
                 hierarchy["level"] = 3
                 hierarchy["current_section"] = line.strip()
             elif "handlungsfeld" in line.lower():
@@ -759,27 +782,30 @@ def _extract_document_hierarchy(chunk: str) -> dict:
                 hierarchy["level"] = max(1, hierarchy["level"])
                 if not hierarchy["current_section"]:
                     hierarchy["current_section"] = line.strip()
-    
+
     # If no specific section found, try to infer from content
     if not hierarchy["current_section"]:
         # Look for action field keywords in the content
-        content_lines = chunk.split('\n')[5:15]  # Skip headers, check content
+        content_lines = chunk.split("\n")[5:15]  # Skip headers, check content
         for line in content_lines:
             line_lower = line.lower().strip()
-            if any(keyword in line_lower for keyword in ["handlungsfeld", "themenfeld", "bereich"]):
+            if any(
+                keyword in line_lower
+                for keyword in ["handlungsfeld", "themenfeld", "bereich"]
+            ):
                 # Extract potential action field name
                 field_match = re.search(r'handlungsfeld[:\s]+"?([^".\n]+)', line_lower)
                 if field_match:
                     hierarchy["current_section"] = field_match.group(1).strip().title()
                     hierarchy["level"] = 2
                     break
-                    
+
     # Clean up extracted information
     for key in ["current_section", "parent_chapter"]:
         if hierarchy[key]:
             # Remove excessive whitespace and truncate if too long
-            hierarchy[key] = re.sub(r'\s+', ' ', hierarchy[key])[:100]
-            
+            hierarchy[key] = re.sub(r"\s+", " ", hierarchy[key])[:100]
+
     return hierarchy
 
 
@@ -789,11 +815,11 @@ def _refine_uncertain_classifications(
     project_title: str,
     low_conf_measures: list[tuple[str, float]],
     low_conf_indicators: list[tuple[str, float]],
-    confidence_threshold: float
+    confidence_threshold: float,
 ) -> ProjectDetails | None:
     """
     Perform focused re-analysis of uncertain classifications with enhanced prompts.
-    
+
     Args:
         chunks: Original text chunks
         action_field: The action field context
@@ -801,44 +827,48 @@ def _refine_uncertain_classifications(
         low_conf_measures: List of (measure, confidence) tuples below threshold
         low_conf_indicators: List of (indicator, confidence) tuples below threshold
         confidence_threshold: Minimum confidence required
-        
+
     Returns:
         ProjectDetails with refined results that meet confidence threshold, or None
     """
     if not low_conf_measures and not low_conf_indicators:
         return None
-        
-    print(f"🔍 Refinement: Re-analyzing {len(low_conf_measures + low_conf_indicators)} uncertain items")
-    
+
+    print(
+        f"🔍 Refinement: Re-analyzing {len(low_conf_measures + low_conf_indicators)} uncertain items"
+    )
+
     # Create focused prompt for uncertain items
     uncertain_items = [item for item, conf in low_conf_measures + low_conf_indicators]
-    
-    focused_system_message = _get_refinement_system_message(action_field, project_title, uncertain_items)
-    
+
+    focused_system_message = _get_refinement_system_message(
+        action_field, project_title, uncertain_items
+    )
+
     refined_measures = {}
     refined_indicators = {}
-    
+
     # Re-analyze only chunks that contain the uncertain items
     relevant_chunks = []
     for chunk in chunks:
         chunk_lower = chunk.lower()
         if any(item.lower()[:20] in chunk_lower for item in uncertain_items):
             relevant_chunks.append(chunk)
-    
+
     print(f"   📄 Focusing on {len(relevant_chunks)} relevant chunks")
-    
+
     for i, chunk in enumerate(relevant_chunks):
         if not chunk.strip():
             continue
-            
+
         # Extract hierarchy for focused context
         document_hierarchy = _extract_document_hierarchy(chunk)
-        
+
         # Create focused refinement prompt
         refinement_prompt = _get_refinement_prompt(
             chunk, action_field, project_title, uncertain_items, document_hierarchy
         )
-        
+
         # Use "contextual" thinking mode for maximum analysis depth
         result = query_ollama_with_thinking_mode(
             prompt=refinement_prompt,
@@ -847,35 +877,39 @@ def _refine_uncertain_classifications(
             system_message=focused_system_message,
             temperature=0.1,  # Lower temperature for more focused analysis
         )
-        
+
         if result:
             # Only accept items that now meet the confidence threshold
             for measure in result.measures:
                 confidence = result.confidence_scores.get(measure, 0.5)
                 if confidence >= confidence_threshold:
                     refined_measures[measure] = confidence
-                    
+
             for indicator in result.indicators:
                 confidence = result.confidence_scores.get(indicator, 0.5)
                 if confidence >= confidence_threshold:
                     refined_indicators[indicator] = confidence
-    
+
     # Return refined results
     if refined_measures or refined_indicators:
         return ProjectDetails(
             measures=sorted(refined_measures.keys()),
-            indicators=sorted(refined_indicators.keys())
+            indicators=sorted(refined_indicators.keys()),
         )
-    
+
     print("   ❌ Refinement: No items reached confidence threshold")
     return None
 
 
-def _get_refinement_system_message(action_field: str, project_title: str, uncertain_items: list[str]) -> str:
+def _get_refinement_system_message(
+    action_field: str, project_title: str, uncertain_items: list[str]
+) -> str:
     """Generate focused system message for refinement analysis."""
-    
-    items_list = "\n".join(f"• {item}" for item in uncertain_items[:10])  # Limit to first 10
-    
+
+    items_list = "\n".join(
+        f"• {item}" for item in uncertain_items[:10]
+    )  # Limit to first 10
+
     return f"""Sie sind ein Spezialist für deutsche Kommunalverwaltung mit Fokus auf ZWEIFELHAFTE KLASSIFIKATIONEN.
 
 IHRE AUFGABE: Re-analysieren Sie folgende unsichere Punkte für "{project_title}" im "{action_field}":
@@ -899,14 +933,14 @@ FOKUS: Qualität vor Quantität - lieber weniger, aber sichere Ergebnisse."""
 
 
 def _get_refinement_prompt(
-    chunk: str, 
-    action_field: str, 
-    project_title: str, 
+    chunk: str,
+    action_field: str,
+    project_title: str,
     uncertain_items: list[str],
-    document_hierarchy: dict
+    document_hierarchy: dict,
 ) -> str:
     """Generate focused refinement prompt for uncertain classifications."""
-    
+
     hierarchy_context = ""
     if document_hierarchy and any(document_hierarchy.values()):
         hierarchy_context = f"""
@@ -916,9 +950,9 @@ VERSTÄRKTER STRUKTUR-KONTEXT:
 • Seite: {document_hierarchy.get('page_number', 'Unbekannt')}
 • Ebene: {document_hierarchy.get('level', 'Unbekannt')}
 """
-    
+
     items_focus = "\n".join(f"→ {item}" for item in uncertain_items[:8])
-    
+
     return f"""FOKUSSIERTE NACHANALYSE für "{project_title}":
 
 {hierarchy_context}

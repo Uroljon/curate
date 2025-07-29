@@ -360,7 +360,7 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
                     },
                     timeout=self.timeout,
                 )
-            except Exception as e1:
+            except Exception:
                 try:
                     # Second try: Use response_format with json_schema
                     response = self.client.chat.completions.create(
@@ -379,7 +379,7 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
                         extra_body={"top_k": top_k, "min_p": 0},
                         timeout=self.timeout,
                     )
-                except Exception as e2:
+                except Exception:
                     # Final fallback: Use prompt-based JSON generation
                     print(
                         "⚠️ vLLM structured output not available, using prompt-based JSON generation"

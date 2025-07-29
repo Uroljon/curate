@@ -159,7 +159,9 @@ ARBEITSSCHRITTE:
 WICHTIG: Ihre Antwort MUSS ausschließlich ein JSON-Objekt sein, das dem vorgegebenen Schema entspricht."""
 
 
-def get_stage3_prompt(chunk: str, action_field: str, project_title: str, document_hierarchy: dict = None) -> str:
+def get_stage3_prompt(
+    chunk: str, action_field: str, project_title: str, document_hierarchy: dict = None
+) -> str:
     # Add document hierarchy context if available
     hierarchy_context = ""
     if document_hierarchy:
@@ -172,7 +174,7 @@ DOKUMENTSTRUKTUR-KONTEXT:
 
 Nutzen Sie diese Strukturinformationen für bessere Kontextualisierung.
 """
-    
+
     return f"""ERWEITERTE ANALYSE FÜR "{project_title}":
 
 {hierarchy_context}
