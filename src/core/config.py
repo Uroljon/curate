@@ -40,8 +40,8 @@ OLLAMA_CHAT_URL = f"http://{OLLAMA_HOST}/api/chat"
 VLLM_HOST = os.getenv("VLLM_HOST", "10.67.142.34:8001")
 VLLM_API_KEY = os.getenv("VLLM_API_KEY", "EMPTY")
 VLLM_MAX_TOKENS = int(
-    os.getenv("VLLM_MAX_TOKENS", "6000")
-)  # Conservative for 16K context with input overhead
+    os.getenv("VLLM_MAX_TOKENS", "15000")
+)  # Optimized for 32K context (qwen3:14b-AWQ) - allows large structured outputs
 
 # Model name mappings between Ollama and vLLM
 MODEL_MAPPINGS = {

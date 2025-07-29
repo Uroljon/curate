@@ -371,7 +371,10 @@ def chunked_aggregation(
 
 
 def perform_single_aggregation(
-    chunk_data: str, log_file_path: str | None = None, log_context: str | None = None
+    chunk_data: str, 
+    log_file_path: str | None = None, 
+    log_context: str | None = None,
+    override_output_tokens: int | None = None
 ) -> list[dict[str, Any]] | None:
     """
     Perform a single aggregation pass on JSON data.
@@ -448,11 +451,16 @@ Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das die konsolidierten Hand
         print(f"   🔍 Attempting aggregation with {data_size} characters of JSON")
 
         # Calculate dynamic num_predict based on input size
-        # Rule of thumb: 1 token ≈ 3 characters (more conservative), add 100% buffer for output expansion
-        estimated_tokens = int(data_size / 3 * 2.0)
-        # Ensure minimum of 20480 (default), cap at 30720 (75% of context) for qwen3:14b
-        dynamic_num_predict = max(20480, min(estimated_tokens, 30720))
-        print(f"   📊 Using dynamic num_predict: {dynamic_num_predict} tokens")
+        # Improved token estimation: 1 token ≈ 3.5 characters for German text
+        estimated_input_tokens = int(data_size / 3.5)
+        # Use override if provided, otherwise estimate 50-80% of input size
+        if override_output_tokens:
+            dynamic_num_predict = override_output_tokens
+        else:
+            estimated_output_tokens = int(estimated_input_tokens * 0.8)
+            # Cap at 30720 (75% of 40K context) to leave room for prompt
+            dynamic_num_predict = max(8192, min(estimated_output_tokens, 30720))
+        print(f"   📊 Input: ~{estimated_input_tokens} tokens, Output: ~{dynamic_num_predict} tokens")
 
         # Update log context to include token info
         enhanced_log_context = (
@@ -772,42 +780,53 @@ def aggregate_extraction_results(
     log_context_prefix: str | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Aggregate extraction results from multiple chunks using proven chunked approach.
+    Aggregate extraction results using intelligent context-aware processing.
 
-    With optimized chunking, we now start with fewer action fields (~16 instead of 50+),
-    making the chunked aggregation approach fast and reliable.
+    Uses single-pass aggregation when data fits in context window (40K tokens),
+    falling back to chunked approach only for genuinely large datasets.
     """
     if not all_chunk_results:
         return []
 
-    # With optimized chunking, we typically have 10-20 fields to aggregate
     print(f"🔄 Aggregating {len(all_chunk_results)} extracted action fields...")
 
-    # Use chunked aggregation for all cases - it's proven and reliable
-    if len(all_chunk_results) > 12:
-        print(
-            f"📊 Starting chunked aggregation for {len(all_chunk_results)} action fields"
+    # Check if data fits in context window for single-pass processing
+    chunk_data = json.dumps(all_chunk_results, indent=2, ensure_ascii=False)
+    data_size = len(chunk_data)
+    estimated_tokens = int(data_size / 3.5)  # Conservative token estimation
+
+    # qwen3:14b-AWQ: 32K total context
+    # Reserve: 2K prompt + 15K output = 17K overhead  
+    # Safe input limit: 15K tokens (32K - 17K overhead)
+    context_safety_limit = 15000
+
+    print(f"📊 Data analysis: {data_size} characters ≈ {estimated_tokens} tokens")
+    print(f"📊 Input limit: {context_safety_limit} tokens (leaves 17K for prompt+output)")
+    
+    if estimated_tokens <= context_safety_limit:
+        # Calculate remaining tokens for output (32K context)
+        remaining_tokens = 32768 - estimated_tokens - 2000  # Reserve 2K for prompt
+        output_tokens = min(remaining_tokens - 1000, 15000)  # Cap output, leave 1K buffer
+        print(f"📊 Output allocation: {output_tokens} tokens available")
+        print("✅ Data fits in context window - using single-pass aggregation")
+        
+        result = perform_single_aggregation(
+            chunk_data,
+            log_file_path,
+            (
+                f"{log_context_prefix} - Single Pass ({estimated_tokens}→{output_tokens} tokens)"
+                if log_context_prefix
+                else f"Single Pass ({estimated_tokens}→{output_tokens} tokens)"
+            ),
+            override_output_tokens=output_tokens
         )
+    else:
+        print(f"⚠️ Data too large ({estimated_tokens} tokens) - falling back to chunked aggregation")
         return chunked_aggregation(
             all_chunk_results,
             log_file_path=log_file_path,
             log_context_prefix=log_context_prefix,
         )
-
-    # For small datasets, we can still benefit from a single aggregation pass
-    print(
-        f"📋 Small dataset ({len(all_chunk_results)} fields) - single aggregation pass"
-    )
-    chunk_data = json.dumps(all_chunk_results, indent=2, ensure_ascii=False)
-    result = perform_single_aggregation(
-        chunk_data,
-        log_file_path,
-        (
-            f"{log_context_prefix} - Single Pass Aggregation"
-            if log_context_prefix
-            else "Single Pass Aggregation"
-        ),
-    )
 
     if result:
         # Final validation to remove any English contamination
