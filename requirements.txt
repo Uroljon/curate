@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-pymupdf
+pymupdf>=1.23.0
 python-multipart
 pytesseract
 pdf2image
