@@ -1121,8 +1121,7 @@ def rebuild_enhanced_structure_from_resolved(
             # Add AF -> Project connection (avoid duplicates)
             proj_connection = ConnectionWithConfidence(
                 target_id=project_node.id,
-                confidence_score=0.9,
-                justification="Project belongs to this action field based on document structure"
+                confidence_score=0.9
             )
             if not any(c.target_id == project_node.id for c in action_field.connections):
                 action_field.connections.append(proj_connection)
@@ -1133,8 +1132,7 @@ def rebuild_enhanced_structure_from_resolved(
                     measure_node = msr_lookup[measure_title]
                     msr_connection = ConnectionWithConfidence(
                         target_id=measure_node.id,
-                        confidence_score=0.8,
-                        justification="Measure is part of this project as defined in source document"
+                        confidence_score=0.8
                     )
                     if not any(c.target_id == measure_node.id for c in project_node.connections):
                         project_node.connections.append(msr_connection)
@@ -1145,8 +1143,7 @@ def rebuild_enhanced_structure_from_resolved(
                     indicator_node = ind_lookup[indicator_title]
                     ind_connection = ConnectionWithConfidence(
                         target_id=indicator_node.id,
-                        confidence_score=0.8,
-                        justification="Indicator is associated with this project based on content analysis"
+                        confidence_score=0.8
                     )
                     if not any(c.target_id == indicator_node.id for c in project_node.connections):
                         project_node.connections.append(ind_connection)
@@ -1617,7 +1614,7 @@ Ihre Aufgabe ist es, die verschachtelte JSON-Struktur in vier separate, miteinan
 KRITISCHE Anforderungen:
 1. Konservative Deduplizierung: NUR offensichtliche Duplikate zusammenführen
 2. Quellenvalidierung: Entfernen Sie Dokumentmetadaten, Header, Einzelwörter
-3. Explizite Verbindungen: Jede Verbindung braucht Konfidenz-Score (0.0-1.0) und Begründung
+3. Explizite Verbindungen: Jede Verbindung braucht Konfidenz-Score (0.0-1.0)
 4. ID-Format: af_1, proj_1, msr_1, ind_1
 
 Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der EnrichedReviewJSON-Struktur entspricht."""
@@ -1673,8 +1670,7 @@ BEISPIEL Verbindung:
 "connections": [
   {{
     "target_id": "proj_1",
-    "confidence_score": 0.95,
-    "justification": "Projekt explizit unter diesem Handlungsfeld gruppiert"
+    "confidence_score": 0.95
   }}
 ]
 

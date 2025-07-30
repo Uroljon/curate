@@ -98,13 +98,12 @@ class ProjectDetailsEnhanced(BaseModel):
 
 class ConnectionWithConfidence(BaseModel):
     """Represents a connection between entities with confidence scoring."""
+    
+    model_config = {"extra": "forbid"}
 
     target_id: str = Field(..., description="ID of the target entity")
     confidence_score: float = Field(
         ..., ge=0.0, le=1.0, description="Confidence score between 0.0 and 1.0"
-    )
-    justification: str = Field(
-        ..., description="Brief explanation for the connection and confidence level"
     )
 
 
