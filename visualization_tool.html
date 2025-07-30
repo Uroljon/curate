@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CURATE Structure Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px 8px 0 0;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        
+        .content {
+            display: flex;
+            height: calc(100vh - 160px);
+        }
+        
+        .sidebar {
+            width: 300px;
+            padding: 20px;
+            border-right: 1px solid #e0e0e0;
+            overflow-y: auto;
+            background-color: #fafafa;
+        }
+        
+        .main-view {
+            flex: 1;
+            position: relative;
+        }
+        
+        .file-input {
+            margin-bottom: 20px;
+        }
+        
+        .file-input input {
+            width: 100%;
+            padding: 10px;
+            border: 2px dashed #ddd;
+            border-radius: 4px;
+            background: white;
+        }
+        
+        .stats {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .stats h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .entity-counts {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 12px;
+        }
+        
+        .entity-count {
+            padding: 8px;
+            border-radius: 3px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .af-count { background-color: #e3f2fd; color: #1976d2; }
+        .proj-count { background-color: #e8f5e8; color: #388e3c; }
+        .msr-count { background-color: #fff3e0; color: #f57c00; }
+        .ind-count { background-color: #fce4ec; color: #c2185b; }
+        
+        .filters {
+            margin-bottom: 20px;
+        }
+        
+        .filter-group {
+            margin-bottom: 15px;
+        }
+        
+        .filter-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #666;
+        }
+        
+        .confidence-slider {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+        
+        .confidence-value {
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .entity-type-filters {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+        }
+        
+        .entity-type-filters label {
+            display: flex;
+            align-items: center;
+            font-size: 11px;
+            font-weight: normal;
+            text-transform: none;
+            margin: 0;
+        }
+        
+        .entity-type-filters input {
+            margin-right: 5px;
+        }
+        
+        #visualization {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        
+        .node {
+            cursor: pointer;
+            stroke-width: 2px;
+        }
+        
+        .node-af { fill: #2196f3; stroke: #1976d2; }
+        .node-proj { fill: #4caf50; stroke: #388e3c; }
+        .node-msr { fill: #ff9800; stroke: #f57c00; }
+        .node-ind { fill: #e91e63; stroke: #c2185b; }
+        
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+        }
+        
+        .node-label {
+            font-size: 10px;
+            font-weight: bold;
+            text-anchor: middle;
+            pointer-events: none;
+            fill: black;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .selected {
+            stroke-width: 4px !important;
+            stroke: #ff4444 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 CURATE Structure Visualizer</h1>
+            <p style="margin: 5px 0 0 0; opacity: 0.9;">Interactive visualization of enhance_structure JSON output</p>
+        </div>
+        
+        <div class="content">
+            <div class="sidebar">
+                <div class="file-input">
+                    <input type="file" id="jsonFile" accept=".json" placeholder="Load JSON file...">
+                </div>
+                
+                <div class="stats" id="stats" style="display: none;">
+                    <h3>Data Overview</h3>
+                    <div class="entity-counts">
+                        <div class="entity-count af-count">
+                            <div>Action Fields</div>
+                            <div id="af-count">0</div>
+                        </div>
+                        <div class="entity-count proj-count">
+                            <div>Projects</div>
+                            <div id="proj-count">0</div>
+                        </div>
+                        <div class="entity-count msr-count">
+                            <div>Measures</div>
+                            <div id="msr-count">0</div>
+                        </div>
+                        <div class="entity-count ind-count">
+                            <div>Indicators</div>
+                            <div id="ind-count">0</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="filters" id="filters" style="display: none;">
+                    <div class="filter-group">
+                        <label>Min Confidence Score</label>
+                        <input type="range" class="confidence-slider" id="confidenceSlider" 
+                               min="0" max="1" step="0.1" value="0">
+                        <div class="confidence-value" id="confidenceValue">0.0</div>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Show Entity Types</label>
+                        <div class="entity-type-filters">
+                            <label><input type="checkbox" id="show-af" checked> Action Fields</label>
+                            <label><input type="checkbox" id="show-proj" checked> Projects</label>
+                            <label><input type="checkbox" id="show-msr" checked> Measures</label>
+                            <label><input type="checkbox" id="show-ind" checked> Indicators</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="main-view">
+                <svg id="visualization"></svg>
+            </div>
+        </div>
+    </div>
+    
+    <div class="tooltip" id="tooltip" style="display: none;"></div>
+
+    <script>
+        let data = null;
+        let nodes = [];
+        let links = [];
+        let simulation = null;
+        
+        // SVG setup
+        const svg = d3.select("#visualization");
+        const width = () => document.querySelector('.main-view').clientWidth;
+        const height = () => document.querySelector('.main-view').clientHeight;
+        
+        // Create zoom behavior
+        const zoom = d3.zoom()
+            .scaleExtent([0.1, 4])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+        
+        svg.call(zoom);
+        const g = svg.append("g");
+        
+        // File input handler
+        document.getElementById('jsonFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        data = JSON.parse(e.target.result);
+                        loadData();
+                    } catch (error) {
+                        alert('Error parsing JSON file: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        });
+        
+        // Load and process data
+        function loadData() {
+            if (!data) return;
+            
+            // Show UI elements
+            document.getElementById('stats').style.display = 'block';
+            document.getElementById('filters').style.display = 'block';
+            
+            // Update stats
+            document.getElementById('af-count').textContent = data.action_fields.length;
+            document.getElementById('proj-count').textContent = data.projects.length;
+            document.getElementById('msr-count').textContent = data.measures.length;
+            document.getElementById('ind-count').textContent = data.indicators.length;
+            
+            // Process data
+            processData();
+            createVisualization();
+            
+            // Setup event listeners
+            setupEventListeners();
+        }
+        
+        function processData() {
+            nodes = [];
+            links = [];
+            
+            // Add nodes for each entity type
+            data.action_fields.forEach(item => {
+                nodes.push({
+                    id: item.id,
+                    type: 'af',
+                    name: item.content.name,
+                    content: item.content,
+                    connections: item.connections
+                });
+            });
+            
+            data.projects.forEach(item => {
+                nodes.push({
+                    id: item.id,
+                    type: 'proj',
+                    name: item.content.title,
+                    content: item.content,
+                    connections: item.connections
+                });
+            });
+            
+            data.measures.forEach(item => {
+                nodes.push({
+                    id: item.id,
+                    type: 'msr',
+                    name: item.content.title,
+                    content: item.content,
+                    connections: item.connections,
+                    sources: item.sources
+                });
+            });
+            
+            data.indicators.forEach(item => {
+                nodes.push({
+                    id: item.id,
+                    type: 'ind',
+                    name: item.content.name,
+                    content: item.content,
+                    connections: item.connections
+                });
+            });
+            
+            // Create links from connections
+            nodes.forEach(node => {
+                if (node.connections) {
+                    node.connections.forEach(conn => {
+                        links.push({
+                            source: node.id,
+                            target: conn.target_id,
+                            confidence: conn.confidence_score,
+                            justification: conn.justification
+                        });
+                    });
+                }
+            });
+        }
+        
+        function createVisualization() {
+            // Clear existing visualization
+            g.selectAll("*").remove();
+            
+            // Resize SVG
+            svg.attr("width", width()).attr("height", height());
+            
+            // Create simulation
+            simulation = d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(links).id(d => d.id).distance(100))
+                .force("charge", d3.forceManyBody().strength(-200))
+                .force("center", d3.forceCenter(width() / 2, height() / 2))
+                .force("collision", d3.forceCollide().radius(30));
+            
+            // Create links
+            const link = g.append("g")
+                .selectAll("line")
+                .data(links)
+                .join("line")
+                .attr("class", "link")
+                .attr("stroke-width", d => Math.sqrt(d.confidence * 3));
+            
+            // Create nodes
+            const node = g.append("g")
+                .selectAll("circle")
+                .data(nodes)
+                .join("circle")
+                .attr("class", d => `node node-${d.type}`)
+                .attr("r", d => d.type === 'af' ? 20 : d.type === 'proj' ? 16 : d.type === 'msr' ? 12 : 10)
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+            
+            // Add labels
+            const label = g.append("g")
+                .selectAll("text")
+                .data(nodes)
+                .join("text")
+                .attr("class", "node-label")
+                .text(d => d.name.length > 20 ? d.name.substring(0, 20) + "..." : d.name);
+            
+            // Add tooltips and click handlers
+            node
+                .on("mouseover", showTooltip)
+                .on("mouseout", hideTooltip)
+                .on("click", selectNode);
+            
+            // Update positions on simulation tick
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+                
+                node
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+                
+                label
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y + 4);
+            });
+        }
+        
+        function setupEventListeners() {
+            // Confidence slider
+            const slider = document.getElementById('confidenceSlider');
+            const valueDisplay = document.getElementById('confidenceValue');
+            
+            slider.addEventListener('input', function() {
+                valueDisplay.textContent = parseFloat(this.value).toFixed(1);
+                updateVisualization();
+            });
+            
+            // Entity type checkboxes
+            ['af', 'proj', 'msr', 'ind'].forEach(type => {
+                document.getElementById(`show-${type}`).addEventListener('change', updateVisualization);
+            });
+        }
+        
+        function updateVisualization() {
+            const minConfidence = parseFloat(document.getElementById('confidenceSlider').value);
+            const showTypes = {
+                af: document.getElementById('show-af').checked,
+                proj: document.getElementById('show-proj').checked,
+                msr: document.getElementById('show-msr').checked,
+                ind: document.getElementById('show-ind').checked
+            };
+            
+            // Filter nodes and links
+            const filteredNodes = nodes.filter(n => showTypes[n.type]);
+            const filteredLinks = links.filter(l => 
+                l.confidence >= minConfidence &&
+                showTypes[nodes.find(n => n.id === l.source.id || n.id === l.source).type] &&
+                showTypes[nodes.find(n => n.id === l.target.id || n.id === l.target).type]
+            );
+            
+            // Update visualization
+            g.selectAll(".link").data(filteredLinks, d => `${d.source.id}-${d.target.id}`)
+                .join("line")
+                .attr("class", "link")
+                .attr("stroke-width", d => Math.sqrt(d.confidence * 3))
+                .style("opacity", d => showTypes[d.source.type] && showTypes[d.target.type] ? 1 : 0);
+            
+            g.selectAll(".node").data(filteredNodes, d => d.id)
+                .join("circle")
+                .attr("class", d => `node node-${d.type}`)
+                .style("opacity", d => showTypes[d.type] ? 1 : 0);
+            
+            g.selectAll(".node-label").data(filteredNodes, d => d.id)
+                .join("text")
+                .attr("class", "node-label")
+                .style("opacity", d => showTypes[d.type] ? 1 : 0);
+            
+            // Update simulation
+            simulation.nodes(filteredNodes);
+            simulation.force("link").links(filteredLinks);
+            simulation.alpha(0.3).restart();
+        }
+        
+        // Tooltip functions
+        function showTooltip(event, d) {
+            const tooltip = document.getElementById('tooltip');
+            tooltip.style.display = 'block';
+            tooltip.style.left = (event.pageX + 10) + 'px';
+            tooltip.style.top = (event.pageY - 10) + 'px';
+            
+            let content = `<strong>${d.name}</strong><br>`;
+            content += `Type: ${d.type.toUpperCase()}<br>`;
+            content += `ID: ${d.id}<br>`;
+            if (d.connections) {
+                content += `Connections: ${d.connections.length}`;
+            }
+            
+            tooltip.innerHTML = content;
+        }
+        
+        function hideTooltip() {
+            document.getElementById('tooltip').style.display = 'none';
+        }
+        
+        function selectNode(event, d) {
+            // Remove previous selection
+            g.selectAll(".node").classed("selected", false);
+            
+            // Add selection to clicked node
+            d3.select(this).classed("selected", true);
+            
+            // Highlight connected nodes
+            const connectedIds = d.connections ? d.connections.map(c => c.target_id) : [];
+            connectedIds.push(d.id);
+            
+            g.selectAll(".node")
+                .style("opacity", n => connectedIds.includes(n.id) ? 1 : 0.3);
+            
+            g.selectAll(".link")
+                .style("opacity", l => 
+                    (l.source.id === d.id || l.target.id === d.id) ? 1 : 0.1
+                );
+        }
+        
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+        
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+        
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (simulation) {
+                svg.attr("width", width()).attr("height", height());
+                simulation.force("center", d3.forceCenter(width() / 2, height() / 2));
+                simulation.alpha(0.3).restart();
+            }
+        });
+    </script>
+</body>
+</html>
