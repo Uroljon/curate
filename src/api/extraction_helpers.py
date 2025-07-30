@@ -497,6 +497,11 @@ Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das die konsolidierten Hand
                     action_field_dict["projects"].append(project_dict)
                 aggregated_data.append(action_field_dict)
 
+            # Calculate actual output token length
+            output_json = json.dumps(aggregated_data, ensure_ascii=False)
+            actual_output_tokens = int(len(output_json) / 3.5)
+            print(f"   📊 Output: ~{actual_output_tokens} tokens (predicted: ~{dynamic_num_predict})")
+
             # Check if aggregation was too aggressive
             input_count = chunk_data.count('"action_field"')
             output_count = len(aggregated_data)
@@ -801,8 +806,9 @@ def aggregate_extraction_results(
     # Safe input limit: 15K tokens (32K - 17K overhead)
     context_safety_limit = 15000
 
-    print(f"📊 Data analysis: {data_size} characters ≈ {estimated_tokens} tokens")
-    print(f"📊 Input limit: {context_safety_limit} tokens (leaves 17K for prompt+output)")
+    print(f"📊 Aggregation data analysis: {data_size} characters ≈ {estimated_tokens} tokens")
+    print(f"📊 Context safety limit: {context_safety_limit} tokens (leaves 17K for prompt+output)")
+    print(f"📊 Total continuous input length: {len(all_chunk_results)} action fields")
 
     if estimated_tokens <= context_safety_limit:
         # Calculate remaining tokens for output (32K context)
@@ -1274,10 +1280,20 @@ Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der EnrichedReviewJSON-
 
 TRANSFORMATION REGELN:
 
-1. DEDUPLIZIERUNG (Konservativ):
-   - NUR exakte Duplikate zusammenführen (identischer Name)
-   - NUR fast identische Felder konsolidieren (>90% Überlappung)
-   - ALLE anderen Felder müssen SEPARAT bleiben
+1. INTELLIGENTE KONSOLIDIERUNG (3-Schritt-Prozess):
+   SCHRITT 1: Identifizieren Sie semantisch identische Gruppen:
+   - "Klimaschutz", "Klimaanpassung", "Klimaschutz und Klimaanpassung" → EINE Gruppe
+   - "Siedlungsentwicklung", "Quartiersentwicklung" → EINE Gruppe
+   - "Freizeit- und Erholungsachse", "Freizeit- und Kulturachse" → EINE Gruppe
+
+   SCHRITT 2: Erstellen Sie kanonische Namen:
+   - Wählen Sie den umfassendsten Namen: "Klimaschutz und Klimaanpassung"
+   - Oder kombinieren Sie: "Siedlungs- und Quartiersentwicklung"
+
+   SCHRITT 3: Verbindungen neu verknüpfen:
+   - ALLE Projekte/Measures/Indikatoren der alten Fragmente
+   - Verknüpfen Sie mit dem NEUEN kanonischen Knoten
+   - Löschen Sie die alten fragmentierten Knoten
 
    Beispiele NICHT konsolidieren:
    ❌ "Klimaschutz" und "Energie" → Bleiben getrennt
@@ -1444,6 +1460,10 @@ INSTRUCTIONS:
 Respond with the enhanced structure containing ONLY the new entities from this chunk.
 """
 
+        # Calculate token lengths for logging
+        input_token_length = int(len(context_aware_prompt) / 3.5)
+        print(f"    📊 Input: ~{input_token_length} tokens")
+
         # Query LLM with cumulative context (with retry)
         result = None
         for attempt in range(2):
@@ -1462,6 +1482,11 @@ Respond with the enhanced structure containing ONLY the new entities from this c
         chunk_timings.append(chunk_processing_time)
 
         if result:
+            # Calculate output token length
+            result_json = json.dumps(result.model_dump(), ensure_ascii=False)
+            output_token_length = int(len(result_json) / 3.5)
+            print(f"    📊 Output: ~{output_token_length} tokens")
+
             # Merge new entities into the enhanced structure
             merge_result = merge_chunk_result(enhanced_structure, result, global_counters)
             if merge_result:
