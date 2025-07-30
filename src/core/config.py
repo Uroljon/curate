@@ -121,3 +121,21 @@ MIN_QUOTE_LENGTH = 15  # Minimum characters for a quote to be considered for mat
 AGGREGATION_CHUNK_SIZE = (
     15  # Number of action fields to process in each aggregation batch
 )
+
+# Entity Resolution Configuration
+ENTITY_RESOLUTION_ENABLED = True  # Enable entity resolution to fix node fragmentation
+ENTITY_RESOLUTION_SIMILARITY_THRESHOLD = (
+    0.75  # Minimum similarity for merge consideration (0-1)
+)
+ENTITY_RESOLUTION_AUTO_MERGE_THRESHOLD = (
+    0.90  # Auto-merge threshold for very similar entities (0-1)
+)
+ENTITY_RESOLUTION_RESOLVE_ACTION_FIELDS = True  # Resolve action field duplicates
+ENTITY_RESOLUTION_RESOLVE_PROJECTS = True  # Resolve project duplicates
+
+# Extraction Consistency Configuration
+EXTRACTION_CONSISTENCY_ENABLED = (
+    True  # Enable consistency validation to fix uneven edge distribution
+)
+EXTRACTION_CONSISTENCY_MIN_MEASURES_PER_PROJECT = 1  # Minimum measures per project
+EXTRACTION_CONSISTENCY_MIN_INDICATORS_PER_PROJECT = 1  # Minimum indicators per project

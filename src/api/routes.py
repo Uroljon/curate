@@ -509,10 +509,12 @@ async def enhance_structure(
         intermediate_path = os.path.join(UPLOAD_FOLDER, intermediate_filename)
 
         if not os.path.exists(intermediate_path):
-            error_msg = f"Intermediate extraction file not found: {intermediate_filename}"
+            error_msg = (
+                f"Intermediate extraction file not found: {intermediate_filename}"
+            )
             raise FileNotFoundError(error_msg)
 
-        with open(intermediate_path, encoding='utf-8') as f:
+        with open(intermediate_path, encoding="utf-8") as f:
             intermediate_data = json.load(f)
 
         # Validate intermediate data structure
@@ -524,7 +526,7 @@ async def enhance_structure(
         monitor.end_stage(
             "file_loading",
             structures_loaded=len(structures),
-            intermediate_file_size=os.path.getsize(intermediate_path)
+            intermediate_file_size=os.path.getsize(intermediate_path),
         )
 
         print(f"📄 Loaded intermediate file: {intermediate_filename}")
@@ -543,27 +545,94 @@ async def enhance_structure(
         enhanced_result = transform_to_enhanced_structure(
             intermediate_data,
             log_file_path=enhance_dialog_path,
-            log_context="Structure Enhancement - Two-Layer Pipeline"
+            log_context="Structure Enhancement - Two-Layer Pipeline",
         )
 
         if not enhanced_result:
             msg = "LLM transformation failed - no enhanced structure returned"
             raise ValueError(msg)
 
+        # Stage 2.5: Apply entity resolution and consistency validation
+        monitor.start_stage("entity_resolution_and_validation")
+
+        print("\n🔧 Applying entity resolution and consistency validation...")
+
+        # Convert enhanced structure to intermediate format for processing
+        structures_for_processing = []
+
+        # Group entities by action field for processing
+        proj_lookup = {p.id: p for p in enhanced_result.projects}
+
+        for action_field in enhanced_result.action_fields:
+            # Find projects connected to this action field
+            connected_projects = []
+            for connection in action_field.connections:
+                if connection.target_id in proj_lookup:
+                    project = proj_lookup[connection.target_id]
+
+                    # Find measures and indicators for this project
+                    project_measures = []
+                    project_indicators = []
+
+                    for proj_conn in project.connections:
+                        # Find connected measures
+                        for measure in enhanced_result.measures:
+                            if measure.id == proj_conn.target_id:
+                                measure_title = measure.content.get('title', '')
+                                if measure_title:
+                                    project_measures.append(measure_title)
+                                break
+                        # Find connected indicators
+                        for indicator in enhanced_result.indicators:
+                            if indicator.id == proj_conn.target_id:
+                                indicator_name = indicator.content.get('name', '')
+                                if indicator_name:
+                                    project_indicators.append(indicator_name)
+                                break
+
+                    project_title = project.content.get('title', '')
+                    if project_title:
+                        connected_projects.append({
+                            "title": project_title,
+                            "measures": project_measures,
+                            "indicators": project_indicators
+                        })
+
+            action_field_name = action_field.content.get('name', '')
+            if action_field_name:
+                structures_for_processing.append({
+                    "action_field": action_field_name,
+                    "projects": connected_projects
+                })
+
+        # Apply entity resolution and consistency validation
+        from src.api.extraction_helpers import apply_consistency_validation, apply_entity_resolution_with_monitoring, rebuild_enhanced_structure_from_resolved
+
+        resolved_structures = apply_entity_resolution_with_monitoring(structures_for_processing)
+        validated_structures = apply_consistency_validation(resolved_structures)
+
+        # Convert back to enhanced structure format with unique ID validation
+        enhanced_result = rebuild_enhanced_structure_from_resolved(validated_structures, enhanced_result)
+
+        monitor.end_stage("entity_resolution_and_validation",
+                         resolved_entities=len(validated_structures))
+
+        print("✅ Entity resolution and validation completed")
+
         # Calculate transformation statistics
         total_entities = (
-            len(enhanced_result.action_fields) +
-            len(enhanced_result.projects) +
-            len(enhanced_result.measures) +
-            len(enhanced_result.indicators)
+            len(enhanced_result.action_fields)
+            + len(enhanced_result.projects)
+            + len(enhanced_result.measures)
+            + len(enhanced_result.indicators)
         )
 
         # Count total connections
         total_connections = (
-            sum(len(af.connections) for af in enhanced_result.action_fields) +
-            sum(len(p.connections) for p in enhanced_result.projects) +
-            sum(len(m.connections) for m in enhanced_result.measures) +
-            sum(len(i.connections) for i in enhanced_result.indicators)
+            sum(len(af.connections) for af in enhanced_result.action_fields)
+            + sum(len(p.connections) for p in enhanced_result.projects)
+            + sum(len(m.connections) for m in enhanced_result.measures)
+            + sum(len(i.connections) for i in enhanced_result.indicators)
         )
 
         monitor.end_stage(
@@ -573,7 +642,7 @@ async def enhance_structure(
             projects=len(enhanced_result.projects),
             measures=len(enhanced_result.measures),
             indicators=len(enhanced_result.indicators),
-            total_connections=total_connections
+            total_connections=total_connections,
         )
 
         # Stage 3: Save enhanced structure to file
@@ -583,35 +652,38 @@ async def enhance_structure(
         enhanced_path = os.path.join(UPLOAD_FOLDER, enhanced_filename)
 
         enhanced_data = enhanced_result.model_dump()
-        with open(enhanced_path, 'w', encoding='utf-8') as f:
+        with open(enhanced_path, "w", encoding="utf-8") as f:
             json.dump(enhanced_data, f, ensure_ascii=False, indent=2)
 
         monitor.end_stage(
-            "file_saving",
-            enhanced_file_size=os.path.getsize(enhanced_path)
+            "file_saving", enhanced_file_size=os.path.getsize(enhanced_path)
         )
 
         # Calculate total processing time
         processing_time = time.time() - start_time
 
         print(f"\n⏱️  Enhancement completed in {processing_time:.2f} seconds")
-        print(f"✅ Results: {total_entities} entities with {total_connections} connections")
+        print(
+            f"✅ Results: {total_entities} entities with {total_connections} connections"
+        )
         print(f"💾 Saved enhanced structure to: {enhanced_filename}")
 
         # Prepare response data
         response_data = enhanced_data.copy()
-        response_data.update({
-            "enhanced_file": enhanced_filename,
-            "processing_time_seconds": round(processing_time, 2),
-            "transformation_stats": {
-                "total_entities": total_entities,
-                "total_connections": total_connections,
-                "action_fields_count": len(enhanced_result.action_fields),
-                "projects_count": len(enhanced_result.projects),
-                "measures_count": len(enhanced_result.measures),
-                "indicators_count": len(enhanced_result.indicators),
+        response_data.update(
+            {
+                "enhanced_file": enhanced_filename,
+                "processing_time_seconds": round(processing_time, 2),
+                "transformation_stats": {
+                    "total_entities": total_entities,
+                    "total_connections": total_connections,
+                    "action_fields_count": len(enhanced_result.action_fields),
+                    "projects_count": len(enhanced_result.projects),
+                    "measures_count": len(enhanced_result.measures),
+                    "indicators_count": len(enhanced_result.indicators),
+                },
             }
-        })
+        )
 
         # Finalize monitoring
         monitor.finalize(response_data)

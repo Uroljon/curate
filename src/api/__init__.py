@@ -1,9 +1,9 @@
 """API module for CURATE."""
 
-from .routes import extract_structure, upload_pdf, enhance_structure
+from .routes import enhance_structure, extract_structure, upload_pdf
 
 __all__ = [
+    "enhance_structure",
     "extract_structure",
     "upload_pdf",
-    "enhance_structure",
 ]

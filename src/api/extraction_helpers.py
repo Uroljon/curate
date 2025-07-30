@@ -375,7 +375,7 @@ def perform_single_aggregation(
     chunk_data: str,
     log_file_path: str | None = None,
     log_context: str | None = None,
-    override_output_tokens: int | None = None
+    override_output_tokens: int | None = None,
 ) -> list[dict[str, Any]] | None:
     """
     Perform a single aggregation pass on JSON data.
@@ -461,7 +461,9 @@ Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das die konsolidierten Hand
             estimated_output_tokens = int(estimated_input_tokens * 0.8)
             # Cap at 30720 (75% of 40K context) to leave room for prompt
             dynamic_num_predict = max(8192, min(estimated_output_tokens, 30720))
-        print(f"   📊 Input: ~{estimated_input_tokens} tokens, Output: ~{dynamic_num_predict} tokens")
+        print(
+            f"   📊 Input: ~{estimated_input_tokens} tokens, Output: ~{dynamic_num_predict} tokens"
+        )
 
         # Update log context to include token info
         enhanced_log_context = (
@@ -500,7 +502,9 @@ Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das die konsolidierten Hand
             # Calculate actual output token length
             output_json = json.dumps(aggregated_data, ensure_ascii=False)
             actual_output_tokens = int(len(output_json) / 3.5)
-            print(f"   📊 Output: ~{actual_output_tokens} tokens (predicted: ~{dynamic_num_predict})")
+            print(
+                f"   📊 Output: ~{actual_output_tokens} tokens (predicted: ~{dynamic_num_predict})"
+            )
 
             # Check if aggregation was too aggressive
             input_count = chunk_data.count('"action_field"')
@@ -806,14 +810,20 @@ def aggregate_extraction_results(
     # Safe input limit: 15K tokens (32K - 17K overhead)
     context_safety_limit = 15000
 
-    print(f"📊 Aggregation data analysis: {data_size} characters ≈ {estimated_tokens} tokens")
-    print(f"📊 Context safety limit: {context_safety_limit} tokens (leaves 17K for prompt+output)")
+    print(
+        f"📊 Aggregation data analysis: {data_size} characters ≈ {estimated_tokens} tokens"
+    )
+    print(
+        f"📊 Context safety limit: {context_safety_limit} tokens (leaves 17K for prompt+output)"
+    )
     print(f"📊 Total continuous input length: {len(all_chunk_results)} action fields")
 
     if estimated_tokens <= context_safety_limit:
         # Calculate remaining tokens for output (32K context)
         remaining_tokens = 32768 - estimated_tokens - 2000  # Reserve 2K for prompt
-        output_tokens = min(remaining_tokens - 1000, 15000)  # Cap output, leave 1K buffer
+        output_tokens = min(
+            remaining_tokens - 1000, 15000
+        )  # Cap output, leave 1K buffer
         print(f"📊 Output allocation: {output_tokens} tokens available")
         print("✅ Data fits in context window - using single-pass aggregation")
 
@@ -825,11 +835,13 @@ def aggregate_extraction_results(
                 if log_context_prefix
                 else f"Single Pass ({estimated_tokens}→{output_tokens} tokens)"
             ),
-            override_output_tokens=output_tokens
+            override_output_tokens=output_tokens,
         )
     else:
-        print(f"⚠️ Data too large ({estimated_tokens} tokens) - falling back to chunked aggregation")
-        return chunked_aggregation(
+        print(
+            f"⚠️ Data too large ({estimated_tokens} tokens) - falling back to chunked aggregation"
+        )
+        result = chunked_aggregation(
             all_chunk_results,
             log_file_path=log_file_path,
             log_context_prefix=log_context_prefix,
@@ -839,10 +851,349 @@ def aggregate_extraction_results(
         # Final validation to remove any English contamination
         validated_data = validate_german_only_content(result)
         print(f"✅ Aggregated to {len(validated_data)} clean German action fields")
-        return validated_data
+
+        # Apply entity resolution to fix node fragmentation
+        resolved_data = apply_entity_resolution_with_monitoring(validated_data)
+
+        # Apply consistency validation to fix uneven edge distribution
+        consistent_data = apply_consistency_validation(resolved_data)
+        return consistent_data
     else:
         print("⚠️ Single aggregation failed, using simple deduplication fallback")
-        return simple_deduplication_fallback(all_chunk_results)
+        fallback_data = simple_deduplication_fallback(all_chunk_results)
+
+        # Apply entity resolution to fallback data as well
+        resolved_data = apply_entity_resolution_with_monitoring(fallback_data)
+
+        # Apply consistency validation to fallback data as well
+        consistent_data = apply_consistency_validation(resolved_data)
+        return consistent_data
+
+
+def apply_entity_resolution_with_monitoring(
+    structures: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Apply entity resolution with quality monitoring and reporting.
+
+    Args:
+        structures: List of extraction structures
+
+    Returns:
+        Structures with resolved entities
+    """
+    from src.core.config import (
+        ENTITY_RESOLUTION_ENABLED,
+        ENTITY_RESOLUTION_RESOLVE_ACTION_FIELDS,
+        ENTITY_RESOLUTION_RESOLVE_PROJECTS,
+    )
+    from src.processing.entity_resolver import resolve_extraction_entities
+    from src.utils.graph_quality import (
+        GraphQualityAnalyzer,
+        analyze_graph_quality,
+        print_improvement_report,
+        print_quality_report,
+    )
+
+    if not ENTITY_RESOLUTION_ENABLED:
+        return structures
+
+    if not structures:
+        return structures
+
+    try:
+        print("\n🔗 Applying entity resolution with quality monitoring...")
+
+        # Measure quality before resolution
+        before_metrics = analyze_graph_quality(structures, before_resolution=True)
+        print_quality_report(before_metrics)
+
+        # Apply entity resolution
+        resolved_structures = resolve_extraction_entities(
+            structures,
+            resolve_action_fields=ENTITY_RESOLUTION_RESOLVE_ACTION_FIELDS,
+            resolve_projects=ENTITY_RESOLUTION_RESOLVE_PROJECTS,
+        )
+
+        # Measure quality after resolution
+        after_metrics = analyze_graph_quality(
+            resolved_structures, before_resolution=False
+        )
+        print_quality_report(after_metrics)
+
+        # Calculate and report improvements
+        analyzer = GraphQualityAnalyzer()
+        improvement_metrics = analyzer.compare_before_after(
+            before_metrics, after_metrics
+        )
+        print_improvement_report(improvement_metrics)
+
+        return resolved_structures
+
+    except Exception as e:
+        print(f"⚠️ Entity resolution failed: {e}")
+        print("   Falling back to original structures")
+        return structures
+
+
+def apply_entity_resolution(structures: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Apply entity resolution to fix node fragmentation issues (without monitoring).
+
+    Args:
+        structures: List of extraction structures
+
+    Returns:
+        Structures with resolved entities
+    """
+    from src.core.config import (
+        ENTITY_RESOLUTION_ENABLED,
+        ENTITY_RESOLUTION_RESOLVE_ACTION_FIELDS,
+        ENTITY_RESOLUTION_RESOLVE_PROJECTS,
+    )
+    from src.processing.entity_resolver import resolve_extraction_entities
+
+    if not ENTITY_RESOLUTION_ENABLED:
+        return structures
+
+    if not structures:
+        return structures
+
+    try:
+        print(f"\n🔗 Applying entity resolution to {len(structures)} structures...")
+
+        resolved_structures = resolve_extraction_entities(
+            structures,
+            resolve_action_fields=ENTITY_RESOLUTION_RESOLVE_ACTION_FIELDS,
+            resolve_projects=ENTITY_RESOLUTION_RESOLVE_PROJECTS,
+        )
+
+        return resolved_structures
+
+    except Exception as e:
+        print(f"⚠️ Entity resolution failed: {e}")
+        print("   Falling back to original structures")
+        return structures
+
+
+def rebuild_enhanced_structure_from_resolved(
+    resolved_structures: list[dict[str, Any]],
+    original_enhanced: Any
+) -> Any:
+    """
+    Rebuild enhanced structure from resolved intermediate structures with unique ID validation.
+    
+    Args:
+        resolved_structures: Entity-resolved structures in intermediate format
+        original_enhanced: Original enhanced structure to use as template
+        
+    Returns:
+        New enhanced structure with resolved entities and guaranteed unique IDs
+    """
+    from src.core.schemas import ConnectionWithConfidence, EnhancedActionField, EnhancedIndicator, EnhancedMeasure, EnhancedProject, EnrichedReviewJSON
+
+    # Track used IDs to prevent duplicates
+    used_ids = set()
+    id_counters = {"af": 0, "proj": 0, "msr": 0, "ind": 0}
+
+    def get_unique_id(prefix: str, title: str) -> str:
+        """Generate guaranteed unique ID"""
+        # Try sequential numbering
+        for i in range(1, 10000):  # Reasonable upper limit
+            candidate_id = f"{prefix}_{i}"
+            if candidate_id not in used_ids:
+                used_ids.add(candidate_id)
+                id_counters[prefix] = max(id_counters[prefix], i)
+                return candidate_id
+
+        # Fallback with title hash if sequential fails
+        import hashlib
+        hash_suffix = hashlib.md5(title.encode()).hexdigest()[:4]
+        candidate_id = f"{prefix}_{hash_suffix}"
+
+        # Ensure even hash-based IDs are unique
+        counter = 1
+        while candidate_id in used_ids:
+            candidate_id = f"{prefix}_{hash_suffix}_{counter}"
+            counter += 1
+
+        used_ids.add(candidate_id)
+        return candidate_id
+
+    # Build new enhanced structure
+    new_action_fields = []
+    new_projects = []
+    new_measures = []
+    new_indicators = []
+
+    # Maps for connection building
+    entity_id_map = {}  # old_title -> new_id
+
+    print(f"🔄 Rebuilding enhanced structure from {len(resolved_structures)} resolved entities...")
+
+    # First pass: Create all entities with unique IDs
+    for structure in resolved_structures:
+        action_field_title = structure.get("action_field", "")
+        if not action_field_title:
+            continue
+
+        # Create or reuse action field
+        af_id = entity_id_map.get(f"af:{action_field_title}")
+        if not af_id:
+            af_id = get_unique_id("af", action_field_title)
+            entity_id_map[f"af:{action_field_title}"] = af_id
+
+            new_action_fields.append(EnhancedActionField(
+                id=af_id,
+                content={"name": action_field_title},
+                connections=[]  # Will be populated in second pass
+            ))
+
+        # Process projects
+        for project in structure.get("projects", []):
+            project_title = project.get("title", "")
+            if not project_title:
+                continue
+
+            proj_id = entity_id_map.get(f"proj:{project_title}")
+            if not proj_id:
+                proj_id = get_unique_id("proj", project_title)
+                entity_id_map[f"proj:{project_title}"] = proj_id
+
+                new_projects.append(EnhancedProject(
+                    id=proj_id,
+                    content={"title": project_title},
+                    connections=[]  # Will be populated in second pass
+                ))
+
+            # Process measures
+            for measure_title in project.get("measures", []):
+                if not measure_title or measure_title == "Information im Quelldokument nicht verfügbar":
+                    continue  # Skip null values
+
+                msr_id = entity_id_map.get(f"msr:{measure_title}")
+                if not msr_id:
+                    msr_id = get_unique_id("msr", measure_title)
+                    entity_id_map[f"msr:{measure_title}"] = msr_id
+
+                    new_measures.append(EnhancedMeasure(
+                        id=msr_id,
+                        content={"title": measure_title},
+                        connections=[]  # Will be populated in second pass
+                    ))
+
+            # Process indicators
+            for indicator_title in project.get("indicators", []):
+                if not indicator_title or indicator_title == "Information im Quelldokument nicht verfügbar":
+                    continue  # Skip null values
+
+                ind_id = entity_id_map.get(f"ind:{indicator_title}")
+                if not ind_id:
+                    ind_id = get_unique_id("ind", indicator_title)
+                    entity_id_map[f"ind:{indicator_title}"] = ind_id
+
+                    new_indicators.append(EnhancedIndicator(
+                        id=ind_id,
+                        content={"name": indicator_title},
+                        connections=[]  # Will be populated in second pass
+                    ))
+
+    # Second pass: Build connections with deduplication
+    af_lookup = {af.content["name"]: af for af in new_action_fields}
+    proj_lookup = {p.content["title"]: p for p in new_projects}
+    msr_lookup = {m.content["title"]: m for m in new_measures}
+    ind_lookup = {i.content["name"]: i for i in new_indicators}
+
+    for structure in resolved_structures:
+        action_field_title = structure.get("action_field", "")
+        if action_field_title not in af_lookup:
+            continue
+
+        action_field = af_lookup[action_field_title]
+
+        for project in structure.get("projects", []):
+            project_title = project.get("title", "")
+            if not project_title or project_title not in proj_lookup:
+                continue
+
+            project_node = proj_lookup[project_title]
+
+            # Add AF -> Project connection (avoid duplicates)
+            proj_connection = ConnectionWithConfidence(
+                target_id=project_node.id,
+                confidence_score=0.9,
+                justification="Project belongs to this action field based on document structure"
+            )
+            if not any(c.target_id == project_node.id for c in action_field.connections):
+                action_field.connections.append(proj_connection)
+
+            # Add Project -> Measure connections
+            for measure_title in project.get("measures", []):
+                if measure_title and measure_title in msr_lookup:
+                    measure_node = msr_lookup[measure_title]
+                    msr_connection = ConnectionWithConfidence(
+                        target_id=measure_node.id,
+                        confidence_score=0.8,
+                        justification="Measure is part of this project as defined in source document"
+                    )
+                    if not any(c.target_id == measure_node.id for c in project_node.connections):
+                        project_node.connections.append(msr_connection)
+
+            # Add Project -> Indicator connections
+            for indicator_title in project.get("indicators", []):
+                if indicator_title and indicator_title in ind_lookup:
+                    indicator_node = ind_lookup[indicator_title]
+                    ind_connection = ConnectionWithConfidence(
+                        target_id=indicator_node.id,
+                        confidence_score=0.8,
+                        justification="Indicator is associated with this project based on content analysis"
+                    )
+                    if not any(c.target_id == indicator_node.id for c in project_node.connections):
+                        project_node.connections.append(ind_connection)
+
+    # Validate all IDs are unique
+    all_ids = [af.id for af in new_action_fields] + [p.id for p in new_projects] + \
+              [m.id for m in new_measures] + [i.id for i in new_indicators]
+
+    if len(all_ids) != len(set(all_ids)):
+        raise ValueError("❌ CRITICAL: Duplicate IDs found after rebuild - this should never happen!")
+
+    print(f"✅ Rebuilt with unique IDs: {len(new_action_fields)} AF, {len(new_projects)} P, {len(new_measures)} M, {len(new_indicators)} I")
+    print(f"🆔 ID validation: {len(all_ids)} total IDs, all unique")
+
+    return EnrichedReviewJSON(
+        action_fields=new_action_fields,
+        projects=new_projects,
+        measures=new_measures,
+        indicators=new_indicators
+    )
+
+
+def apply_consistency_validation(
+    structures: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Apply extraction consistency validation to improve edge distribution.
+
+    Args:
+        structures: List of extraction structures
+
+    Returns:
+        Structures with improved consistency
+    """
+    from src.processing.extraction_consistency import validate_extraction_consistency
+
+    if not structures:
+        return structures
+
+    try:
+        consistent_structures = validate_extraction_consistency(structures)
+        return consistent_structures
+
+    except Exception as e:
+        print(f"⚠️ Consistency validation failed: {e}")
+        print("   Falling back to original structures")
+        return structures
 
 
 @lru_cache(maxsize=1)
@@ -1338,7 +1689,9 @@ Erstellen Sie die vier separaten Listen mit allen Verbindungen und Konfidenz-Sco
         context_safety_limit = 20000  # Conservative limit
 
         if estimated_input_tokens > context_safety_limit:
-            print(f"⚠️ Data too large ({estimated_input_tokens} tokens) - using chunked processing")
+            print(
+                f"⚠️ Data too large ({estimated_input_tokens} tokens) - using chunked processing"
+            )
             return transform_large_dataset_chunked(
                 structures, log_file_path, log_context
             )
@@ -1358,10 +1711,10 @@ Erstellen Sie die vier separaten Listen mit allen Verbindungen und Konfidenz-Sco
         if result:
             # Validate the result
             total_entities = (
-                len(result.action_fields) +
-                len(result.projects) +
-                len(result.measures) +
-                len(result.indicators)
+                len(result.action_fields)
+                + len(result.projects)
+                + len(result.measures)
+                + len(result.indicators)
             )
             print(f"✅ Enhanced structure created: {total_entities} total entities")
             print(f"   - Action Fields: {len(result.action_fields)}")
@@ -1404,18 +1757,15 @@ def transform_large_dataset_chunked(
 
     # Initialize progressive enhanced structure
     enhanced_structure = EnrichedReviewJSON(
-        action_fields=[],
-        projects=[],
-        measures=[],
-        indicators=[]
+        action_fields=[], projects=[], measures=[], indicators=[]
     )
 
     # Global ID counters for consistent numbering
     global_counters = {
-        'action_fields': 0,
-        'projects': 0,
-        'measures': 0,
-        'indicators': 0
+        "action_fields": 0,
+        "projects": 0,
+        "measures": 0,
+        "indicators": 0,
     }
 
     success_count = 0
@@ -1472,7 +1822,11 @@ Respond with the enhanced structure containing ONLY the new entities from this c
                 response_model=EnrichedReviewJSON,
                 thinking_mode="contextual",
                 log_file_path=log_file_path,
-                log_context=f"{log_context}_chunk_{chunk_idx}" if log_context else f"chunk_{chunk_idx}",
+                log_context=(
+                    f"{log_context}_chunk_{chunk_idx}"
+                    if log_context
+                    else f"chunk_{chunk_idx}"
+                ),
             )
             if result:
                 break
@@ -1488,14 +1842,22 @@ Respond with the enhanced structure containing ONLY the new entities from this c
             print(f"    📊 Output: ~{output_token_length} tokens")
 
             # Merge new entities into the enhanced structure
-            merge_result = merge_chunk_result(enhanced_structure, result, global_counters)
+            merge_result = merge_chunk_result(
+                enhanced_structure, result, global_counters
+            )
             if merge_result:
                 success_count += 1
-                print(f"    ✅ Chunk {chunk_idx} processed in {chunk_processing_time:.2f}s")
+                print(
+                    f"    ✅ Chunk {chunk_idx} processed in {chunk_processing_time:.2f}s"
+                )
             else:
-                print(f"    ⚠️ Chunk {chunk_idx} merge failed in {chunk_processing_time:.2f}s")
+                print(
+                    f"    ⚠️ Chunk {chunk_idx} merge failed in {chunk_processing_time:.2f}s"
+                )
         else:
-            print(f"    ❌ Chunk {chunk_idx} transformation failed in {chunk_processing_time:.2f}s")
+            print(
+                f"    ❌ Chunk {chunk_idx} transformation failed in {chunk_processing_time:.2f}s"
+            )
 
     # Calculate timing summary
     if chunk_timings:
@@ -1508,7 +1870,9 @@ Respond with the enhanced structure containing ONLY the new entities from this c
         }
 
         print("\n📊 Processing Summary:")
-        print(f"    Chunks: {success_count}/{len(structures)} ({timing_summary['success_rate']:.1%})")
+        print(
+            f"    Chunks: {success_count}/{len(structures)} ({timing_summary['success_rate']:.1%})"
+        )
         print(f"    Avg time: {timing_summary['avg_chunk_time']:.2f}s/chunk")
         print(f"    Total time: {timing_summary['total_processing_time']:.2f}s")
         print(
@@ -1534,25 +1898,39 @@ def build_entity_context_summary(enhanced_structure) -> str:
 
     # Action Fields
     if enhanced_structure.action_fields:
-        af_list = [f"  {af.id}: {af.content.get('name', 'Unnamed')}" for af in enhanced_structure.action_fields]
-        summary_parts.append(f"Action Fields ({len(enhanced_structure.action_fields)}):")
+        af_list = [
+            f"  {af.id}: {af.content.get('name', 'Unnamed')}"
+            for af in enhanced_structure.action_fields
+        ]
+        summary_parts.append(
+            f"Action Fields ({len(enhanced_structure.action_fields)}):"
+        )
         summary_parts.extend(af_list)
 
     # Projects
     if enhanced_structure.projects:
-        proj_list = [f"  {p.id}: {p.content.get('title', 'Untitled')}" for p in enhanced_structure.projects]
+        proj_list = [
+            f"  {p.id}: {p.content.get('title', 'Untitled')}"
+            for p in enhanced_structure.projects
+        ]
         summary_parts.append(f"\nProjects ({len(enhanced_structure.projects)}):")
         summary_parts.extend(proj_list)
 
     # Measures
     if enhanced_structure.measures:
-        msr_list = [f"  {m.id}: {m.content.get('title', 'Unnamed')}" for m in enhanced_structure.measures]
+        msr_list = [
+            f"  {m.id}: {m.content.get('title', 'Unnamed')}"
+            for m in enhanced_structure.measures
+        ]
         summary_parts.append(f"\nMeasures ({len(enhanced_structure.measures)}):")
         summary_parts.extend(msr_list)
 
     # Indicators
     if enhanced_structure.indicators:
-        ind_list = [f"  {i.id}: {i.content.get('name', 'Unnamed')}" for i in enhanced_structure.indicators]
+        ind_list = [
+            f"  {i.id}: {i.content.get('name', 'Unnamed')}"
+            for i in enhanced_structure.indicators
+        ]
         summary_parts.append(f"\nIndicators ({len(enhanced_structure.indicators)}):")
         summary_parts.extend(ind_list)
 
@@ -1630,7 +2008,9 @@ def merge_chunk_result(enhanced_structure, chunk_result, global_counters: dict) 
             if af.id.startswith("af_"):
                 try:
                     id_num = int(af.id.split("_")[1])
-                    global_counters['action_fields'] = max(global_counters['action_fields'], id_num)
+                    global_counters["action_fields"] = max(
+                        global_counters["action_fields"], id_num
+                    )
                 except (ValueError, IndexError):
                     pass
 
@@ -1641,7 +2021,9 @@ def merge_chunk_result(enhanced_structure, chunk_result, global_counters: dict) 
             if proj.id.startswith("proj_"):
                 try:
                     id_num = int(proj.id.split("_")[1])
-                    global_counters['projects'] = max(global_counters['projects'], id_num)
+                    global_counters["projects"] = max(
+                        global_counters["projects"], id_num
+                    )
                 except (ValueError, IndexError):
                     pass
 
@@ -1652,7 +2034,9 @@ def merge_chunk_result(enhanced_structure, chunk_result, global_counters: dict) 
             if msr.id.startswith("msr_"):
                 try:
                     id_num = int(msr.id.split("_")[1])
-                    global_counters['measures'] = max(global_counters['measures'], id_num)
+                    global_counters["measures"] = max(
+                        global_counters["measures"], id_num
+                    )
                 except (ValueError, IndexError):
                     pass
 
@@ -1663,7 +2047,9 @@ def merge_chunk_result(enhanced_structure, chunk_result, global_counters: dict) 
             if ind.id.startswith("ind_"):
                 try:
                     id_num = int(ind.id.split("_")[1])
-                    global_counters['indicators'] = max(global_counters['indicators'], id_num)
+                    global_counters["indicators"] = max(
+                        global_counters["indicators"], id_num
+                    )
                 except (ValueError, IndexError):
                     pass
 
@@ -1672,5 +2058,3 @@ def merge_chunk_result(enhanced_structure, chunk_result, global_counters: dict) 
     except Exception as e:
         print(f"❌ Failed to merge chunk result: {e}")
         return False
-
-

@@ -95,10 +95,31 @@ def merge_similar_action_fields(fields: list[str]) -> list[str]:
     Examples:
     - "Klimaschutz" and "Klimaschutz und Energie" → "Klimaschutz und Energie"
     - "Mobilität" and "Mobilität und Verkehr" → "Mobilität und Verkehr"
+
+    This function now uses the advanced EntityResolver for more sophisticated merging.
     """
     if not fields:
         return []
 
+    # Convert fields to structure format for entity resolver
+    temp_structures = [{"action_field": field, "projects": []} for field in fields]
+
+    # Use entity resolver for sophisticated merging
+    from src.core.config import ENTITY_RESOLUTION_ENABLED
+    from src.processing.entity_resolver import resolve_extraction_entities
+
+    if ENTITY_RESOLUTION_ENABLED:
+        try:
+            resolved_structures = resolve_extraction_entities(
+                temp_structures, resolve_action_fields=True, resolve_projects=False
+            )
+            # Extract the resolved field names
+            merged_fields = [struct["action_field"] for struct in resolved_structures]
+            return sorted(merged_fields)  # Return alphabetically sorted
+        except Exception as e:
+            print(f"⚠️ Entity resolution failed, falling back to simple merging: {e}")
+
+    # Fallback to original simple merging logic
     # Sort by length (longer names often contain more context)
     sorted_fields = sorted(fields, key=len, reverse=True)
     merged: list[str] = []
