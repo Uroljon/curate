@@ -437,7 +437,11 @@ class ExtractionConsistencyValidator:
             )
 
         # Filter out null-value measures
-        measures = [m for m in measures if m and m != "Information im Quelldokument nicht verfügbar"]
+        measures = [
+            m
+            for m in measures
+            if m and m != "Information im Quelldokument nicht verfügbar"
+        ]
 
         return measures[:3]  # Limit to 3 measures to avoid over-generation
 
@@ -538,7 +542,11 @@ class ExtractionConsistencyValidator:
             )
 
         # Filter out null-value indicators
-        indicators = [i for i in indicators if i and i != "Information im Quelldokument nicht verfügbar"]
+        indicators = [
+            i
+            for i in indicators
+            if i and i != "Information im Quelldokument nicht verfügbar"
+        ]
 
         return indicators[:3]  # Limit to 3 indicators
 

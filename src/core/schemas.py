@@ -98,7 +98,7 @@ class ProjectDetailsEnhanced(BaseModel):
 
 class ConnectionWithConfidence(BaseModel):
     """Represents a connection between entities with confidence scoring."""
-    
+
     model_config = {"extra": "forbid"}
 
     target_id: str = Field(..., description="ID of the target entity")
@@ -108,34 +108,71 @@ class ConnectionWithConfidence(BaseModel):
 
 
 class EnhancedActionField(BaseModel):
-    """Enhanced action field for relational 4-bucket structure."""
+    """Enhanced action field for relational 4-bucket structure matching Appwrite Dimensions schema."""
 
     id: str = Field(..., description="Unique identifier (e.g., 'af_1')")
-    content: dict[str, str | None] = Field(
-        ..., description="Action field content with 'name' and optional 'parent_id'"
+    content: dict[str, str | list[str] | None] = Field(
+        ..., description="Action field content matching Appwrite Dimensions schema"
     )
     connections: list[ConnectionWithConfidence] = Field(
         default_factory=list, description="Connections to projects and measures"
     )
 
+    # Expected content fields (for reference):
+    # {
+    #   "name": str,                    # Required: "Mobilität und Verkehr"
+    #   "description": str,             # Required: What this field encompasses
+    #   "sustainability_type": str,     # Optional: "Environmental", "Social", "Economic"
+    #   "strategic_goals": list[str],   # Optional: High-level objectives
+    #   "sdgs": list[str],             # Optional: UN SDG alignment ["SDG 11", "SDG 13"]
+    #   "parent_dimension_id": str,     # Optional: Hierarchical relationships
+    #   "icon_ref": str,               # Optional: Visual representation
+    # }
+
 
 class EnhancedProject(BaseModel):
-    """Enhanced project for relational 4-bucket structure."""
+    """Enhanced project for relational 4-bucket structure matching Appwrite Measures schema."""
 
     id: str = Field(..., description="Unique identifier (e.g., 'proj_1')")
-    content: dict[str, str | None] = Field(
-        ..., description="Project content with 'title' and optional 'description'"
+    content: dict[str, str | list[str] | int | float | bool | None] = Field(
+        ..., description="Project content matching Appwrite Measures schema"
     )
     connections: list[ConnectionWithConfidence] = Field(
         default_factory=list, description="Connections to action fields and measures"
     )
 
+    # Expected content fields (for reference):
+    # {
+    #   "title": str,                   # Required: "Radverkehrsnetz Ausbau"
+    #   "description": str,             # Optional: Brief overview
+    #   "full_description": str,        # Optional: Complete details
+    #   "type": str,                    # Required: "Infrastructure", "Policy", etc.
+    #   "status": str,                  # Optional: "In Planung", "Aktiv", "Abgeschlossen"
+    #   "measure_start": str,           # Optional: "2024-01-01"
+    #   "measure_end": str,             # Optional: "2026-12-31"
+    #   "budget": float,                # Optional: 2500000
+    #   "department": str,              # Optional: "Tiefbauamt"
+    #   "responsible_person": list[str], # Optional: ["Max Mustermann"]
+    #   "operative_goal": str,          # Optional: Specific objective
+    #   "parent_measure": list[str],    # Optional: Sub-project relationships
+    #   "is_parent": bool,              # Optional: Has child projects
+    #   "sdgs": list[str],              # Optional: SDG alignment
+    #   "cost_unit": int,               # Optional: Cost unit number
+    #   "cost_unit_code": str,          # Optional: Cost unit code
+    #   "priority": str,                # Optional: Priority level
+    #   "state": str,                   # Optional: Current state
+    #   "product_area": str,            # Optional: Product area
+    #   "costs_responsible": str,       # Optional: Cost responsibility
+    #   "contact_info": str,            # Optional: Contact information
+    #   "account_number": str,          # Optional: Account number
+    # }
+
 
 class EnhancedMeasure(BaseModel):
-    """Enhanced measure for relational 4-bucket structure."""
+    """Enhanced measure for relational 4-bucket structure - concrete actions within projects."""
 
     id: str = Field(..., description="Unique identifier (e.g., 'msr_1')")
-    content: dict[str, str | None] = Field(
+    content: dict[str, str | list[str] | None] = Field(
         ..., description="Measure content with 'title' and optional 'description'"
     )
     connections: list[ConnectionWithConfidence] = Field(
@@ -146,16 +183,46 @@ class EnhancedMeasure(BaseModel):
         default=None, description="Source attribution with validated quotes"
     )
 
+    # Expected content fields (for reference):
+    # {
+    #   "title": str,                   # Required: "Fahrradwege ausbauen"
+    #   "description": str,             # Optional: What this measure entails
+    #   "timeline": str,                # Optional: Implementation timeline
+    #   "responsible_department": str,  # Optional: Who implements this
+    #   "related_projects": list[str],  # Optional: Parent project references
+    # }
+
 
 class EnhancedIndicator(BaseModel):
-    """Enhanced indicator for relational 4-bucket structure."""
+    """Enhanced indicator for relational 4-bucket structure matching Appwrite Indicators schema."""
 
     id: str = Field(..., description="Unique identifier (e.g., 'ind_1')")
-    content: dict[str, str] = Field(..., description="Indicator content with 'name'")
+    content: dict[str, str | list[str] | bool | None] = Field(
+        ..., description="Indicator content matching Appwrite Indicators schema"
+    )
     connections: list[ConnectionWithConfidence] = Field(
         default_factory=list,
         description="Connections to measures that contribute to this indicator",
     )
+
+    # Expected content fields (for reference):
+    # {
+    #   "title": str,                   # Required: "CO2-Reduktion Verkehrssektor"
+    #   "description": str,             # Required: "Jährliche CO2-Einsparung durch Maßnahmen"
+    #   "unit": str,                    # Optional: "Tonnen CO2/Jahr"
+    #   "granularity": str,             # Required: "annual", "monthly", "quarterly"
+    #   "target_values": str,           # Optional: "500 Tonnen bis 2030"
+    #   "actual_values": str,           # Optional: "120 Tonnen (2023)"
+    #   "should_increase": bool,        # Optional: false (less CO2 is better)
+    #   "calculation": str,             # Optional: "Baseline - Current emissions"
+    #   "values_source": str,           # Optional: "Umweltamt Monitoring"
+    #   "source_url": str,              # Optional: Reference URL
+    #   "operational_goal": str,        # Optional: What it tracks specifically
+    #   "dimension_ids": list[str],     # Optional: Multiple action fields it spans
+    #   "sdgs": list[str],              # Optional: SDG alignment
+    #   "is_group": bool,               # Optional: Whether it's a group indicator
+    #   "grouped_indicators": str,      # Optional: Related indicator groupings
+    # }
 
 
 class EnrichedReviewJSON(BaseModel):

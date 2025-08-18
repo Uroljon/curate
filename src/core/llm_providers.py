@@ -501,6 +501,331 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
             return None
 
 
+class ExternalAPIProvider(LLMProvider):
+    """External API provider for OpenAI and Google Gemini models."""
+
+    def __init__(
+        self,
+        model_name: str,
+        temperature: float = 0.2,
+        api_provider: str = "openai",  # "openai" or "gemini"
+        api_key: str | None = None,
+        base_url: str | None = None,
+        max_tokens: int = 4096,
+        timeout: int = 300,
+    ):
+        super().__init__(model_name, temperature)
+        self.api_provider = api_provider.lower()
+        self.api_key = api_key
+        self.base_url = base_url
+        self.max_tokens = max_tokens
+        self.timeout = timeout
+
+        # Initialize appropriate client
+        if self.api_provider == "openai":
+            self._init_openai_client()
+        elif self.api_provider == "gemini":
+            self._init_gemini_client()
+        else:
+            raise ValueError(f"Unsupported API provider: {api_provider}")
+
+    def _init_openai_client(self):
+        """Initialize OpenAI client."""
+        try:
+            from openai import OpenAI
+
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+            )
+            print(f"📡 OpenAI client initialized for model: {self.model_name}")
+        except ImportError:
+            raise ImportError(
+                "OpenAI library required. Install with: pip install openai"
+            )
+
+    def _init_gemini_client(self):
+        """Initialize Google Gemini client."""
+        try:
+            import google.generativeai as genai
+
+            genai.configure(api_key=self.api_key)
+            self.client = genai.GenerativeModel(self.model_name)
+            print(f"📡 Gemini client initialized for model: {self.model_name}")
+        except ImportError:
+            raise ImportError(
+                "Google Generative AI library required. Install with: pip install google-generativeai"
+            )
+
+    def query_structured(
+        self,
+        prompt: str,
+        response_model: type[T],
+        system_message: str | None = None,
+        log_file_path: str | None = None,
+        log_context: str | None = None,
+        override_num_predict: int | None = None,
+    ) -> T | None:
+        """Query external API with structured output."""
+        if self.api_provider == "openai":
+            return self._query_openai_structured(
+                prompt,
+                response_model,
+                system_message,
+                log_file_path,
+                log_context,
+                override_num_predict,
+            )
+        elif self.api_provider == "gemini":
+            return self._query_gemini_structured(
+                prompt,
+                response_model,
+                system_message,
+                log_file_path,
+                log_context,
+                override_num_predict,
+            )
+
+    def _query_openai_structured(
+        self,
+        prompt: str,
+        response_model: type[T],
+        system_message: str | None,
+        log_file_path: str | None,
+        log_context: str | None,
+        override_num_predict: int | None,
+    ) -> T | None:
+        """Query OpenAI with structured output."""
+        try:
+            messages = []
+
+            if system_message:
+                messages.append({"role": "system", "content": system_message})
+
+            # Include schema in prompt for better structured output
+            schema_str = json.dumps(response_model.model_json_schema(), indent=2)
+            structured_prompt = f"""{prompt}
+
+IMPORTANT: Respond with valid JSON matching this schema:
+{schema_str}
+
+Respond ONLY with the JSON object, no additional text."""
+
+            messages.append({"role": "user", "content": structured_prompt})
+
+            llm_start_time = time.time()
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=self.temperature,
+                max_tokens=override_num_predict or self.max_tokens,
+                response_format=(
+                    {"type": "json_object"} if "gpt" in self.model_name else None
+                ),
+                timeout=self.timeout,
+            )
+            llm_response_time = time.time() - llm_start_time
+            print(f"      🤖 OpenAI response in {llm_response_time:.2f}s")
+
+            content = response.choices[0].message.content.strip()
+
+            # Log the dialog
+            if log_file_path:
+                self._log_llm_dialog(
+                    log_file_path,
+                    system_message,
+                    structured_prompt,
+                    content,
+                    log_context,
+                )
+
+            # Parse and validate with Pydantic
+            try:
+                return response_model.model_validate_json(content)
+            except Exception as e:
+                print(f"⚠️ JSON validation failed: {e}")
+                # Try json-repair as fallback
+                try:
+                    from json_repair import repair_json
+
+                    repaired = repair_json(content)
+                    return response_model.model_validate(repaired)
+                except Exception:
+                    print("❌ JSON repair failed")
+                    return None
+
+        except Exception as e:
+            print(f"❌ OpenAI API Error: {e}")
+            return None
+
+    def _query_gemini_structured(
+        self,
+        prompt: str,
+        response_model: type[T],
+        system_message: str | None,
+        log_file_path: str | None,
+        log_context: str | None,
+        override_num_predict: int | None,
+    ) -> T | None:
+        """Query Gemini with structured output."""
+        try:
+            # Combine system message and prompt
+            full_prompt = prompt
+            if system_message:
+                full_prompt = f"{system_message}\n\n{prompt}"
+
+            # Include schema in prompt
+            schema_str = json.dumps(response_model.model_json_schema(), indent=2)
+            structured_prompt = f"""{full_prompt}
+
+IMPORTANT: Respond with valid JSON matching this schema:
+{schema_str}
+
+Respond ONLY with the JSON object, no additional text."""
+
+            llm_start_time = time.time()
+            response = self.client.generate_content(
+                structured_prompt,
+                generation_config={
+                    "temperature": self.temperature,
+                    "max_output_tokens": override_num_predict or self.max_tokens,
+                },
+            )
+            llm_response_time = time.time() - llm_start_time
+            print(f"      🤖 Gemini response in {llm_response_time:.2f}s")
+
+            content = response.text.strip()
+
+            # Log the dialog
+            if log_file_path:
+                self._log_llm_dialog(
+                    log_file_path,
+                    system_message,
+                    structured_prompt,
+                    content,
+                    log_context,
+                )
+
+            # Parse and validate with Pydantic
+            try:
+                return response_model.model_validate_json(content)
+            except Exception as e:
+                print(f"⚠️ JSON validation failed: {e}")
+                # Try json-repair as fallback
+                try:
+                    from json_repair import repair_json
+
+                    repaired = repair_json(content)
+                    return response_model.model_validate(repaired)
+                except Exception:
+                    print("❌ JSON repair failed")
+                    return None
+
+        except Exception as e:
+            print(f"❌ Gemini API Error: {e}")
+            return None
+
+    def query_unstructured(
+        self,
+        prompt: str,
+        system_message: str | None = None,
+        log_file_path: str | None = None,
+        log_context: str | None = None,
+        override_num_predict: int | None = None,
+    ) -> str | None:
+        """Query external API for unstructured text generation."""
+        if self.api_provider == "openai":
+            return self._query_openai_unstructured(
+                prompt, system_message, log_file_path, log_context, override_num_predict
+            )
+        elif self.api_provider == "gemini":
+            return self._query_gemini_unstructured(
+                prompt, system_message, log_file_path, log_context, override_num_predict
+            )
+
+    def _query_openai_unstructured(
+        self,
+        prompt: str,
+        system_message: str | None,
+        log_file_path: str | None,
+        log_context: str | None,
+        override_num_predict: int | None,
+    ) -> str | None:
+        """Query OpenAI for unstructured text generation."""
+        try:
+            messages = []
+
+            if system_message:
+                messages.append({"role": "system", "content": system_message})
+
+            messages.append({"role": "user", "content": prompt})
+
+            llm_start_time = time.time()
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=self.temperature,
+                max_tokens=override_num_predict or self.max_tokens,
+                timeout=self.timeout,
+            )
+            llm_response_time = time.time() - llm_start_time
+            print(f"      🤖 OpenAI response in {llm_response_time:.2f}s")
+
+            content = response.choices[0].message.content.strip()
+
+            # Log the dialog
+            if log_file_path:
+                self._log_llm_dialog(
+                    log_file_path, system_message, prompt, content, log_context
+                )
+
+            return content
+
+        except Exception as e:
+            print(f"❌ OpenAI API Error: {e}")
+            return None
+
+    def _query_gemini_unstructured(
+        self,
+        prompt: str,
+        system_message: str | None,
+        log_file_path: str | None,
+        log_context: str | None,
+        override_num_predict: int | None,
+    ) -> str | None:
+        """Query Gemini for unstructured text generation."""
+        try:
+            # Combine system message and prompt
+            full_prompt = prompt
+            if system_message:
+                full_prompt = f"{system_message}\n\n{prompt}"
+
+            llm_start_time = time.time()
+            response = self.client.generate_content(
+                full_prompt,
+                generation_config={
+                    "temperature": self.temperature,
+                    "max_output_tokens": override_num_predict or self.max_tokens,
+                },
+            )
+            llm_response_time = time.time() - llm_start_time
+            print(f"      🤖 Gemini response in {llm_response_time:.2f}s")
+
+            content = response.text.strip()
+
+            # Log the dialog
+            if log_file_path:
+                self._log_llm_dialog(
+                    log_file_path, system_message, prompt, content, log_context
+                )
+
+            return content
+
+        except Exception as e:
+            print(f"❌ Gemini API Error: {e}")
+            return None
+
+
 def get_llm_provider(
     backend: str | None = None,
     model_name: str | None = None,
@@ -511,7 +836,7 @@ def get_llm_provider(
     Factory function to get the appropriate LLM provider.
 
     Args:
-        backend: LLM backend to use ('ollama' or 'vllm'). Defaults to env var LLM_BACKEND.
+        backend: LLM backend to use ('ollama', 'vllm', 'openai', 'gemini'). Defaults to env var LLM_BACKEND.
         model_name: Model name override. If not provided, uses config defaults.
         temperature: Temperature override. If not provided, uses config defaults.
         **kwargs: Additional provider-specific arguments.
@@ -549,6 +874,26 @@ def get_llm_provider(
             vllm_host=kwargs.get("vllm_host", VLLM_HOST),
             api_key=kwargs.get("api_key", VLLM_API_KEY),
             max_tokens=kwargs.get("max_tokens", VLLM_MAX_TOKENS),
+            timeout=kwargs.get("timeout", MODEL_TIMEOUT),
+        )
+    elif backend in ["openai", "gemini"]:
+        from .config import (
+            EXTERNAL_API_KEY,
+            EXTERNAL_BASE_URL,
+            EXTERNAL_MAX_TOKENS,
+            EXTERNAL_MODEL_NAME,
+        )
+
+        # Use external model configuration
+        external_model = model_name or EXTERNAL_MODEL_NAME
+
+        return ExternalAPIProvider(
+            model_name=external_model,
+            temperature=temperature,
+            api_provider=backend,
+            api_key=kwargs.get("api_key", EXTERNAL_API_KEY),
+            base_url=kwargs.get("base_url", EXTERNAL_BASE_URL),
+            max_tokens=kwargs.get("max_tokens", EXTERNAL_MAX_TOKENS),
             timeout=kwargs.get("timeout", MODEL_TIMEOUT),
         )
     else:  # Default to Ollama

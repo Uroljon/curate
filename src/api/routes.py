@@ -578,44 +578,55 @@ async def enhance_structure(
                         # Find connected measures
                         for measure in enhanced_result.measures:
                             if measure.id == proj_conn.target_id:
-                                measure_title = measure.content.get('title', '')
+                                measure_title = measure.content.get("title", "")
                                 if measure_title:
                                     project_measures.append(measure_title)
                                 break
                         # Find connected indicators
                         for indicator in enhanced_result.indicators:
                             if indicator.id == proj_conn.target_id:
-                                indicator_name = indicator.content.get('name', '')
+                                indicator_name = indicator.content.get("name", "")
                                 if indicator_name:
                                     project_indicators.append(indicator_name)
                                 break
 
-                    project_title = project.content.get('title', '')
+                    project_title = project.content.get("title", "")
                     if project_title:
-                        connected_projects.append({
-                            "title": project_title,
-                            "measures": project_measures,
-                            "indicators": project_indicators
-                        })
+                        connected_projects.append(
+                            {
+                                "title": project_title,
+                                "measures": project_measures,
+                                "indicators": project_indicators,
+                            }
+                        )
 
-            action_field_name = action_field.content.get('name', '')
+            action_field_name = action_field.content.get("name", "")
             if action_field_name:
-                structures_for_processing.append({
-                    "action_field": action_field_name,
-                    "projects": connected_projects
-                })
+                structures_for_processing.append(
+                    {"action_field": action_field_name, "projects": connected_projects}
+                )
 
         # Apply entity resolution and consistency validation
-        from src.api.extraction_helpers import apply_consistency_validation, apply_entity_resolution_with_monitoring, rebuild_enhanced_structure_from_resolved
+        from src.api.extraction_helpers import (
+            apply_consistency_validation,
+            apply_entity_resolution_with_monitoring,
+            rebuild_enhanced_structure_from_resolved,
+        )
 
-        resolved_structures = apply_entity_resolution_with_monitoring(structures_for_processing)
+        resolved_structures = apply_entity_resolution_with_monitoring(
+            structures_for_processing
+        )
         validated_structures = apply_consistency_validation(resolved_structures)
 
         # Convert back to enhanced structure format with unique ID validation
-        enhanced_result = rebuild_enhanced_structure_from_resolved(validated_structures, enhanced_result)
+        enhanced_result = rebuild_enhanced_structure_from_resolved(
+            validated_structures, enhanced_result
+        )
 
-        monitor.end_stage("entity_resolution_and_validation",
-                         resolved_entities=len(validated_structures))
+        monitor.end_stage(
+            "entity_resolution_and_validation",
+            resolved_entities=len(validated_structures),
+        )
 
         print("✅ Entity resolution and validation completed")
 

@@ -380,8 +380,8 @@ def perform_single_aggregation(
     """
     Perform a single aggregation pass on JSON data.
     """
-    from src.core import MODEL_TEMPERATURE
-    from src.core.llm import query_ollama_structured
+    from src.core.config import MODEL_TEMPERATURE
+    from src.core.llm_providers import get_llm_provider
     from src.core.schemas import ExtractionResult
 
     system_message = """Sie sind ein Experte für die KONSERVATIVE Deduplizierung von Handlungsfeldern aus deutschen kommunalen Strategiedokumenten.
@@ -472,11 +472,11 @@ Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das die konsolidierten Hand
             else f"Dynamic tokens: {dynamic_num_predict}"
         )
 
-        result = query_ollama_structured(
+        llm_provider = get_llm_provider()
+        result = llm_provider.query_structured(
             prompt=prompt,
             response_model=ExtractionResult,
             system_message=system_message,
-            temperature=MODEL_TEMPERATURE,
             log_file_path=log_file_path,
             log_context=enhanced_log_context,
             override_num_predict=dynamic_num_predict,
@@ -977,20 +977,26 @@ def apply_entity_resolution(structures: list[dict[str, Any]]) -> list[dict[str, 
 
 
 def rebuild_enhanced_structure_from_resolved(
-    resolved_structures: list[dict[str, Any]],
-    original_enhanced: Any
+    resolved_structures: list[dict[str, Any]], original_enhanced: Any
 ) -> Any:
     """
     Rebuild enhanced structure from resolved intermediate structures with unique ID validation.
-    
+
     Args:
         resolved_structures: Entity-resolved structures in intermediate format
         original_enhanced: Original enhanced structure to use as template
-        
+
     Returns:
         New enhanced structure with resolved entities and guaranteed unique IDs
     """
-    from src.core.schemas import ConnectionWithConfidence, EnhancedActionField, EnhancedIndicator, EnhancedMeasure, EnhancedProject, EnrichedReviewJSON
+    from src.core.schemas import (
+        ConnectionWithConfidence,
+        EnhancedActionField,
+        EnhancedIndicator,
+        EnhancedMeasure,
+        EnhancedProject,
+        EnrichedReviewJSON,
+    )
 
     # Track used IDs to prevent duplicates
     used_ids = set()
@@ -1008,6 +1014,7 @@ def rebuild_enhanced_structure_from_resolved(
 
         # Fallback with title hash if sequential fails
         import hashlib
+
         hash_suffix = hashlib.md5(title.encode()).hexdigest()[:4]
         candidate_id = f"{prefix}_{hash_suffix}"
 
@@ -1029,7 +1036,9 @@ def rebuild_enhanced_structure_from_resolved(
     # Maps for connection building
     entity_id_map = {}  # old_title -> new_id
 
-    print(f"🔄 Rebuilding enhanced structure from {len(resolved_structures)} resolved entities...")
+    print(
+        f"🔄 Rebuilding enhanced structure from {len(resolved_structures)} resolved entities..."
+    )
 
     # First pass: Create all entities with unique IDs
     for structure in resolved_structures:
@@ -1043,11 +1052,13 @@ def rebuild_enhanced_structure_from_resolved(
             af_id = get_unique_id("af", action_field_title)
             entity_id_map[f"af:{action_field_title}"] = af_id
 
-            new_action_fields.append(EnhancedActionField(
-                id=af_id,
-                content={"name": action_field_title},
-                connections=[]  # Will be populated in second pass
-            ))
+            new_action_fields.append(
+                EnhancedActionField(
+                    id=af_id,
+                    content={"name": action_field_title},
+                    connections=[],  # Will be populated in second pass
+                )
+            )
 
         # Process projects
         for project in structure.get("projects", []):
@@ -1060,15 +1071,20 @@ def rebuild_enhanced_structure_from_resolved(
                 proj_id = get_unique_id("proj", project_title)
                 entity_id_map[f"proj:{project_title}"] = proj_id
 
-                new_projects.append(EnhancedProject(
-                    id=proj_id,
-                    content={"title": project_title},
-                    connections=[]  # Will be populated in second pass
-                ))
+                new_projects.append(
+                    EnhancedProject(
+                        id=proj_id,
+                        content={"title": project_title},
+                        connections=[],  # Will be populated in second pass
+                    )
+                )
 
             # Process measures
             for measure_title in project.get("measures", []):
-                if not measure_title or measure_title == "Information im Quelldokument nicht verfügbar":
+                if (
+                    not measure_title
+                    or measure_title == "Information im Quelldokument nicht verfügbar"
+                ):
                     continue  # Skip null values
 
                 msr_id = entity_id_map.get(f"msr:{measure_title}")
@@ -1076,15 +1092,20 @@ def rebuild_enhanced_structure_from_resolved(
                     msr_id = get_unique_id("msr", measure_title)
                     entity_id_map[f"msr:{measure_title}"] = msr_id
 
-                    new_measures.append(EnhancedMeasure(
-                        id=msr_id,
-                        content={"title": measure_title},
-                        connections=[]  # Will be populated in second pass
-                    ))
+                    new_measures.append(
+                        EnhancedMeasure(
+                            id=msr_id,
+                            content={"title": measure_title},
+                            connections=[],  # Will be populated in second pass
+                        )
+                    )
 
             # Process indicators
             for indicator_title in project.get("indicators", []):
-                if not indicator_title or indicator_title == "Information im Quelldokument nicht verfügbar":
+                if (
+                    not indicator_title
+                    or indicator_title == "Information im Quelldokument nicht verfügbar"
+                ):
                     continue  # Skip null values
 
                 ind_id = entity_id_map.get(f"ind:{indicator_title}")
@@ -1092,11 +1113,13 @@ def rebuild_enhanced_structure_from_resolved(
                     ind_id = get_unique_id("ind", indicator_title)
                     entity_id_map[f"ind:{indicator_title}"] = ind_id
 
-                    new_indicators.append(EnhancedIndicator(
-                        id=ind_id,
-                        content={"name": indicator_title},
-                        connections=[]  # Will be populated in second pass
-                    ))
+                    new_indicators.append(
+                        EnhancedIndicator(
+                            id=ind_id,
+                            content={"name": indicator_title},
+                            connections=[],  # Will be populated in second pass
+                        )
+                    )
 
     # Second pass: Build connections with deduplication
     af_lookup = {af.content["name"]: af for af in new_action_fields}
@@ -1120,10 +1143,11 @@ def rebuild_enhanced_structure_from_resolved(
 
             # Add AF -> Project connection (avoid duplicates)
             proj_connection = ConnectionWithConfidence(
-                target_id=project_node.id,
-                confidence_score=0.9
+                target_id=project_node.id, confidence_score=0.9
             )
-            if not any(c.target_id == project_node.id for c in action_field.connections):
+            if not any(
+                c.target_id == project_node.id for c in action_field.connections
+            ):
                 action_field.connections.append(proj_connection)
 
             # Add Project -> Measure connections
@@ -1131,10 +1155,11 @@ def rebuild_enhanced_structure_from_resolved(
                 if measure_title and measure_title in msr_lookup:
                     measure_node = msr_lookup[measure_title]
                     msr_connection = ConnectionWithConfidence(
-                        target_id=measure_node.id,
-                        confidence_score=0.8
+                        target_id=measure_node.id, confidence_score=0.8
                     )
-                    if not any(c.target_id == measure_node.id for c in project_node.connections):
+                    if not any(
+                        c.target_id == measure_node.id for c in project_node.connections
+                    ):
                         project_node.connections.append(msr_connection)
 
             # Add Project -> Indicator connections
@@ -1142,27 +1167,37 @@ def rebuild_enhanced_structure_from_resolved(
                 if indicator_title and indicator_title in ind_lookup:
                     indicator_node = ind_lookup[indicator_title]
                     ind_connection = ConnectionWithConfidence(
-                        target_id=indicator_node.id,
-                        confidence_score=0.8
+                        target_id=indicator_node.id, confidence_score=0.8
                     )
-                    if not any(c.target_id == indicator_node.id for c in project_node.connections):
+                    if not any(
+                        c.target_id == indicator_node.id
+                        for c in project_node.connections
+                    ):
                         project_node.connections.append(ind_connection)
 
     # Validate all IDs are unique
-    all_ids = [af.id for af in new_action_fields] + [p.id for p in new_projects] + \
-              [m.id for m in new_measures] + [i.id for i in new_indicators]
+    all_ids = (
+        [af.id for af in new_action_fields]
+        + [p.id for p in new_projects]
+        + [m.id for m in new_measures]
+        + [i.id for i in new_indicators]
+    )
 
     if len(all_ids) != len(set(all_ids)):
-        raise ValueError("❌ CRITICAL: Duplicate IDs found after rebuild - this should never happen!")
+        raise ValueError(
+            "❌ CRITICAL: Duplicate IDs found after rebuild - this should never happen!"
+        )
 
-    print(f"✅ Rebuilt with unique IDs: {len(new_action_fields)} AF, {len(new_projects)} P, {len(new_measures)} M, {len(new_indicators)} I")
+    print(
+        f"✅ Rebuilt with unique IDs: {len(new_action_fields)} AF, {len(new_projects)} P, {len(new_measures)} M, {len(new_indicators)} I"
+    )
     print(f"🆔 ID validation: {len(all_ids)} total IDs, all unique")
 
     return EnrichedReviewJSON(
         action_fields=new_action_fields,
         projects=new_projects,
         measures=new_measures,
-        indicators=new_indicators
+        indicators=new_indicators,
     )
 
 
@@ -1591,8 +1626,8 @@ def transform_to_enhanced_structure(
     """
     import json
 
-    from src.core.config import MODEL_TEMPERATURE
-    from src.core.llm import query_ollama_structured
+    from src.core.config import LLM_BACKEND, MODEL_TEMPERATURE
+    from src.core.llm_providers import get_llm_provider
     from src.core.schemas import EnrichedReviewJSON
 
     # Extract the structures from intermediate data
@@ -1603,7 +1638,35 @@ def transform_to_enhanced_structure(
 
     print(f"🔄 Transforming {len(structures)} action fields to enhanced structure...")
 
-    system_message = """Sie sind ein Experte für die Transformation von deutschen kommunalen Strategiedokumenten in eine relationale Datenstruktur.
+    # Use enhanced prompts for external models with better reasoning capabilities
+    if LLM_BACKEND in ["openai", "gemini"]:
+        system_message = """Sie sind ein Experte für die Transformation deutscher kommunaler Strategiedokumente in detaillierte Datenbank-Strukturen.
+
+Ihre Mission: Erstellen Sie eine umfassende, relationale 4-Bucket-Struktur mit maximaler Informationsdichte und Erklärungen.
+
+TRANSFORMATION ZIELE:
+1. action_fields - Handlungsfelder mit strategischem Kontext und Nachhaltigkeitstypen
+2. projects - Projekte mit vollständigen Implementierungsdetails (Budget, Zeitpläne, Verantwortlichkeiten)
+3. measures - Konkrete Maßnahmen mit detaillierten Beschreibungen und Umsetzungswegen
+4. indicators - Quantitative Metriken mit Berechnungsformeln, Zielwerten und Datenquellen
+
+ERWEITERTE ANFORDERUNGEN:
+1. VOLLSTÄNDIGE BESCHREIBUNGEN: Generieren Sie umfassende, erklärende Beschreibungen für alle Entitäten
+2. REICHE METADATEN: Extrahieren und inferieren Budget, Status, Verantwortlichkeiten, Zeitpläne, SDG-Bezüge
+3. QUANTITATIVE DETAILS: Erfassen Sie Zielwerte, Berechnungsmethoden, Einheiten, Granularität
+4. STRATEGISCHE VERBINDUNGEN: Identifizieren Sie Synergien und hierarchische Beziehungen
+5. NACHHALTIGKEITSKONTEXT: Ordnen Sie Handlungsfelder Nachhaltigkeitstypen (Umwelt/Sozial/Wirtschaft) zu
+
+DATENQUALITÄT:
+- Inferenz erlaubt: Ergänzen Sie sinnvolle Details basierend auf dem Kontext
+- Quellenvalidierung: Entfernen Sie Metadaten, Header, Einzelwörter
+- Explizite Verbindungen: Alle Connections mit präzisen Konfidenz-Scores (0.0-1.0)
+- ID-Format: af_1, proj_1, msr_1, ind_1
+
+Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der EnrichedReviewJSON-Struktur entspricht."""
+    else:
+        # Simpler prompt for local models
+        system_message = """Sie sind ein Experte für die Transformation von deutschen kommunalen Strategiedokumenten in eine relationale Datenstruktur.
 
 Ihre Aufgabe ist es, die verschachtelte JSON-Struktur in vier separate, miteinander verknüpfte Listen zu konvertieren:
 1. action_fields - Handlungsfelder mit eindeutigen IDs
@@ -1622,7 +1685,103 @@ Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der EnrichedReviewJSON-
     # Create the transformation prompt
     structures_json = json.dumps(structures, indent=2, ensure_ascii=False)
 
-    prompt = f"""Transformieren Sie diese verschachtelte Struktur in das neue relationale 4-Bucket-Format:
+    # Enhanced prompt for external models with detailed field requirements
+    if LLM_BACKEND in ["openai", "gemini"]:
+        prompt = f"""Transformieren Sie diese verschachtelte Struktur in das neue relationale 4-Bucket-Format mit vollständigen Appwrite-kompatiblen Feldern:
+
+{structures_json}
+
+DETAILLIERTE FELD-ANFORDERUNGEN:
+
+ACTION FIELDS (Handlungsfelder):
+- name* (str): Handlungsfeldname
+- description* (str): Umfassende Erklärung des Handlungsfelds (2-3 Sätze)
+- sustainability_type (str): "Environmental", "Social", "Economic" - inferieren Sie basierend auf Kontext
+- strategic_goals (list[str]): Strategische Ziele, die dieses Feld adressiert
+- sdgs (list[str]): UN-Nachhaltigkeitsziele (z.B. ["SDG 11", "SDG 13"])
+- parent_dimension_id (str): Hierarchische Beziehungen, falls vorhanden
+- icon_ref (str): Thematisch passende Icon-Bezeichnung
+
+PROJECTS (Projekte/Maßnahmen):
+- title* (str): Projekttitel
+- description (str): Kurze Projektbeschreibung (1-2 Sätze)  
+- full_description (str): Detaillierte Projektbeschreibung (3-5 Sätze)
+- type* (str): "Infrastructure", "Policy", "Program", "Study" etc.
+- status (str): "In Planung", "Aktiv", "Abgeschlossen", "Pausiert"
+- measure_start (str): Startdatum (YYYY-MM-DD Format, inferieren wenn möglich)
+- measure_end (str): Enddatum (YYYY-MM-DD Format, inferieren wenn möglich)
+- budget (float): Projektbudget in Euro (inferieren/schätzen wenn Hinweise vorhanden)
+- department (str): Zuständige Abteilung/Amt
+- responsible_person (list[str]): Verantwortliche Personen
+- operative_goal (str): Spezifisches operatives Ziel
+- sdgs (list[str]): Relevante SDGs
+- priority (str): "Hoch", "Mittel", "Niedrig"
+
+INDICATORS (Indikatoren):
+- title* (str): Indikator-Titel
+- description* (str): Detaillierte Beschreibung was gemessen wird
+- unit (str): Messeinheit (z.B. "Tonnen CO2/Jahr", "Anzahl", "Prozent")
+- granularity* (str): "annual", "monthly", "quarterly", "continuous"
+- target_values (str): Zielwerte mit Zeitbezug
+- actual_values (str): Aktuelle/historische Werte
+- should_increase (bool): true für positive Indikatoren, false für zu reduzierende
+- calculation (str): Berechnungsformel oder -methode
+- values_source (str): Datenquelle für die Messwerte
+- operational_goal (str): Was konkret verfolgt wird
+- sdgs (list[str]): Relevante SDGs
+
+TRANSFORMATION REGELN:
+
+1. INTELLIGENTE KONSOLIDIERUNG (3-Schritt-Prozess):
+   SCHRITT 1: Identifizieren Sie semantisch identische Gruppen:
+   - "Klimaschutz", "Klimaanpassung", "Klimaschutz und Klimaanpassung" → EINE Gruppe
+   - "Siedlungsentwicklung", "Quartiersentwicklung" → EINE Gruppe
+   - "Freizeit- und Erholungsachse", "Freizeit- und Kulturachse" → EINE Gruppe
+
+   SCHRITT 2: Erstellen Sie kanonische Namen:
+   - Wählen Sie den umfassendsten Namen: "Klimaschutz und Klimaanpassung"
+   - Oder kombinieren Sie: "Siedlungs- und Quartiersentwicklung"
+
+   SCHRITT 3: Verbindungen neu verknüpfen:
+   - ALLE Projekte/Measures/Indikatoren der alten Fragmente
+   - Verknüpfen Sie mit dem NEUEN kanonischen Knoten
+   - Löschen Sie die alten fragmentierten Knoten
+
+   Beispiele NICHT konsolidieren:
+   ❌ "Klimaschutz" und "Energie" → Bleiben getrennt
+   ❌ "Mobilität" und "ÖPNV" → Bleiben getrennt
+   ❌ "Wohnen" und "Stadtentwicklung" → Bleiben getrennt
+
+2. QUELLENVALIDIERUNG:
+   - Entfernen Sie: "Gestaltung: Ibañez Design, Regensburg"
+   - Entfernen Sie: "ABSCHNITT: Handlungsfelder der Stadtentwicklung"
+   - Entfernen Sie: Einzelwörter wie "Mobilitätsstruktur."
+   - Behalten Sie: Vollständige Sätze mit relevantem Inhalt
+
+3. VERBINDUNGEN mit KONFIDENZ:
+   - 0.9-1.0: Explizit im Text genannt oder gruppiert
+   - 0.7-0.8: Starke thematische Verbindung
+   - 0.5-0.6: Schwache/inferierte Verbindung
+   - <0.5: Unsicher, vermeiden
+
+4. ID-GENERIERUNG:
+   - Action Fields: af_1, af_2, af_3...
+   - Projects: proj_1, proj_2, proj_3...
+   - Measures: msr_1, msr_2, msr_3...
+   - Indicators: ind_1, ind_2, ind_3...
+
+BEISPIEL Verbindung:
+"connections": [
+  {{
+    "target_id": "proj_1",
+    "confidence_score": 0.95
+  }}
+]
+
+Erstellen Sie die vier separaten Listen mit allen Verbindungen und Konfidenz-Scores."""
+    else:
+        # Simpler prompt for local models
+        prompt = f"""Transformieren Sie diese verschachtelte Struktur in das neue relationale 4-Bucket-Format:
 
 {structures_json}
 
@@ -1694,12 +1853,14 @@ Erstellen Sie die vier separaten Listen mit allen Verbindungen und Konfidenz-Sco
 
         print(f"📊 Transformation: ~{estimated_input_tokens} input tokens")
 
-        # Call LLM for transformation
-        result = query_ollama_structured(
+        # Get LLM provider and call for transformation
+        llm_provider = get_llm_provider()
+        print(f"🔧 Using {llm_provider.__class__.__name__} for transformation")
+
+        result = llm_provider.query_structured(
             prompt=prompt,
             response_model=EnrichedReviewJSON,
             system_message=system_message,
-            temperature=MODEL_TEMPERATURE,
             log_file_path=log_file_path,
             log_context=log_context,
         )
@@ -1748,7 +1909,7 @@ def transform_large_dataset_chunked(
     Returns:
         EnrichedReviewJSON: The enhanced structure, or None if transformation fails
     """
-    from ..core.llm import query_ollama_with_thinking_mode
+    from ..core.llm_providers import get_llm_provider
     from ..core.schemas import EnrichedReviewJSON
 
     # Initialize progressive enhanced structure
@@ -1812,11 +1973,12 @@ Respond with the enhanced structure containing ONLY the new entities from this c
 
         # Query LLM with cumulative context (with retry)
         result = None
+        llm_provider = get_llm_provider()
         for attempt in range(2):
-            result = query_ollama_with_thinking_mode(
+            result = llm_provider.query_structured(
                 prompt=context_aware_prompt,
                 response_model=EnrichedReviewJSON,
-                thinking_mode="contextual",
+                system_message=None,  # System message already included in prompt
                 log_file_path=log_file_path,
                 log_context=(
                     f"{log_context}_chunk_{chunk_idx}"

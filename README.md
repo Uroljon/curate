@@ -1,6 +1,6 @@
 # 📄 PDF Strategy Extractor with LLM (FastAPI + Ollama)
 
-This project extracts structured information (e.g. **action fields**, **projects**, **measures**, **indicators**) from long strategy PDF documents (often in German). It uses PDF parsing with OCR fallback and queries a **local LLM (e.g., LLaMA3 via Ollama)** for semantic understanding and structured extraction.
+This project extracts structured information (e.g. **action fields**, **projects**, **measures**, **indicators**) from long strategy PDF documents (often in German). It uses PDF parsing with OCR fallback and queries **LLMs** (local via Ollama/vLLM, or external via OpenAI/Gemini) for semantic understanding and structured extraction.
 
 ---
 
@@ -20,7 +20,7 @@ This project extracts structured information (e.g. **action fields**, **projects
 | API Server     | `FastAPI` + `Uvicorn`     |
 | PDF Parsing    | `PyMuPDF` (`fitz`)        |
 | OCR            | `pytesseract` + `pdf2image` |
-| LLM Access     | [`Ollama`](https://ollama.com) or [`vLLM`](https://github.com/vllm-project/vllm) |
+| LLM Access     | [`Ollama`](https://ollama.com), [`vLLM`](https://github.com/vllm-project/vllm), [OpenAI](https://openai.com), or [Google Gemini](https://ai.google.dev) |
 | File Uploads   | `python-multipart`        |
 | HTTP Requests  | `requests`                |
 | Embeddings     | `sentence-transformers`   |
@@ -176,6 +176,19 @@ uvicorn main:app --reload
 
 # For vLLM
 LLM_BACKEND=vllm VLLM_HOST=your-server:8001 uvicorn main:app --reload
+
+# For OpenAI GPT-4o
+export LLM_BACKEND=openai
+export EXTERNAL_API_KEY=your_openai_api_key
+export EXTERNAL_MODEL_NAME=gpt-4o
+uvicorn main:app --reload
+
+# For Google Gemini
+export LLM_BACKEND=gemini
+export EXTERNAL_API_KEY=your_gemini_api_key
+export EXTERNAL_MODEL_NAME=gemini-2.0-flash-exp
+pip install google-generativeai
+uvicorn main:app --reload
 ```
 Url for local host: http://127.0.0.1:8000/docs
 

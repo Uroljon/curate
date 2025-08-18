@@ -20,7 +20,7 @@ except ImportError:
 PROJECT_ROOT = Path(__file__).parent.parent.parent  # Goes up to curate/
 
 # API Configuration
-# LLM Backend Selection ('ollama' or 'vllm')
+# LLM Backend Selection ('ollama', 'vllm', 'openai', or 'gemini')
 LLM_BACKEND = os.getenv("LLM_BACKEND", "ollama")
 
 # Model Configuration
@@ -50,6 +50,33 @@ MODEL_MAPPINGS = {
     "qwen3:8b": "Qwen/Qwen3-8B-Instruct",
 }
 
+# External API Configuration (OpenAI, Gemini, etc.)
+EXTERNAL_API_KEY = os.getenv("EXTERNAL_API_KEY", "")  # OpenAI API key or Gemini API key
+EXTERNAL_BASE_URL = os.getenv("EXTERNAL_BASE_URL", None)  # Custom base URL (optional)
+EXTERNAL_MODEL_NAME = os.getenv("EXTERNAL_MODEL_NAME", "gpt-4o")  # Default to GPT-4o
+EXTERNAL_MAX_TOKENS = int(
+    os.getenv("EXTERNAL_MAX_TOKENS", "4096")
+)  # Conservative default
+
+# Recommended model configurations for different providers
+EXTERNAL_MODEL_CONFIGS = {
+    "openai": {
+        "gpt-4o": {"max_tokens": 4096, "temperature": 0.1},
+        "gpt-4o-mini": {"max_tokens": 16384, "temperature": 0.1},
+        "gpt-4-turbo": {"max_tokens": 4096, "temperature": 0.1},
+        "o1-preview": {
+            "max_tokens": 32768,
+            "temperature": 1.0,
+        },  # o1 models don't support temperature control
+        "o1-mini": {"max_tokens": 65536, "temperature": 1.0},
+    },
+    "gemini": {
+        "gemini-2.0-flash-exp": {"max_tokens": 8192, "temperature": 0.1},
+        "gemini-1.5-pro": {"max_tokens": 8192, "temperature": 0.1},
+        "gemini-1.5-flash": {"max_tokens": 8192, "temperature": 0.1},
+    },
+}
+
 # Chunk Configuration - Optimized to prevent LLM output truncation
 # Adjust chunk size based on backend
 if LLM_BACKEND == "vllm":
@@ -60,6 +87,12 @@ if LLM_BACKEND == "vllm":
     # Total: ~8-10K tokens, leaving plenty of headroom
     CHUNK_MAX_CHARS = 12000  # Can use larger chunks with 32K context
     CHUNK_MIN_CHARS = 10000
+elif LLM_BACKEND in ["openai", "gemini"]:
+    # External APIs generally have large context windows
+    # GPT-4o: 128K context, Gemini 2.0: 2M context
+    # Use conservative sizing for cost optimization
+    CHUNK_MAX_CHARS = 18000  # Larger chunks for external APIs with big contexts
+    CHUNK_MIN_CHARS = 15000
 else:
     CHUNK_MAX_CHARS = 15000  # Larger chunks for Ollama with bigger context windows
     CHUNK_MIN_CHARS = 12000
