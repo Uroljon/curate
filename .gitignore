@@ -77,6 +77,4 @@ Thumbs.db
 *.bak
 
 # Project specific
-CLAUDE.md
-*.png
 GEMINI.md
