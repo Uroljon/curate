@@ -6,7 +6,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from fastapi import FastAPI
 
-from src.api import enhance_structure, extract_structure, upload_pdf
+from src.api import enhance_structure, extract_enhanced, extract_structure, upload_pdf
 
 app = FastAPI()
 
@@ -14,3 +14,4 @@ app = FastAPI()
 app.post("/upload")(upload_pdf)
 app.get("/extract_structure")(extract_structure)
 app.get("/enhance_structure")(enhance_structure)
+app.get("/extract_enhanced")(extract_enhanced)

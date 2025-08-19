@@ -122,6 +122,19 @@ else:
 
 CHUNK_WARNING_THRESHOLD = 20000  # Warn if chunk exceeds this size
 
+# Enhanced Extraction Configuration (for direct extraction to 4-bucket structure)
+if LLM_BACKEND == "vllm":
+    ENHANCED_CHUNK_MAX_CHARS = 10000  # Smaller chunks for focused extraction
+    ENHANCED_CHUNK_MIN_CHARS = 8000
+elif LLM_BACKEND in ["openai", "gemini", "openrouter"]:
+    ENHANCED_CHUNK_MAX_CHARS = 12000  # Slightly larger for external APIs
+    ENHANCED_CHUNK_MIN_CHARS = 10000
+else:
+    ENHANCED_CHUNK_MAX_CHARS = 10000  # Conservative for Ollama
+    ENHANCED_CHUNK_MIN_CHARS = 8000
+
+ENHANCED_CHUNK_OVERLAP = 0.1  # 10% overlap (reduced from 15%)
+
 # Semantic Chunk Configuration (for initial document chunking)
 SEMANTIC_CHUNK_MAX_CHARS = 7500  # Maximum characters per semantic chunk
 SEMANTIC_CHUNK_TARGET_CHARS = 5000  # Target size for semantic chunks

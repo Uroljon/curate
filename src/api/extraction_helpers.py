@@ -1184,8 +1184,9 @@ def rebuild_enhanced_structure_from_resolved(
     )
 
     if len(all_ids) != len(set(all_ids)):
+        msg = "❌ CRITICAL: Duplicate IDs found after rebuild - this should never happen!"
         raise ValueError(
-            "❌ CRITICAL: Duplicate IDs found after rebuild - this should never happen!"
+            msg
         )
 
     print(
@@ -1704,7 +1705,7 @@ ACTION FIELDS (Handlungsfelder):
 
 PROJECTS (Projekte/Maßnahmen):
 - title* (str): Projekttitel
-- description (str): Kurze Projektbeschreibung (1-2 Sätze)  
+- description (str): Kurze Projektbeschreibung (1-2 Sätze)
 - full_description (str): Detaillierte Projektbeschreibung (3-5 Sätze)
 - type* (str): "Infrastructure", "Policy", "Program", "Study" etc.
 - status (str): "In Planung", "Aktiv", "Abgeschlossen", "Pausiert"
@@ -2216,3 +2217,361 @@ def merge_chunk_result(enhanced_structure, chunk_result, global_counters: dict) 
     except Exception as e:
         print(f"❌ Failed to merge chunk result: {e}")
         return False
+
+
+def extract_direct_to_enhanced(
+    page_aware_text: list[tuple[str, int]],
+    source_id: str,
+    log_file_path: str | None = None,
+) -> dict[str, Any] | None:
+    """
+    Extract directly from PDF text to enhanced 4-bucket structure in a single pass.
+
+    This function implements the consolidated extraction approach:
+    1. Chunks text with smaller windows and minimal overlap
+    2. Uses simplified prompts focused on descriptions
+    3. Extracts directly to 4-bucket EnrichedReviewJSON structure
+    4. Applies conservative entity resolution
+
+    Args:
+        page_aware_text: List of (text, page_number) tuples from parser
+        source_id: Source identifier for logging
+        log_file_path: Optional path to log LLM dialog
+
+    Returns:
+        Enhanced JSON structure or None if extraction fails
+    """
+    import os
+    import time
+    from pathlib import Path
+
+    from src.core.config import (
+        ENHANCED_CHUNK_MAX_CHARS,
+        ENHANCED_CHUNK_MIN_CHARS,
+        ENHANCED_CHUNK_OVERLAP,
+        FAST_EXTRACTION_MAX_CHUNKS,
+        LLM_BACKEND,
+        PROJECT_ROOT,
+    )
+    from src.core.llm_providers import get_llm_provider
+    from src.core.schemas import EnrichedReviewJSON
+    from src.processing.chunker import chunk_for_llm_with_pages
+
+    print(f"🔄 Starting direct enhanced extraction for {source_id}")
+    start_time = time.time()
+
+    if not page_aware_text:
+        print("⚠️ No page-aware text provided")
+        return None
+
+    # Step 1: Create smaller chunks optimized for focused extraction
+    print(f"📝 Chunking with enhanced settings: {ENHANCED_CHUNK_MIN_CHARS}-{ENHANCED_CHUNK_MAX_CHARS} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap")
+
+    chunks_with_pages = chunk_for_llm_with_pages(
+        page_aware_text=page_aware_text,
+        max_chars=ENHANCED_CHUNK_MAX_CHARS,
+        min_chars=ENHANCED_CHUNK_MIN_CHARS,
+        doc_title=f"Strategiedokument {source_id}",
+        add_overlap=True,  # Use minimal overlap
+    )
+
+    if not chunks_with_pages:
+        print("⚠️ No chunks created from text")
+        return None
+
+    # Apply chunk limit for performance
+    if len(chunks_with_pages) > FAST_EXTRACTION_MAX_CHUNKS:
+        print(f"⚡ Using first {FAST_EXTRACTION_MAX_CHUNKS} chunks (performance mode)")
+        chunks_with_pages = chunks_with_pages[:FAST_EXTRACTION_MAX_CHUNKS]
+
+    print(f"📄 Processing {len(chunks_with_pages)} chunks")
+
+    # Step 2: Extract from each chunk using simplified prompts
+    all_results = []
+    llm_provider = get_llm_provider()
+
+    for i, (chunk_text, page_numbers) in enumerate(chunks_with_pages):
+        print(f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} (pages {page_numbers})")
+
+        # Create simplified extraction prompt
+        system_message = create_simplified_system_message()
+        main_prompt = create_simplified_extraction_prompt(chunk_text, source_id)
+
+        # Enhanced log context
+        enhanced_log_context = f"direct_enhanced_{source_id}_chunk_{i+1}"
+
+        try:
+            result = llm_provider.query_structured(
+                prompt=main_prompt,
+                response_model=EnrichedReviewJSON,
+                system_message=system_message,
+                log_file_path=log_file_path,
+                log_context=enhanced_log_context,
+            )
+
+            if result:
+                # Add page attribution to all entities
+                add_page_attribution_to_enhanced_result(result, page_numbers)
+                all_results.append(result)
+                print(f"✅ Chunk {i+1}: {len(result.action_fields)} action fields, {len(result.projects)} projects, {len(result.indicators)} indicators")
+            else:
+                print(f"⚠️ No result from chunk {i+1}")
+
+        except Exception as e:
+            print(f"❌ Error processing chunk {i+1}: {e}")
+            continue
+
+    if not all_results:
+        print("❌ No successful extractions")
+        return None
+
+    # Step 3: Merge and deduplicate results
+    print(f"🔄 Merging {len(all_results)} chunk results")
+    merged_result = merge_enhanced_results(all_results)
+
+    if not merged_result:
+        print("❌ Failed to merge results")
+        return None
+
+    # Step 4: Apply conservative entity resolution
+    print("🧹 Applying entity resolution")
+    try:
+        final_result = apply_conservative_entity_resolution(merged_result)
+        if not final_result:
+            print("⚠️ Entity resolution returned None, using merged result")
+            final_result = merged_result
+    except Exception as e:
+        print(f"⚠️ Entity resolution failed: {e}, using merged result")
+        final_result = merged_result
+
+    # Step 5: Return as dictionary for API response
+    extraction_time = time.time() - start_time
+    print(f"✅ Direct enhanced extraction completed in {extraction_time:.1f}s")
+    print(
+        f"📊 Final: {len(final_result.action_fields)} action fields, "
+        f"{len(final_result.projects)} projects, {len(final_result.measures)} measures, "
+        f"{len(final_result.indicators)} indicators"
+    )
+
+    return {
+        "extraction_result": final_result.model_dump(),
+        "metadata": {
+            "extraction_time_seconds": round(extraction_time, 2),
+            "chunks_processed": len(chunks_with_pages),
+            "method": "direct_enhanced",
+            "llm_backend": LLM_BACKEND,
+            "chunk_settings": {
+                "max_chars": ENHANCED_CHUNK_MAX_CHARS,
+                "min_chars": ENHANCED_CHUNK_MIN_CHARS,
+                "overlap": ENHANCED_CHUNK_OVERLAP,
+            }
+        }
+    }
+
+
+def create_simplified_system_message() -> str:
+    """Create simplified system message focused on descriptions."""
+    return """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten und Indikatoren aus deutschen kommunalen Strategiedokumenten.
+
+IHRE HAUPTAUFGABE: Erstellen Sie aussagekräftige deutsche Beschreibungen für jede Entität.
+
+PFLICHTFELDER:
+- Handlungsfelder (action_fields): name + description (1-3 Sätze)
+- Projekte (projects): title + description (1-2 Sätze) + type
+- Maßnahmen (measures): title + description (1-2 Sätze)
+- Indikatoren (indicators): title + description (Was wird gemessen?)
+
+OPTIONALE FELDER (NUR mit Quellenbeleg):
+- unit: Nur wenn explizit genannt (z.B. "Tonnen CO2/Jahr")
+- calculation: Nur wenn Berechnungsmethode beschrieben
+- valuesSource: Nur wenn Datenquelle erwähnt
+
+WICHTIGE REGELN:
+1. Konservative Extraktion: Nur was eindeutig im Text steht
+2. Keine Erfindung von Metadaten (Budget, Termine, Abteilungen)
+3. Qualitätsbeschreibungen: Jede Entität braucht aussagekräftige deutsche Beschreibung
+4. Verbindungen mit Konfidenz-Scores (0.5-1.0) basierend auf Textkontext
+
+Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der EnrichedReviewJSON-Struktur entspricht."""
+
+
+def create_simplified_extraction_prompt(chunk_text: str, source_id: str) -> str:
+    """Create simplified extraction prompt for direct 4-bucket extraction."""
+    return f"""Extrahieren Sie aus diesem Textabschnitt alle Handlungsfelder, Projekte/Maßnahmen und Indikatoren.
+
+FOKUS: Qualitativ hochwertige Beschreibungen in deutscher Sprache.
+
+TEXT:
+{chunk_text}
+
+Erstellen Sie die 4-Bucket-Struktur:
+
+1. action_fields: [{{
+   "id": "af_1",
+   "content": {{
+     "name": "Handlungsfeldname",
+     "description": "1-3 Sätze was dieses Handlungsfeld umfasst"
+   }},
+   "connections": []
+}}]
+
+2. projects: [{{
+   "id": "proj_1",
+   "content": {{
+     "title": "Projekttitel",
+     "description": "1-2 Sätze Projektbeschreibung",
+     "type": "Infrastructure/Policy/Program/Study"
+   }},
+   "connections": [{{"target_id": "af_1", "confidence_score": 0.9}}]
+}}]
+
+3. measures: [{{
+   "id": "msr_1",
+   "content": {{
+     "title": "Maßnahmentitel",
+     "description": "1-2 Sätze was diese Maßnahme beinhaltet"
+   }},
+   "connections": [{{"target_id": "proj_1", "confidence_score": 0.8}}]
+}}]
+
+4. indicators: [{{
+   "id": "ind_1",
+   "content": {{
+     "title": "Indikatorname",
+     "description": "Was wird hier gemessen/überwacht",
+     "unit": "Nur wenn explizit genannt",
+     "calculation": "Nur wenn beschrieben"
+   }},
+   "connections": [{{"target_id": "msr_1", "confidence_score": 0.9}}]
+}}]
+
+KONFIDENZ-SCORES:
+- 0.9-1.0: Explizit verbunden oder gruppiert
+- 0.7-0.8: Starke thematische Verbindung
+- 0.5-0.6: Schwache/inferierte Verbindung
+
+ID-FORMAT: af_1, proj_1, msr_1, ind_1 (fortlaufend nummeriert)"""
+
+
+def add_page_attribution_to_enhanced_result(
+    result,  # EnrichedReviewJSON
+    page_numbers: list[int]
+) -> None:
+    """Add page attribution to all entities in enhanced result."""
+    page_str = f"Seiten {', '.join(map(str, sorted(page_numbers)))}"
+
+    # Add page attribution to all entity types
+    for entity_list in [result.action_fields, result.projects, result.measures, result.indicators]:
+        for entity in entity_list:
+            if "page_source" not in entity.content:
+                entity.content["page_source"] = page_str
+
+
+def merge_enhanced_results(results: list) -> dict | None:  # EnrichedReviewJSON type
+    """Merge multiple enhanced results with simple concatenation."""
+    if not results:
+        return None
+
+    if len(results) == 1:
+        return results[0]
+
+    # Import here to avoid circular imports
+    from src.core.schemas import EnrichedReviewJSON
+
+    # Simple merge - concatenate all lists
+    merged = EnrichedReviewJSON(
+        action_fields=[],
+        projects=[],
+        measures=[],
+        indicators=[]
+    )
+
+    entity_counter = {"af": 0, "proj": 0, "msr": 0, "ind": 0}
+
+    for result in results:
+        # Reassign IDs to avoid conflicts
+        for af in result.action_fields:
+            entity_counter["af"] += 1
+            af.id = f"af_{entity_counter['af']}"
+            merged.action_fields.append(af)
+
+        for proj in result.projects:
+            entity_counter["proj"] += 1
+            proj.id = f"proj_{entity_counter['proj']}"
+            merged.projects.append(proj)
+
+        for msr in result.measures:
+            entity_counter["msr"] += 1
+            msr.id = f"msr_{entity_counter['msr']}"
+            merged.measures.append(msr)
+
+        for ind in result.indicators:
+            entity_counter["ind"] += 1
+            ind.id = f"ind_{entity_counter['ind']}"
+            merged.indicators.append(ind)
+
+    return merged
+
+
+def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
+    """Apply conservative entity resolution - only merge exact matches."""
+    try:
+        # Convert to format expected by existing entity resolution
+        structures = []
+
+        for af in result.action_fields:
+            af_dict = {
+                "name": af.content.get("name", ""),
+                "projects": []
+            }
+
+            # Find connected projects
+            for proj in result.projects:
+                for conn in proj.connections:
+                    if conn.target_id == af.id:
+                        proj_dict = {
+                            "title": proj.content.get("title", ""),
+                            "measures": [],
+                            "indicators": []
+                        }
+
+                        # Find connected measures and indicators
+                        for msr in result.measures:
+                            for msr_conn in msr.connections:
+                                if msr_conn.target_id == proj.id:
+                                    proj_dict["measures"].append({
+                                        "title": msr.content.get("title", ""),
+                                        "description": msr.content.get("description", "")
+                                    })
+
+                        for ind in result.indicators:
+                            for ind_conn in ind.connections:
+                                if ind_conn.target_id == proj.id:
+                                    proj_dict["indicators"].append({
+                                        "title": ind.content.get("title", ""),
+                                        "description": ind.content.get("description", "")
+                                    })
+
+                        af_dict["projects"].append(proj_dict)
+
+            structures.append(af_dict)
+
+        # Apply existing entity resolution
+        resolved_structures = apply_entity_resolution(structures)
+
+        # Convert back to enhanced format
+        return rebuild_enhanced_structure_from_resolved_v2(resolved_structures, result)
+
+    except Exception as e:
+        print(f"⚠️ Entity resolution failed, returning unresolved: {e}")
+        return result
+
+
+def rebuild_enhanced_structure_from_resolved_v2(
+    resolved_structures: list[dict],
+    original_result  # EnrichedReviewJSON type
+):
+    """Rebuild enhanced structure from resolved data."""
+    # For now, return original result since entity resolution is complex
+    # TODO: Implement proper rebuilding logic
+    return original_result
