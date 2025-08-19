@@ -2389,6 +2389,186 @@ def extract_direct_to_enhanced(
     }
 
 
+def extract_direct_to_enhanced_with_operations(
+    page_aware_text: list[tuple[str, int]],
+    source_id: str,
+    log_file_path: str | None = None,
+) -> dict[str, Any] | None:
+    """
+    Extract directly from PDF text using operations-based approach.
+    
+    This function implements the operations-based extraction approach:
+    1. Chunks text with smaller windows and minimal overlap
+    2. For each chunk, LLM returns operations to apply to current state
+    3. Operations are applied deterministically to build final state
+    4. No copy degradation or context bloat issues
+    
+    Args:
+        page_aware_text: List of (text, page_number) tuples from parser
+        source_id: Source identifier for logging
+        log_file_path: Optional path to log LLM dialog
+        
+    Returns:
+        Enhanced JSON structure or None if extraction fails
+    """
+    import os
+    import time
+    from pathlib import Path
+
+    from src.core.config import (
+        ENHANCED_CHUNK_MAX_CHARS,
+        ENHANCED_CHUNK_MIN_CHARS,
+        ENHANCED_CHUNK_OVERLAP,
+        FAST_EXTRACTION_MAX_CHUNKS,
+        LLM_BACKEND,
+        PROJECT_ROOT,
+    )
+    from src.core.llm_providers import get_llm_provider
+    from src.core.schemas import EnrichedReviewJSON
+    from src.core.operations_schema import ExtractionOperations
+    from src.extraction.operations_executor import OperationExecutor
+    from src.processing.chunker import chunk_for_llm_with_pages
+
+    print(f"🔄 Starting operations-based extraction for {source_id}")
+    start_time = time.time()
+
+    if not page_aware_text:
+        print("⚠️ No page-aware text provided")
+        return None
+
+    # Step 1: Create smaller chunks optimized for focused extraction
+    print(f"📝 Chunking with enhanced settings: {ENHANCED_CHUNK_MIN_CHARS}-{ENHANCED_CHUNK_MAX_CHARS} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap")
+
+    chunks_with_pages = chunk_for_llm_with_pages(
+        page_aware_text=page_aware_text,
+        max_chars=ENHANCED_CHUNK_MAX_CHARS,
+        min_chars=ENHANCED_CHUNK_MIN_CHARS,
+        doc_title=f"Strategiedokument {source_id}",
+        add_overlap=True,
+    )
+
+    if not chunks_with_pages:
+        print("⚠️ No chunks created from text")
+        return None
+
+    # Apply chunk limit for performance
+    if len(chunks_with_pages) > FAST_EXTRACTION_MAX_CHUNKS:
+        print(f"⚡ Using first {FAST_EXTRACTION_MAX_CHUNKS} chunks (performance mode)")
+        chunks_with_pages = chunks_with_pages[:FAST_EXTRACTION_MAX_CHUNKS]
+
+    print(f"📄 Processing {len(chunks_with_pages)} chunks")
+
+    # Step 2: Initialize empty extraction state and operations executor
+    current_state = EnrichedReviewJSON(
+        action_fields=[],
+        projects=[],
+        measures=[],
+        indicators=[]
+    )
+    
+    executor = OperationExecutor()
+    llm_provider = get_llm_provider()
+    all_operation_logs = []
+
+    # Step 3: Process each chunk with operations
+    for i, (chunk_text, page_numbers) in enumerate(chunks_with_pages):
+        print(f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} (pages {page_numbers})")
+
+        # Create operations-focused prompt
+        system_message = create_operations_system_message()
+        main_prompt = create_operations_extraction_prompt(chunk_text, source_id, current_state, page_numbers)
+
+        # Enhanced log context
+        enhanced_log_context = f"operations_{source_id}_chunk_{i+1}"
+
+        try:
+            # Get operations from LLM
+            operations_result = llm_provider.query_structured(
+                prompt=main_prompt,
+                response_model=ExtractionOperations,
+                system_message=system_message,
+                log_file_path=log_file_path,
+                log_context=enhanced_log_context,
+            )
+
+            if operations_result and operations_result.operations:
+                # Validate operations before applying
+                from src.extraction.operations_executor import validate_operations
+                validation_errors = validate_operations(operations_result.operations, current_state)
+                
+                if validation_errors:
+                    print(f"⚠️ Chunk {i+1}: Operation validation failed:")
+                    for error in validation_errors[:3]:  # Show first 3 errors
+                        print(f"   - {error}")
+                    if len(validation_errors) > 3:
+                        print(f"   - ... and {len(validation_errors) - 3} more errors")
+                    print(f"   Skipping this chunk to preserve state integrity")
+                    continue
+                
+                # Apply validated operations to current state
+                try:
+                    new_state, operation_log = executor.apply_operations(
+                        current_state, 
+                        operations_result.operations,
+                        chunk_index=i
+                    )
+                    
+                    # Only update current_state if operations were successfully applied
+                    if operation_log.successful_operations > 0:
+                        current_state = new_state
+                        all_operation_logs.append(operation_log)
+                        
+                        print(f"✅ Chunk {i+1}: {operation_log.successful_operations}/{operation_log.total_operations} operations applied")
+                        print(f"📊 Current state: {len(current_state.action_fields)} action fields, {len(current_state.projects)} projects, {len(current_state.measures)} measures, {len(current_state.indicators)} indicators")
+                    else:
+                        print(f"⚠️ Chunk {i+1}: No operations succeeded, keeping previous state")
+                        all_operation_logs.append(operation_log)
+                        
+                except Exception as op_error:
+                    print(f"❌ Chunk {i+1}: Error applying operations: {op_error}")
+                    print(f"   Keeping previous state to preserve integrity")
+                    continue
+                    
+            else:
+                print(f"⚠️ No operations from chunk {i+1}")
+
+        except Exception as e:
+            print(f"❌ Error processing chunk {i+1}: {e}")
+            continue
+
+    # Step 4: Final statistics and return
+    extraction_time = time.time() - start_time
+    operation_summary = executor.get_operation_summary()
+    
+    print(f"✅ Operations-based extraction completed in {extraction_time:.1f}s")
+    print(f"📊 Operation Summary:")
+    print(f"   - Total operations: {operation_summary['total_operations']}")
+    print(f"   - Successful: {operation_summary['successful_operations']}")
+    print(f"   - Success rate: {operation_summary['success_rate']:.1%}")
+    print(f"   - Entities created: {operation_summary['entities_created']}")
+    print(
+        f"📊 Final: {len(current_state.action_fields)} action fields, "
+        f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
+        f"{len(current_state.indicators)} indicators"
+    )
+
+    return {
+        "extraction_result": current_state.model_dump(),
+        "metadata": {
+            "extraction_time_seconds": round(extraction_time, 2),
+            "chunks_processed": len(chunks_with_pages),
+            "method": "operations_based",
+            "llm_backend": LLM_BACKEND,
+            "operation_summary": operation_summary,
+            "chunk_settings": {
+                "max_chars": ENHANCED_CHUNK_MAX_CHARS,
+                "min_chars": ENHANCED_CHUNK_MIN_CHARS,
+                "overlap": ENHANCED_CHUNK_OVERLAP,
+            }
+        }
+    }
+
+
 def create_simplified_system_message() -> str:
     """Create simplified system message focused on descriptions."""
     return """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten und Indikatoren aus deutschen kommunalen Strategiedokumenten.
@@ -2560,6 +2740,118 @@ TEXT:
 {chunk_text}
 
 Erstellen Sie die 4-Bucket-Struktur mit KORREKTER HIERARCHIE und unter Verwendung der bereits bekannten Handlungsfelder, wo zutreffend."""
+
+
+def create_operations_system_message() -> str:
+    """Create system message for operations-based extraction."""
+    return """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten, Maßnahmen und Indikatoren aus deutschen kommunalen Strategiedokumenten.
+
+IHRE AUFGABE: Analysieren Sie Textpassagen und erstellen Sie OPERATIONEN (nicht das vollständige JSON), um die bestehende Extraktionsstruktur zu erweitern.
+
+VERFÜGBARE OPERATIONEN:
+- CREATE: Neue Entity erstellen (nur wenn wirklich neu und einzigartig)
+- UPDATE: Bestehende Entity mit zusätzlichen Details erweitern  
+- MERGE: Neue Inhalte in bestehende Entity einarbeiten
+- CONNECT: Verbindungen zwischen Entities erstellen
+
+HIERARCHISCHE STRUKTUR:
+- Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE (max. 8-15 total)
+  → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
+    → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
+      → Indikatoren: Messbare Kennzahlen für Projekte/Maßnahmen
+
+WICHTIGE PRINZIPIEN:
+- Bevorzugen Sie UPDATE/MERGE gegenüber CREATE für ähnliche Konzepte
+- Verwenden Sie exakte Entity-IDs für Verbindungen
+- Fügen Sie immer Quellenangaben (source_pages, source_quote) hinzu
+- Seien Sie konservativ bei neuen Handlungsfeldern
+
+Antworten Sie AUSSCHLIESSLICH mit der Operations-Liste im JSON-Format."""
+
+
+def create_operations_extraction_prompt(
+    chunk_text: str, 
+    source_id: str, 
+    current_state: dict,
+    page_numbers: list[int]
+) -> str:
+    """Create operations-focused extraction prompt."""
+    
+    import json
+    
+    # Format current state for display
+    if (hasattr(current_state, 'action_fields') and 
+        (current_state.action_fields or current_state.projects or 
+         current_state.measures or current_state.indicators)):
+        
+        current_json_str = json.dumps(
+            current_state.model_dump() if hasattr(current_state, 'model_dump') else current_state,
+            indent=2, 
+            ensure_ascii=False
+        )
+        context_text = f"""AKTUELLER EXTRAKTIONSSTAND:
+{current_json_str}
+
+ANWEISUNG: Analysieren Sie den Text und erstellen Sie Operationen zur Erweiterung dieser Struktur."""
+    else:
+        context_text = "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
+    
+    page_list = ", ".join(map(str, sorted(page_numbers)))
+    
+    return f"""Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.
+
+{context_text}
+
+TEXTABSCHNITT (Seiten {page_list}):
+{chunk_text}
+
+OPERATIONEN-BEISPIELE:
+
+CREATE neue Entity:
+{{
+  "operation": "CREATE",
+  "entity_type": "action_field",
+  "content": {{"title": "Mobilität", "description": "Nachhaltige Verkehrslösungen"}},
+  "source_pages": [{page_list}],
+  "source_quote": "Relevanter Textauszug...",
+  "confidence": 0.9
+}}
+
+UPDATE bestehende Entity:
+{{
+  "operation": "UPDATE", 
+  "entity_type": "project",
+  "entity_id": "proj_1",
+  "content": {{"additional_info": "Neue Details aus dem Text"}},
+  "source_pages": [{page_list}],
+  "source_quote": "Zusätzlicher Textauszug..."
+}}
+
+CONNECT Entities:
+{{
+  "operation": "CONNECT",
+  "connections": [
+    {{"from_id": "proj_2", "to_id": "af_1", "confidence": 0.8}}
+  ]
+}}
+
+MERGE in bestehende Entity:
+{{
+  "operation": "MERGE",
+  "entity_type": "measure", 
+  "merge_with_id": "msr_3",
+  "content": {{"enhanced_description": "Ergänzte Beschreibung"}},
+  "reason": "Gleiche Maßnahme, zusätzliche Details"
+}}
+
+WICHTIG: 
+- Verwenden Sie exakte Entity-IDs aus dem aktuellen Stand
+- Fügen Sie IMMER source_pages und source_quote hinzu
+- Seien Sie sparsam mit CREATE für Handlungsfelder
+- Bevorzugen Sie UPDATE/MERGE bei ähnlichen Konzepten
+
+Antworten Sie NUR mit der Operations-Liste im JSON-Format:
+{{"operations": [...]}}"""
 
 
 def add_page_attribution_to_enhanced_result(

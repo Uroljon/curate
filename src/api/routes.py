@@ -900,3 +900,165 @@ async def extract_enhanced(
             },
             status_code=500
         )
+
+
+async def extract_enhanced_operations(
+    request: Request,
+    source_id: str,
+):
+    """
+    Operations-based extraction endpoint that builds state incrementally.
+
+    This endpoint implements the operations-based approach:
+    1. Reads {source_id}_pages.txt directly
+    2. For each chunk, LLM returns operations (CREATE, UPDATE, MERGE, CONNECT)
+    3. Operations are applied deterministically to build final state
+    4. No copy degradation or context bloat issues
+
+    Benefits:
+    - LLM makes intelligent decisions without managing full state
+    - No risk of copy degradation across chunks
+    - Smaller LLM responses (operations only)
+    - Clear audit trail of all changes
+    - Deterministic state building
+
+    Args:
+        request: FastAPI request object
+        source_id: Source identifier to locate the page-aware text file
+
+    Returns:
+        Enhanced JSON structure built incrementally via operations
+    """
+    start_time = time.time()
+
+    # Log API request
+    log_api_request(
+        "/extract_enhanced_operations",
+        "GET",
+        {"source_id": source_id},
+        request.client.host,
+    )
+
+    # Get or create monitor for this extraction
+    monitor = get_extraction_monitor(source_id)
+
+    try:
+        # Stage 1: Load page-aware text file
+        monitor.start_stage("file_loading", source_id=source_id)
+
+        # Use existing helper function to load pages
+        page_aware_text = load_pages_from_file(source_id)
+
+        if not page_aware_text:
+            pages_filename = os.path.splitext(source_id)[0] + "_pages.txt"
+            error_msg = f"No valid page content found in {pages_filename}"
+            raise ValueError(error_msg)
+
+        print(f"📄 Loaded {len(page_aware_text)} pages from page-aware text file")
+        
+        monitor.end_stage("file_loading", success=True)
+
+        # Stage 2: Operations-based extraction
+        monitor.start_stage("operations_extraction", source_id=source_id)
+
+        # Build log file path (consistent with extract_enhanced)
+        log_file_path = os.path.join(UPLOAD_FOLDER, f"{source_id}_operations_extraction.jsonl")
+
+        # Import and run operations-based extraction
+        from src.api.extraction_helpers import extract_direct_to_enhanced_with_operations
+
+        extraction_result = extract_direct_to_enhanced_with_operations(
+            page_aware_text=page_aware_text,
+            source_id=source_id,
+            log_file_path=log_file_path,
+        )
+
+        if not extraction_result:
+            monitor.end_stage("operations_extraction", success=False)
+            response_time = time.time() - start_time
+            log_api_response("/extract_enhanced_operations", 404, response_time)
+
+            return JSONResponse(
+                content={
+                    "error": "No content extracted",
+                    "detail": "Operations-based extraction returned no results",
+                    "source_id": source_id
+                },
+                status_code=404
+            )
+
+        monitor.end_stage("operations_extraction", success=True)
+
+        # Save result to file
+        try:
+            upload_dir = DATA_DIR / "uploads"
+            upload_dir.mkdir(exist_ok=True)
+            
+            result_filename = f"{source_id}_operations_result.json"
+            result_path = upload_dir / result_filename
+            
+            with open(result_path, 'w', encoding='utf-8') as f:
+                json.dump(extraction_result, f, indent=2, ensure_ascii=False)
+            
+            print(f"💾 Operations result saved to {result_filename}")
+            
+        except Exception as save_error:
+            print(f"⚠️ Failed to save operations result: {save_error}")
+            # Continue despite save failure
+
+        response_time = time.time() - start_time
+        log_api_response("/extract_enhanced_operations", 200, response_time)
+
+        return JSONResponse(content=extraction_result)
+
+    except ValueError as e:
+        monitor.log_error("operations_extraction", e)
+        response_time = time.time() - start_time
+        log_api_response("/extract_enhanced_operations", 404, response_time)
+
+        return JSONResponse(
+            content={
+                "error": "File not found",
+                "detail": str(e),
+                "source_id": source_id
+            },
+            status_code=404
+        )
+
+    except json.JSONDecodeError as e:
+        monitor.log_error("operations_extraction", e)
+        response_time = time.time() - start_time
+        log_api_response("/extract_enhanced_operations", 400, response_time)
+
+        return JSONResponse(
+            content={
+                "error": "Invalid JSON in extraction",
+                "detail": str(e),
+                "source_id": source_id
+            },
+            status_code=400
+        )
+
+    except Exception as e:
+        # Log the exception for debugging
+        import traceback
+        error_details = {
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "traceback": traceback.format_exc()
+        }
+        print(f"❌ Operations extraction error: {json.dumps(error_details, indent=2)}")
+
+        # Final fallback for unexpected errors
+        monitor.log_error("operations_extraction", e)
+        response_time = time.time() - start_time
+        log_api_response("/extract_enhanced_operations", 500, response_time)
+
+        return JSONResponse(
+            content={
+                "error": "Internal server error",
+                "detail": str(e),
+                "source_id": source_id
+            },
+            status_code=500
+        )
