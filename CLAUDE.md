@@ -70,6 +70,9 @@ curl -X POST "http://127.0.0.1:8000/upload" \
 
 curl -X GET "http://127.0.0.1:8000/extract_structure?source_id=your-source-id"
 
+# Test new consolidated endpoint
+curl -X GET "http://127.0.0.1:8000/extract_enhanced?source_id=your-source-id"
+
 # Run tests (currently uses python directly, pytest not configured)
 ./run_tests.sh  # Runs chunking and embedding tests
 python tests/test_integration.py  # Integration tests
@@ -98,6 +101,13 @@ Phase 3: **Enhanced Structure** (`/enhance_structure`)
 - Creates connections between entities with confidence scores
 - Applies entity resolution and consistency validation
 
+**NEW: Single-Step Extraction** (`/extract_enhanced`)
+- Consolidated endpoint that goes directly from PDF text to enhanced 4-bucket structure
+- Uses smaller chunk windows (8-12K chars, 10% overlap) for focused extraction
+- Simplified prompts focused on German descriptions from the start
+- Single API call instead of two-step process
+- Compatible JSON output for visualization tools
+
 **Key Components:**
 
 - **`src/processing/parser.py`**: Handles PDF text extraction with intelligent OCR fallback. Uses PyMuPDF first, falls back to pytesseract for scanned pages. Includes German-specific text cleaning, language detection, and spell checking for OCR quality control.
@@ -125,10 +135,11 @@ Phase 3: **Enhanced Structure** (`/enhance_structure`)
 
 - **`src/utils/text.py`**: Text processing utilities including heading detection, German text normalization, and OCR cleanup
 
-- **`src/api/extraction_helpers.py`**: Helper functions that break down complex extraction logic into manageable, testable units
+- **`src/api/extraction_helpers.py`**: Helper functions that break down complex extraction logic into manageable, testable units. Contains `extract_direct_to_enhanced()` for the new consolidated extraction endpoint.
 
 **LLM Processing Strategy:**
 - **Current (extract_structure)**: Independent processing of each chunk with single-pass extraction using complete ExtractionResult schema
+- **NEW (extract_enhanced)**: Direct extraction to 4-bucket structure using smaller chunks and simplified prompts focused on German descriptions
 - **Alternative (unused)**: Progressive extraction with accumulation maintaining context across chunks
 - Results aggregated and deduplicated at API level after all chunks processed
 
@@ -209,6 +220,8 @@ pytest tests/test_indicator_chunking.py  # Only this test imports pytest
 Key settings in `src/core/config.py`:
 - `MODEL_NAME`: Default "qwen3:14b" (can change to "qwen3:7b")
 - `CHUNK_MAX_CHARS`: 20K chars for LLM chunks
+- `ENHANCED_CHUNK_MAX_CHARS`: 8-12K chars for enhanced extraction (smaller, focused chunks)
+- `ENHANCED_CHUNK_OVERLAP`: 10% overlap for enhanced extraction (reduced from 15%)
 - `SEMANTIC_CHUNK_MAX_CHARS`: 7.5K chars for embeddings
 - `FAST_EXTRACTION_MAX_CHUNKS`: Limit chunks for speed (default 50)
 - `OLLAMA_HOST`: Set via environment variable for remote Ollama
@@ -278,6 +291,20 @@ When using vLLM, the system automatically maps Ollama model names to vLLM equiva
 - Monitor with built-in telemetry (`src/utils/monitoring.py`)
 - Check performance metrics in `logs/performance.jsonl`
 
+## Recent Updates (August 2025)
+
+**New Consolidated Extraction Endpoint:**
+- Added `/extract_enhanced` endpoint for single-step extraction to 4-bucket structure
+- Implements simplified prompts focused on German descriptions and connections
+- Uses smaller chunk windows (8-12K chars, 10% overlap) for better focus
+- Saves compatible JSON files for visualization tools
+- Significantly faster than two-step process (`/extract_structure` + `/enhance_structure`)
+
+**Enhanced Configuration:**
+- Added `ENHANCED_CHUNK_*` settings for optimized extraction performance
+- Separate chunk sizes for different LLM backends (Ollama vs vLLM vs external APIs)
+- Conservative extraction approach to prevent hallucination of metadata
+
 ## Recent Refactoring (July 2025)
 
 The codebase underwent a major refactoring to improve maintainability and organization:
@@ -300,8 +327,14 @@ The codebase underwent a major refactoring to improve maintainability and organi
 **Extraction Pipeline Reality Check:**
 - The `/extract_structure` endpoint does NOT use the 3-stage extraction process (Stage 1→2→3)  
 - Instead, it uses `extract_structures_with_retry()` for single-pass extraction per chunk
+- **NEW**: The `/extract_enhanced` endpoint goes directly to 4-bucket structure with simplified prompts
 - 3-stage functions exist in codebase but are not used by current API endpoints
 - No vector embeddings are created during upload - only page-aware text files
+
+**API Endpoint Summary:**
+- `/upload` → Extracts text, saves page-aware files
+- `/extract_structure` → Two-step: hierarchical extraction → enhanced structure via `/enhance_structure`
+- `/extract_enhanced` → **Recommended**: Direct single-step extraction to enhanced 4-bucket structure
 
 **Data Structure & Entity Relationships:**
 

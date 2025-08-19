@@ -2373,13 +2373,33 @@ def create_simplified_system_message() -> str:
     """Create simplified system message focused on descriptions."""
     return """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten und Indikatoren aus deutschen kommunalen Strategiedokumenten.
 
-IHRE HAUPTAUFGABE: Erstellen Sie aussagekräftige deutsche Beschreibungen für jede Entität.
+HIERARCHISCHE STRUKTUR - KRITISCH WICHTIG:
+- Handlungsfelder (action_fields): BREITE STRATEGISCHE BEREICHE (max. 8-15 Stück)
+  → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
+    → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
+      → Indikatoren: Messbare Kennzahlen
+
+HANDLUNGSFELDER - NUR ÜBERGEORDNETE BEREICHE:
+✅ RICHTIG: "Mobilität und Verkehr", "Klimaschutz und Klimaanpassung", "Energie", "Siedlungsentwicklung", "Wirtschaft und Wissenschaft"
+❌ FALSCH: "Stadtbahn", "Neuer ZOB", "Green Deal", "Solaranlagen", "Radwegenetz" (das sind PROJEKTE!)
+
+TYPISCHE HANDLUNGSFELDER KOMMUNALER STRATEGIEN:
+- Mobilität und Verkehr
+- Klimaschutz und Klimaanpassung  
+- Energie
+- Siedlungs- und Quartiersentwicklung
+- Freiraumentwicklung
+- Wirtschaft und Wissenschaft
+- Digitalisierung
+- Soziales und Integration
+- Bildung und Betreuung
+- Kultur und Sport
 
 PFLICHTFELDER:
-- Handlungsfelder (action_fields): name + description (1-3 Sätze)
-- Projekte (projects): title + description (1-2 Sätze) + type
-- Maßnahmen (measures): title + description (1-2 Sätze)
-- Indikatoren (indicators): title + description (Was wird gemessen?)
+- Handlungsfelder: name + description (1-3 Sätze über den strategischen Bereich)
+- Projekte: title + description (1-2 Sätze) + type
+- Maßnahmen: title + description (1-2 Sätze)
+- Indikatoren: title + description (Was wird gemessen?)
 
 OPTIONALE FELDER (NUR mit Quellenbeleg):
 - unit: Nur wenn explizit genannt (z.B. "Tonnen CO2/Jahr")
@@ -2387,30 +2407,49 @@ OPTIONALE FELDER (NUR mit Quellenbeleg):
 - valuesSource: Nur wenn Datenquelle erwähnt
 
 WICHTIGE REGELN:
-1. Konservative Extraktion: Nur was eindeutig im Text steht
-2. Keine Erfindung von Metadaten (Budget, Termine, Abteilungen)
-3. Qualitätsbeschreibungen: Jede Entität braucht aussagekräftige deutsche Beschreibung
-4. Verbindungen mit Konfidenz-Scores (0.5-1.0) basierend auf Textkontext
+1. HIERARCHIE BEACHTEN: Spezifische Projekte NIEMALS als Handlungsfelder extrahieren
+2. Konservative Extraktion: Nur was eindeutig im Text steht
+3. Keine Erfindung von Metadaten (Budget, Termine, Abteilungen)
+4. Qualitätsbeschreibungen: Jede Entität braucht aussagekräftige deutsche Beschreibung
+5. Verbindungen mit Konfidenz-Scores (0.5-1.0) basierend auf Textkontext
 
 Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der EnrichedReviewJSON-Struktur entspricht."""
 
 
 def create_simplified_extraction_prompt(chunk_text: str, source_id: str) -> str:
     """Create simplified extraction prompt for direct 4-bucket extraction."""
-    return f"""Extrahieren Sie aus diesem Textabschnitt alle Handlungsfelder, Projekte/Maßnahmen und Indikatoren.
+    return f"""Extrahieren Sie aus diesem Textabschnitt die HIERARCHISCH KORREKTEN Strukturen.
 
-FOKUS: Qualitativ hochwertige Beschreibungen in deutscher Sprache.
+KRITISCH: Handlungsfelder sind NUR breite strategische Bereiche (max. 8-15 total), NICHT spezifische Projekte!
+
+BEISPIELE DER HIERARCHIE:
+• Handlungsfeld: "Mobilität und Verkehr" 
+  → Projekt: "Stadtbahn Regensburg"
+  → Projekt: "Radwegenetz Ausbau"
+  → Projekt: "Neuer Zentraler Omnibusbahnhof"
+  
+• Handlungsfeld: "Klimaschutz und Klimaanpassung"
+  → Projekt: "Green Deal Regensburg"
+  → Projekt: "Klimaneutrale Verwaltung"
+  
+• Handlungsfeld: "Energie"
+  → Projekt: "Solaroffensive"
+  → Projekt: "Windkraftausbau"
+
+FALSCHE EXTRAKTION VERMEIDEN:
+❌ "Stadtbahn" als Handlungsfeld → ✅ "Mobilität und Verkehr" als Handlungsfeld, "Stadtbahn" als Projekt
+❌ "Green Deal" als Handlungsfeld → ✅ "Klimaschutz" als Handlungsfeld, "Green Deal" als Projekt
 
 TEXT:
 {chunk_text}
 
-Erstellen Sie die 4-Bucket-Struktur:
+Erstellen Sie die 4-Bucket-Struktur mit KORREKTER HIERARCHIE:
 
 1. action_fields: [{{
    "id": "af_1",
    "content": {{
-     "name": "Handlungsfeldname",
-     "description": "1-3 Sätze was dieses Handlungsfeld umfasst"
+     "name": "Breiter strategischer Bereich (z.B. 'Mobilität und Verkehr')",
+     "description": "1-3 Sätze über diesen ÜBERGEORDNETEN strategischen Bereich"
    }},
    "connections": []
 }}]
@@ -2521,7 +2560,7 @@ def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
 
         for af in result.action_fields:
             af_dict = {
-                "name": af.content.get("name", ""),
+                "action_field": af.content.get("name", ""),
                 "projects": []
             }
 
@@ -2559,8 +2598,8 @@ def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
         # Apply existing entity resolution
         resolved_structures = apply_entity_resolution(structures)
 
-        # Convert back to enhanced format
-        return rebuild_enhanced_structure_from_resolved_v2(resolved_structures, result)
+        # Convert back to enhanced format using the working rebuild function
+        return rebuild_enhanced_structure_from_resolved(resolved_structures, result)
 
     except Exception as e:
         print(f"⚠️ Entity resolution failed, returning unresolved: {e}")

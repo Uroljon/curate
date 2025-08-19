@@ -194,7 +194,7 @@ AGGREGATION_CHUNK_SIZE = (
 # Entity Resolution Configuration
 ENTITY_RESOLUTION_ENABLED = True  # Enable entity resolution to fix node fragmentation
 ENTITY_RESOLUTION_SIMILARITY_THRESHOLD = (
-    0.75  # Minimum similarity for merge consideration (0-1)
+    0.65  # Reduced from 0.75 to catch more variations like "und" vs "&"
 )
 ENTITY_RESOLUTION_AUTO_MERGE_THRESHOLD = (
     0.90  # Auto-merge threshold for very similar entities (0-1)

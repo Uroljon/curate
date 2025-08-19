@@ -91,7 +91,7 @@ class EntityResolver:
             (
                 re.compile(r"^(Mobilität|Verkehr)$", re.IGNORECASE),
                 None,
-            ),  # Keep separate
+            ),  # Keep separate types but merge duplicates
             (
                 re.compile(r"^Mobilität\s+und\s+Verkehr$", re.IGNORECASE),
                 "Mobilität und Verkehr",
