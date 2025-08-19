@@ -58,6 +58,13 @@ EXTERNAL_MAX_TOKENS = int(
     os.getenv("EXTERNAL_MAX_TOKENS", "4096")
 )  # Conservative default
 
+# OpenRouter Configuration
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")  # OpenRouter API key
+OPENROUTER_MODEL_NAME = os.getenv("OPENROUTER_MODEL_NAME", "openai/gpt-4o")  # Default model
+OPENROUTER_MAX_TOKENS = int(
+    os.getenv("OPENROUTER_MAX_TOKENS", "4096")
+)  # Conservative default for cost optimization
+
 # Recommended model configurations for different providers
 EXTERNAL_MODEL_CONFIGS = {
     "openai": {
@@ -75,6 +82,22 @@ EXTERNAL_MODEL_CONFIGS = {
         "gemini-1.5-pro": {"max_tokens": 8192, "temperature": 0.1},
         "gemini-1.5-flash": {"max_tokens": 8192, "temperature": 0.1},
     },
+    "openrouter": {
+        # OpenAI models via OpenRouter
+        "openai/gpt-4o": {"max_tokens": 4096, "temperature": 0.1},
+        "openai/gpt-4o-mini": {"max_tokens": 16384, "temperature": 0.1},
+        "openai/o1-preview": {"max_tokens": 32768, "temperature": 1.0},
+        "openai/o1-mini": {"max_tokens": 65536, "temperature": 1.0},
+        # Anthropic models via OpenRouter
+        "anthropic/claude-3.5-sonnet": {"max_tokens": 8192, "temperature": 0.1},
+        "anthropic/claude-3-haiku": {"max_tokens": 8192, "temperature": 0.1},
+        # Google models via OpenRouter
+        "google/gemini-2.0-flash-exp": {"max_tokens": 8192, "temperature": 0.1},
+        "google/gemini-pro": {"max_tokens": 8192, "temperature": 0.1},
+        # Cost-effective alternatives
+        "meta-llama/llama-3.1-405b-instruct": {"max_tokens": 4096, "temperature": 0.1},
+        "qwen/qwen-2.5-72b-instruct": {"max_tokens": 8192, "temperature": 0.1},
+    },
 }
 
 # Chunk Configuration - Optimized to prevent LLM output truncation
@@ -87,9 +110,9 @@ if LLM_BACKEND == "vllm":
     # Total: ~8-10K tokens, leaving plenty of headroom
     CHUNK_MAX_CHARS = 12000  # Can use larger chunks with 32K context
     CHUNK_MIN_CHARS = 10000
-elif LLM_BACKEND in ["openai", "gemini"]:
+elif LLM_BACKEND in ["openai", "gemini", "openrouter"]:
     # External APIs generally have large context windows
-    # GPT-4o: 128K context, Gemini 2.0: 2M context
+    # GPT-4o: 128K context, Gemini 2.0: 2M context, Claude 3.5: 200K context
     # Use conservative sizing for cost optimization
     CHUNK_MAX_CHARS = 18000  # Larger chunks for external APIs with big contexts
     CHUNK_MIN_CHARS = 15000

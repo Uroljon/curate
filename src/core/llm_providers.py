@@ -501,6 +501,164 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
             return None
 
 
+class OpenRouterProvider(LLMProvider):
+    """OpenRouter provider for unified access to multiple LLM providers."""
+
+    def __init__(
+        self,
+        model_name: str,
+        temperature: float = 0.1,
+        api_key: str | None = None,
+        max_tokens: int = 4096,
+        timeout: int = 300,
+    ):
+        super().__init__(model_name, temperature)
+        self.api_key = api_key
+        self.base_url = "https://openrouter.ai/api/v1"
+        self.max_tokens = max_tokens
+        self.timeout = timeout
+
+        # Initialize OpenAI client with OpenRouter endpoint
+        try:
+            from openai import OpenAI
+
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+            )
+            print(f"📡 OpenRouter client initialized for model: {self.model_name}")
+        except ImportError:
+            raise ImportError(
+                "OpenAI library required for OpenRouter. Install with: pip install openai"
+            )
+
+    def query_structured(
+        self,
+        prompt: str,
+        response_model: type[T],
+        system_message: str | None = None,
+        log_file_path: str | None = None,
+        log_context: str | None = None,
+        override_num_predict: int | None = None,
+    ) -> T | None:
+        """Query OpenRouter with structured output using JSON schema."""
+        try:
+            messages = []
+
+            if system_message:
+                messages.append({"role": "system", "content": system_message})
+
+            # Include schema in prompt for better structured output
+            schema_str = json.dumps(response_model.model_json_schema(), indent=2)
+            structured_prompt = f"""{prompt}
+
+IMPORTANT: Respond with valid JSON matching this schema:
+{schema_str}
+
+Respond ONLY with the JSON object, no additional text."""
+
+            messages.append({"role": "user", "content": structured_prompt})
+
+            llm_start_time = time.time()
+
+            # OpenRouter supports structured output for compatible models
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=self.temperature,
+                max_tokens=override_num_predict or self.max_tokens,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": response_model.__name__,
+                        "strict": True,
+                        "schema": response_model.model_json_schema(),
+                    },
+                },
+                extra_body={
+                    "provider": {
+                        "require_parameters": True  # Ensure structured output support
+                    }
+                },
+                timeout=self.timeout,
+            )
+            llm_response_time = time.time() - llm_start_time
+            print(f"      🤖 OpenRouter response in {llm_response_time:.2f}s")
+
+            content = response.choices[0].message.content.strip()
+
+            # Log the dialog
+            if log_file_path:
+                self._log_llm_dialog(
+                    log_file_path,
+                    system_message,
+                    structured_prompt,
+                    content,
+                    log_context,
+                )
+
+            # Parse and validate with Pydantic
+            try:
+                return response_model.model_validate_json(content)
+            except Exception as e:
+                print(f"⚠️ JSON validation failed: {e}")
+                # Try json-repair as fallback
+                try:
+                    from json_repair import repair_json
+
+                    repaired = repair_json(content)
+                    return response_model.model_validate(repaired)
+                except Exception:
+                    print("❌ JSON repair failed")
+                    return None
+
+        except Exception as e:
+            print(f"❌ OpenRouter API Error: {e}")
+            return None
+
+    def query_unstructured(
+        self,
+        prompt: str,
+        system_message: str | None = None,
+        log_file_path: str | None = None,
+        log_context: str | None = None,
+        override_num_predict: int | None = None,
+    ) -> str | None:
+        """Query OpenRouter for unstructured text generation."""
+        try:
+            messages = []
+
+            if system_message:
+                messages.append({"role": "system", "content": system_message})
+
+            messages.append({"role": "user", "content": prompt})
+
+            llm_start_time = time.time()
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=self.temperature,
+                max_tokens=override_num_predict or self.max_tokens,
+                timeout=self.timeout,
+            )
+            llm_response_time = time.time() - llm_start_time
+            print(f"      🤖 OpenRouter response in {llm_response_time:.2f}s")
+
+            content = response.choices[0].message.content.strip()
+
+            # Log the dialog
+            if log_file_path:
+                self._log_llm_dialog(
+                    log_file_path, system_message, prompt, content, log_context
+                )
+
+            return content
+
+        except Exception as e:
+            print(f"❌ OpenRouter API Error: {e}")
+            return None
+
+
 class ExternalAPIProvider(LLMProvider):
     """External API provider for OpenAI and Google Gemini models."""
 
@@ -836,7 +994,7 @@ def get_llm_provider(
     Factory function to get the appropriate LLM provider.
 
     Args:
-        backend: LLM backend to use ('ollama', 'vllm', 'openai', 'gemini'). Defaults to env var LLM_BACKEND.
+        backend: LLM backend to use ('ollama', 'vllm', 'openai', 'gemini', 'openrouter'). Defaults to env var LLM_BACKEND.
         model_name: Model name override. If not provided, uses config defaults.
         temperature: Temperature override. If not provided, uses config defaults.
         **kwargs: Additional provider-specific arguments.
@@ -860,7 +1018,31 @@ def get_llm_provider(
     backend = backend or LLM_BACKEND
     temperature = temperature if temperature is not None else MODEL_TEMPERATURE
 
-    if backend == "vllm":
+    if backend == "openrouter":
+        from .config import (
+            MODEL_NAME,
+            OPENROUTER_API_KEY,
+            OPENROUTER_MAX_TOKENS,
+            OPENROUTER_MODEL_NAME,
+        )
+
+        # When using OpenRouter, ignore the default Ollama model name
+        # and use the OpenRouter-specific model configuration
+        if model_name == MODEL_NAME:
+            # This is the default Ollama model, use OpenRouter's configured model instead
+            openrouter_model = OPENROUTER_MODEL_NAME
+        else:
+            # User explicitly specified a model, use it
+            openrouter_model = model_name or OPENROUTER_MODEL_NAME
+
+        return OpenRouterProvider(
+            model_name=openrouter_model,
+            temperature=temperature,
+            api_key=kwargs.get("api_key", OPENROUTER_API_KEY),
+            max_tokens=kwargs.get("max_tokens", OPENROUTER_MAX_TOKENS),
+            timeout=kwargs.get("timeout", MODEL_TIMEOUT),
+        )
+    elif backend == "vllm":
         # Map model name for vLLM
         if model_name is None:
             model_name = MODEL_MAPPINGS.get(MODEL_NAME, MODEL_NAME)
