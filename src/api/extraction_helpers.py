@@ -2297,12 +2297,12 @@ def extract_direct_to_enhanced(
     for i, (chunk_text, page_numbers) in enumerate(chunks_with_pages):
         print(f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} (pages {page_numbers})")
 
-        # Get known entities for context-aware extraction
-        known_entities = global_registry.get_known_entities()
+        # Get full accumulated extraction state instead of just entity names
+        accumulated_json = merge_enhanced_results(all_results) if all_results else None
         
-        # Create context-aware extraction prompt
+        # Create context-aware extraction prompt with full JSON structure
         system_message = create_simplified_system_message_with_context()
-        main_prompt = create_simplified_extraction_prompt_with_context(chunk_text, source_id, known_entities)
+        main_prompt = create_simplified_extraction_prompt_with_context(chunk_text, source_id, accumulated_json)
 
         # Enhanced log context
         enhanced_log_context = f"direct_enhanced_{source_id}_chunk_{i+1}"
@@ -2319,10 +2319,13 @@ def extract_direct_to_enhanced(
             if result:
                 # Register action field entities in the global registry
                 for action_field in result.action_fields:
-                    original_name = action_field.content.get('name', '')
+                    # Handle both 'name' and 'title' fields (LLM outputs to 'title')
+                    original_name = action_field.content.get('name') or action_field.content.get('title', '')
                     if original_name:
                         canonical_name = global_registry.register_entity(original_name)
+                        # Write back to BOTH fields for compatibility
                         action_field.content['name'] = canonical_name
+                        action_field.content['title'] = canonical_name
                 
                 # Add page attribution to all entities
                 add_page_attribution_to_enhanced_result(result, page_numbers)
@@ -2527,15 +2530,24 @@ KONSISTENZ-REGEL (KRITISCH WICHTIG):
 Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das dem vorgegebenen Schema entspricht. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
 
 
-def create_simplified_extraction_prompt_with_context(chunk_text: str, source_id: str, known_entities: list[str]) -> str:
-    """Create context-aware extraction prompt that includes known entities."""
-    from src.processing.global_registry import format_known_entities_for_prompt
+def create_simplified_extraction_prompt_with_context(chunk_text: str, source_id: str, accumulated_json) -> str:
+    """Create context-aware extraction prompt that includes full accumulated extraction state."""
     
-    known_entities_text = format_known_entities_for_prompt(known_entities) if known_entities else "Noch keine Handlungsfelder bekannt - dies ist der erste Chunk."
+    if accumulated_json:
+        # Format the full JSON structure for the LLM
+        import json
+        accumulated_json_str = json.dumps(accumulated_json.model_dump() if hasattr(accumulated_json, 'model_dump') else accumulated_json, 
+                                        indent=2, ensure_ascii=False)
+        context_text = f"""AKTUELLER EXTRAKTIONSSTAND (bisher gefundene Strukturen):
+{accumulated_json_str}
+
+WICHTIG: Erweitern Sie diese bestehende Struktur. Verwenden Sie exakte IDs und Namen aus dem obigen JSON. Erstellen Sie Verbindungen zu bestehenden Entities."""
+    else:
+        context_text = "Noch keine Strukturen extrahiert - dies ist der erste Chunk."
     
     return f"""Extrahieren Sie aus diesem Textabschnitt die HIERARCHISCH KORREKTEN Strukturen.
 
-{known_entities_text}
+{context_text}
 
 KONSISTENZ-ANWEISUNGEN:
 - Falls Sie Konzepte finden, die zu den bereits bekannten Handlungsfeldern gehören, verwenden Sie die EXAKTEN Namen der bekannten Handlungsfelder
