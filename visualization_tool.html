@@ -658,7 +658,7 @@
                 nodes.push({
                     id: item.id,
                     type: 'af',
-                    name: item.content.name,
+                    name: item.content.title,
                     content: item.content,
                     connections: item.connections
                 });
@@ -689,7 +689,7 @@
                 nodes.push({
                     id: item.id,
                     type: 'ind',
-                    name: item.content.name,
+                    name: item.content.title,
                     content: item.content,
                     connections: item.connections
                 });
@@ -1273,7 +1273,7 @@
                            entity.id.startsWith('proj_') ? 'Project' : 
                            entity.id.startsWith('msr_') ? 'Measure' : 'Indicator';
                 
-                const name = entity.content.name || entity.content.title || 'N/A';
+                const name = entity.content.title || entity.content.name || 'N/A';
                 const description = entity.content.description || 'N/A';
                 const connections = entity.connections ? entity.connections.length : 0;
                 
@@ -1331,7 +1331,7 @@ Action Fields:
 ${data.action_fields
     .sort((a, b) => (b.connections?.length || 0) - (a.connections?.length || 0))
     .slice(0, 3)
-    .map(af => `- ${af.content.name || af.id}: ${af.connections?.length || 0} connections`)
+    .map(af => `- ${af.content.title || af.id}: ${af.connections?.length || 0} connections`)
     .join('\n')}
 
 Projects:
@@ -1343,7 +1343,7 @@ ${data.projects
 
 === ENTITY DETAILS WITH DESCRIPTIONS ===
 ${data.action_fields.map(af => 
-    `Action Field: ${af.content.name || af.id}\nDescription: ${af.content.description || 'N/A'}\nConnections: ${af.connections?.length || 0}\n`
+    `Action Field: ${af.content.title || af.id}\nDescription: ${af.content.description || 'N/A'}\nConnections: ${af.connections?.length || 0}\n`
 ).join('\n')}
 
 ${data.projects.map(proj => 

@@ -2287,15 +2287,22 @@ def extract_direct_to_enhanced(
     print(f"📄 Processing {len(chunks_with_pages)} chunks")
 
     # Step 2: Extract from each chunk using simplified prompts
+    # Initialize Global Entity Registry for consistency across chunks
+    from src.processing.global_registry import GlobalEntityRegistry
+    global_registry = GlobalEntityRegistry()
+    
     all_results = []
     llm_provider = get_llm_provider()
 
     for i, (chunk_text, page_numbers) in enumerate(chunks_with_pages):
         print(f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} (pages {page_numbers})")
 
-        # Create simplified extraction prompt
-        system_message = create_simplified_system_message()
-        main_prompt = create_simplified_extraction_prompt(chunk_text, source_id)
+        # Get known entities for context-aware extraction
+        known_entities = global_registry.get_known_entities()
+        
+        # Create context-aware extraction prompt
+        system_message = create_simplified_system_message_with_context()
+        main_prompt = create_simplified_extraction_prompt_with_context(chunk_text, source_id, known_entities)
 
         # Enhanced log context
         enhanced_log_context = f"direct_enhanced_{source_id}_chunk_{i+1}"
@@ -2310,6 +2317,13 @@ def extract_direct_to_enhanced(
             )
 
             if result:
+                # Register action field entities in the global registry
+                for action_field in result.action_fields:
+                    original_name = action_field.content.get('name', '')
+                    if original_name:
+                        canonical_name = global_registry.register_entity(original_name)
+                        action_field.content['name'] = canonical_name
+                
                 # Add page attribution to all entities
                 add_page_attribution_to_enhanced_result(result, page_numbers)
                 all_results.append(result)
@@ -2344,7 +2358,10 @@ def extract_direct_to_enhanced(
         print(f"⚠️ Entity resolution failed: {e}, using merged result")
         final_result = merged_result
 
-    # Step 5: Return as dictionary for API response
+    # Step 5: Print Global Entity Registry summary
+    global_registry.print_summary()
+    
+    # Step 6: Return as dictionary for API response
     extraction_time = time.time() - start_time
     print(f"✅ Direct enhanced extraction completed in {extraction_time:.1f}s")
     print(
@@ -2492,6 +2509,47 @@ KONFIDENZ-SCORES:
 ID-FORMAT: af_1, proj_1, msr_1, ind_1 (fortlaufend nummeriert)"""
 
 
+def create_simplified_system_message_with_context() -> str:
+    """Create context-aware system message that emphasizes consistency with existing entities."""
+    return """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten und Indikatoren aus deutschen kommunalen Strategiedokumenten.
+
+HIERARCHISCHE STRUKTUR - KRITISCH WICHTIG:
+- Handlungsfelder (action_fields): BREITE STRATEGISCHE BEREICHE (max. 8-15 Stück)
+  → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
+    → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
+      → Indikatoren: Messbare Kennzahlen
+
+KONSISTENZ-REGEL (KRITISCH WICHTIG):
+- Falls Sie Konzepte finden, die zu bereits bekannten Handlungsfeldern gehören, verwenden Sie die EXAKTEN Namen der bekannten Handlungsfelder
+- Erstellen Sie NUR neue Handlungsfelder, wenn sie wirklich einzigartig sind
+- Bei ähnlichen Begriffen verwenden Sie die bereits bekannte Variante
+
+Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das dem vorgegebenen Schema entspricht. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
+
+
+def create_simplified_extraction_prompt_with_context(chunk_text: str, source_id: str, known_entities: list[str]) -> str:
+    """Create context-aware extraction prompt that includes known entities."""
+    from src.processing.global_registry import format_known_entities_for_prompt
+    
+    known_entities_text = format_known_entities_for_prompt(known_entities) if known_entities else "Noch keine Handlungsfelder bekannt - dies ist der erste Chunk."
+    
+    return f"""Extrahieren Sie aus diesem Textabschnitt die HIERARCHISCH KORREKTEN Strukturen.
+
+{known_entities_text}
+
+KONSISTENZ-ANWEISUNGEN:
+- Falls Sie Konzepte finden, die zu den bereits bekannten Handlungsfeldern gehören, verwenden Sie die EXAKTEN Namen der bekannten Handlungsfelder
+- Erstellen Sie NUR neue Handlungsfelder, wenn sie wirklich einzigartig sind und nicht den bekannten zugeordnet werden können
+- Bei ähnlichen Begriffen (z.B. "Wirtschaft & Wissenschaft" vs "Wirtschaft und Wissenschaft") verwenden Sie die bereits bekannte Variante
+
+KRITISCH: Handlungsfelder sind NUR breite strategische Bereiche (max. 8-15 total), NICHT spezifische Projekte!
+
+TEXT:
+{chunk_text}
+
+Erstellen Sie die 4-Bucket-Struktur mit KORREKTER HIERARCHIE und unter Verwendung der bereits bekannten Handlungsfelder, wo zutreffend."""
+
+
 def add_page_attribution_to_enhanced_result(
     result,  # EnrichedReviewJSON
     page_numbers: list[int]
@@ -2560,7 +2618,7 @@ def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
 
         for af in result.action_fields:
             af_dict = {
-                "action_field": af.content.get("name", ""),
+                "action_field": af.content.get("title", af.content.get("name", "")),
                 "projects": []
             }
 
@@ -2595,6 +2653,14 @@ def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
 
             structures.append(af_dict)
 
+        # Check if structures have meaningful content
+        total_projects = sum(len(s.get("projects", [])) for s in structures)
+        if total_projects == 0:
+            print("⚠️ No connected projects found, bypassing entity resolution to preserve entities")
+            return result
+        
+        print(f"🔗 Found {total_projects} connected projects in {len(structures)} structures, proceeding with resolution")
+        
         # Apply existing entity resolution
         resolved_structures = apply_entity_resolution(structures)
 

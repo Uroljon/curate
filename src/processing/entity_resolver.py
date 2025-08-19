@@ -100,6 +100,15 @@ class EntityResolver:
                 re.compile(r"^Verkehr\s+und\s+Mobilität$", re.IGNORECASE),
                 "Mobilität und Verkehr",
             ),
+            # Economy and Science patterns
+            (
+                re.compile(r"^Wirtschaft(\s+und\s+|\s*&\s*)Wissenschaft$", re.IGNORECASE),
+                "Wirtschaft und Wissenschaft",
+            ),
+            (
+                re.compile(r"^Wissenschaft(\s+und\s+|\s*&\s*)Wirtschaft$", re.IGNORECASE),
+                "Wirtschaft und Wissenschaft",
+            ),
             # Energy patterns - keep separate from climate
             (re.compile(r"^Energie$", re.IGNORECASE), None),  # Keep separate
             (re.compile(r"^Erneuerbare\s+Energien?$", re.IGNORECASE), "Energie"),
