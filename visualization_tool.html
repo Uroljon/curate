@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CURATE Structure Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px 8px 0 0;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        
+        .content {
+            display: flex;
+            height: calc(100vh - 160px);
+        }
+        
+        .sidebar {
+            width: 300px;
+            padding: 20px;
+            border-right: 1px solid #e0e0e0;
+            overflow-y: auto;
+            background-color: #fafafa;
+        }
+        
+        .main-view {
+            flex: 1;
+            position: relative;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .visualization-container {
+            flex: 1;
+            position: relative;
+        }
+        
+        .details-panel {
+            width: 350px;
+            border-left: 1px solid #e0e0e0;
+            background: white;
+            overflow-y: auto;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            position: absolute;
+            right: 0;
+            top: 0;
+            height: 100%;
+            z-index: 100;
+        }
+        
+        .details-panel.open {
+            transform: translateX(0);
+        }
+        
+        .details-header {
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+            background: #f8f9fa;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .details-header h3 {
+            margin: 0 0 5px 0;
+            color: #333;
+            font-size: 18px;
+        }
+        
+        .details-header .entity-type {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #666;
+            font-weight: bold;
+        }
+        
+        .details-header .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #999;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .details-header .close-btn:hover {
+            background: #e0e0e0;
+            color: #333;
+        }
+        
+        .details-content {
+            padding: 20px;
+        }
+        
+        .detail-section {
+            margin-bottom: 25px;
+        }
+        
+        .detail-section h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 5px;
+        }
+        
+        .detail-section p {
+            margin: 0;
+            line-height: 1.5;
+            color: #555;
+        }
+        
+        .connection-item {
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            background: #f9f9f9;
+        }
+        
+        .connection-item .target-name {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .connection-item .confidence {
+            font-size: 12px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: white;
+            margin-left: 8px;
+        }
+        
+        .connection-item .justification {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        
+        .source-item {
+            padding: 10px;
+            border-left: 3px solid #2196f3;
+            background: #f0f8ff;
+            margin-bottom: 8px;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .source-item .page-number {
+            font-weight: bold;
+            color: #1976d2;
+            font-size: 12px;
+        }
+        
+        .source-item .quote {
+            font-style: italic;
+            color: #555;
+            margin-top: 5px;
+            font-size: 13px;
+        }
+        
+        .file-input {
+            margin-bottom: 20px;
+        }
+        
+        .file-input input {
+            width: 100%;
+            padding: 10px;
+            border: 2px dashed #ddd;
+            border-radius: 4px;
+            background: white;
+        }
+        
+        .stats {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .stats h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .entity-counts {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 12px;
+        }
+        
+        .entity-count {
+            padding: 8px;
+            border-radius: 3px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .af-count { background-color: #e3f2fd; color: #1976d2; }
+        .proj-count { background-color: #e8f5e8; color: #388e3c; }
+        .msr-count { background-color: #fff3e0; color: #f57c00; }
+        .ind-count { background-color: #fce4ec; color: #c2185b; }
+        
+        .filters {
+            margin-bottom: 20px;
+        }
+        
+        .filter-group {
+            margin-bottom: 15px;
+        }
+        
+        .filter-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #666;
+        }
+        
+        .confidence-slider {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+        
+        .confidence-value {
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .entity-type-filters {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+        }
+        
+        .entity-type-filters label {
+            display: flex;
+            align-items: center;
+            font-size: 11px;
+            font-weight: normal;
+            text-transform: none;
+            margin: 0;
+        }
+        
+        .entity-type-filters input {
+            margin-right: 5px;
+        }
+        
+        #visualization {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        
+        .node {
+            cursor: pointer;
+            stroke-width: 2px;
+            transition: all 0.2s ease;
+            filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.2));
+            pointer-events: all;
+            transform-origin: center center;
+        }
+        
+        .node:hover {
+            stroke-width: 3px;
+            filter: drop-shadow(3px 3px 8px rgba(0,0,0,0.5));
+            opacity: 1;
+        }
+        
+        .node-af { 
+            fill: #2196f3; 
+            stroke: #1976d2;
+            opacity: 0.85;
+        }
+        .node-proj { 
+            fill: #4caf50; 
+            stroke: #388e3c;
+            opacity: 0.85;
+        }
+        .node-msr { 
+            fill: #ff9800; 
+            stroke: #f57c00;
+            opacity: 0.85;
+        }
+        .node-ind { 
+            fill: #e91e63; 
+            stroke: #c2185b;
+            opacity: 0.85;
+        }
+        
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+            transition: stroke-opacity 0.2s ease;
+        }
+        
+        .link:hover {
+            stroke-opacity: 0.9;
+        }
+        
+        .link-high-confidence { stroke: #4caf50; }
+        .link-medium-confidence { stroke: #ff9800; }
+        .link-low-confidence { stroke: #f44336; }
+        
+        .node-label {
+            font-size: 10px;
+            font-weight: bold;
+            text-anchor: middle;
+            pointer-events: none;
+            fill: black;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .selected {
+            stroke-width: 4px !important;
+            stroke: #ff4444 !important;
+        }
+        
+        .search-highlight {
+            stroke-width: 3px !important;
+            stroke: #ffeb3b !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 CURATE Structure Visualizer</h1>
+            <p style="margin: 5px 0 0 0; opacity: 0.9;">Interactive visualization of enhance_structure JSON output</p>
+        </div>
+        
+        <div class="content">
+            <div class="sidebar">
+                <div class="file-input">
+                    <input type="file" id="jsonFile" accept=".json" placeholder="Load JSON file...">
+                </div>
+                
+                <div class="search-section" id="searchSection" style="display: none;">
+                    <div class="filter-group">
+                        <label>Search Entities</label>
+                        <input type="text" id="searchInput" placeholder="Search by name or description..." 
+                               style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                        <div id="searchResults" style="font-size: 11px; color: #666; margin-top: 5px;"></div>
+                    </div>
+                </div>
+                
+                <div class="stats" id="stats" style="display: none;">
+                    <h3>Data Overview</h3>
+                    <div class="entity-counts">
+                        <div class="entity-count af-count">
+                            <div>Action Fields</div>
+                            <div id="af-count">0</div>
+                        </div>
+                        <div class="entity-count proj-count">
+                            <div>Projects</div>
+                            <div id="proj-count">0</div>
+                        </div>
+                        <div class="entity-count msr-count">
+                            <div>Measures</div>
+                            <div id="msr-count">0</div>
+                        </div>
+                        <div class="entity-count ind-count">
+                            <div>Indicators</div>
+                            <div id="ind-count">0</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="filters" id="filters" style="display: none;">
+                    <div class="filter-group">
+                        <label>Min Confidence Score</label>
+                        <input type="range" class="confidence-slider" id="confidenceSlider" 
+                               min="0" max="1" step="0.1" value="0">
+                        <div class="confidence-value" id="confidenceValue">0.0</div>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Show Entity Types</label>
+                        <div class="entity-type-filters">
+                            <label><input type="checkbox" id="show-af" checked> Action Fields</label>
+                            <label><input type="checkbox" id="show-proj" checked> Projects</label>
+                            <label><input type="checkbox" id="show-msr" checked> Measures</label>
+                            <label><input type="checkbox" id="show-ind" checked> Indicators</label>
+                        </div>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Connection Confidence</label>
+                        <div style="font-size: 11px; line-height: 1.4;">
+                            <div style="margin-bottom: 3px;">
+                                <span style="display: inline-block; width: 20px; height: 3px; background: #4caf50; margin-right: 8px;"></span>
+                                High (80%+)
+                            </div>
+                            <div style="margin-bottom: 3px;">
+                                <span style="display: inline-block; width: 20px; height: 3px; background: #ff9800; margin-right: 8px;"></span>
+                                Medium (60-79%)
+                            </div>
+                            <div>
+                                <span style="display: inline-block; width: 20px; height: 3px; background: #f44336; margin-right: 8px;"></span>
+                                Low (< 60%)
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Entity Shapes</label>
+                        <div style="font-size: 11px; line-height: 1.6;">
+                            <div style="margin-bottom: 4px; display: flex; align-items: center;">
+                                <span style="display: inline-block; width: 12px; height: 12px; background: #2196f3; margin-right: 8px;"></span>
+                                Action Fields (squares)
+                            </div>
+                            <div style="margin-bottom: 4px; display: flex; align-items: center;">
+                                <span style="display: inline-block; width: 12px; height: 12px; background: #4caf50; border-radius: 50%; margin-right: 8px;"></span>
+                                Projects (circles)
+                            </div>
+                            <div style="margin-bottom: 4px; display: flex; align-items: center;">
+                                <span style="display: inline-block; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 10px solid #ff9800; margin-right: 8px; margin-left: 3px;"></span>
+                                Measures (triangles)
+                            </div>
+                            <div style="display: flex; align-items: center;">
+                                <span style="display: inline-block; width: 8px; height: 8px; background: #e91e63; transform: rotate(45deg); margin-right: 12px; margin-left: 2px;"></span>
+                                Indicators (diamonds)
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="filter-group" id="exportSection" style="display: none;">
+                        <label>Export</label>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <button onclick="exportAsSVG()" style="padding: 8px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                                📊 Export as SVG
+                            </button>
+                            <button onclick="exportAsCSV()" style="padding: 8px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                                📋 Export as CSV
+                            </button>
+                            <button onclick="exportSummary()" style="padding: 8px; background: #ff9800; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                                📄 Export Summary
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="main-view">
+                <div class="visualization-container">
+                    <svg id="visualization"></svg>
+                </div>
+                
+                <div class="details-panel" id="detailsPanel">
+                    <div class="details-header">
+                        <h3 id="detailsTitle">Entity Details</h3>
+                        <div class="entity-type" id="detailsType">ACTION FIELD</div>
+                        <button class="close-btn" onclick="closeDetailsPanel()">×</button>
+                    </div>
+                    <div class="details-content" id="detailsContent">
+                        <!-- Content will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="tooltip" id="tooltip" style="display: none;"></div>
+
+    <script>
+        let data = null;
+        let nodes = [];
+        let links = [];
+        let simulation = null;
+        
+        // SVG setup
+        const svg = d3.select("#visualization");
+        const width = () => document.querySelector('.visualization-container').clientWidth;
+        const height = () => document.querySelector('.visualization-container').clientHeight;
+        
+        // Create zoom behavior
+        const zoom = d3.zoom()
+            .scaleExtent([0.1, 4])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+        
+        svg.call(zoom);
+        const g = svg.append("g");
+        
+        // File input handler
+        document.getElementById('jsonFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        console.log('Raw file content length:', e.target.result.length);
+                        data = JSON.parse(e.target.result);
+                        console.log('Parsed JSON structure:', {
+                            keys: Object.keys(data),
+                            action_fields_exists: !!data.action_fields,
+                            action_fields_length: data.action_fields ? data.action_fields.length : 'undefined',
+                            projects_exists: !!data.projects,
+                            projects_length: data.projects ? data.projects.length : 'undefined',
+                            measures_exists: !!data.measures,
+                            measures_length: data.measures ? data.measures.length : 'undefined',
+                            indicators_exists: !!data.indicators,
+                            indicators_length: data.indicators ? data.indicators.length : 'undefined'
+                        });
+                        loadData();
+                    } catch (error) {
+                        console.error('JSON parsing error:', error);
+                        console.log('Error occurred at character position:', error.message);
+                        alert('Error parsing JSON file: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        });
+        
+        // Load and process data
+        function loadData() {
+            console.log('loadData() called with data:', !!data);
+            if (!data) return;
+            
+            try {
+                // Validate data structure
+                if (!data.action_fields || !data.projects || !data.measures || !data.indicators) {
+                    console.error('Invalid data structure. Expected properties: action_fields, projects, measures, indicators');
+                    console.log('Actual data keys:', Object.keys(data));
+                    alert('Invalid JSON structure. Please check the file format.');
+                    return;
+                }
+            } catch (error) {
+                console.error('Error in loadData validation:', error);
+                console.trace();
+                return;
+            }
+            
+            try {
+                // Show UI elements
+                document.getElementById('stats').style.display = 'block';
+                document.getElementById('filters').style.display = 'block';
+                document.getElementById('searchSection').style.display = 'block';
+                document.getElementById('exportSection').style.display = 'block';
+                
+                // Update stats with safe access
+                console.log('Updating stats...');
+                document.getElementById('af-count').textContent = (data.action_fields || []).length;
+                document.getElementById('proj-count').textContent = (data.projects || []).length;
+                document.getElementById('msr-count').textContent = (data.measures || []).length;
+                document.getElementById('ind-count').textContent = (data.indicators || []).length;
+                console.log('Stats updated successfully');
+            } catch (error) {
+                console.error('Error updating stats:', error);
+                console.trace();
+            }
+            
+            try {
+                // Show connection statistics and warnings
+                console.log('Calculating total connections...');
+                const totalConnections = [
+                    ...(data.action_fields || []), 
+                    ...(data.projects || []), 
+                    ...(data.measures || []), 
+                    ...(data.indicators || [])
+                ].reduce((sum, entity) => sum + (entity.connections ? entity.connections.length : 0), 0);
+                console.log('Total connections calculated:', totalConnections);
+                
+                const statsDiv = document.getElementById('stats');
+                const warning = document.createElement('div');
+                warning.style.cssText = 'background: #e8f5e8; border: 1px solid #4caf50; padding: 10px; margin-top: 10px; border-radius: 4px; font-size: 11px; color: #2e7d32;';
+                
+                if (totalConnections === 0) {
+                    warning.style.cssText = 'background: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin-top: 10px; border-radius: 4px; font-size: 11px; color: #856404;';
+                    warning.innerHTML = '⚠️ <strong>No connections found</strong><br>Entities exist but are not connected. The extraction may need improvement.';
+                } else {
+                    // This will be updated by processData() after links are created
+                    warning.id = 'connectionStatus';
+                    warning.innerHTML = `✅ <strong>Connections found</strong><br>${totalConnections} total connections in data. Processing...`;
+                }
+                statsDiv.appendChild(warning);
+                
+                // Process data
+                processData();
+                createVisualization();
+                
+                // Setup event listeners
+                setupEventListeners();
+            } catch (error) {
+                console.error('Error in connection processing:', error);
+                console.trace();
+            }
+        }
+        
+        function processData() {
+            nodes = [];
+            links = [];
+            
+            console.log('Processing data:', {
+                action_fields: data.action_fields.length,
+                projects: data.projects.length,
+                measures: data.measures.length,
+                indicators: data.indicators.length
+            });
+            
+            // Add nodes for each entity type
+            data.action_fields.forEach(item => {
+                nodes.push({
+                    id: item.id,
+                    type: 'af',
+                    name: item.content.name,
+                    content: item.content,
+                    connections: item.connections
+                });
+            });
+            
+            data.projects.forEach(item => {
+                nodes.push({
+                    id: item.id,
+                    type: 'proj',
+                    name: item.content.title,
+                    content: item.content,
+                    connections: item.connections
+                });
+            });
+            
+            data.measures.forEach(item => {
+                nodes.push({
+                    id: item.id,
+                    type: 'msr',
+                    name: item.content.title,
+                    content: item.content,
+                    connections: item.connections,
+                    sources: item.sources
+                });
+            });
+            
+            data.indicators.forEach(item => {
+                nodes.push({
+                    id: item.id,
+                    type: 'ind',
+                    name: item.content.name,
+                    content: item.content,
+                    connections: item.connections
+                });
+            });
+            
+            // Create node ID lookup map for validation
+            const nodeMap = new Set(nodes.map(n => n.id));
+            console.log('Created', nodes.length, 'nodes with IDs:', Array.from(nodeMap).slice(0, 5), '...');
+            
+            // Create links from connections with validation
+            let totalConnections = 0;
+            let validConnections = 0;
+            let invalidConnections = [];
+            
+            nodes.forEach(node => {
+                if (node.connections) {
+                    node.connections.forEach(conn => {
+                        totalConnections++;
+                        
+                        // Validate that target exists
+                        if (nodeMap.has(conn.target_id)) {
+                            links.push({
+                                source: node.id,
+                                target: conn.target_id,
+                                confidence: conn.confidence_score,
+                                justification: conn.justification
+                            });
+                            validConnections++;
+                        } else {
+                            invalidConnections.push({
+                                from: node.id,
+                                to: conn.target_id,
+                                confidence: conn.confidence_score
+                            });
+                        }
+                    });
+                }
+            });
+            
+            console.log('Connection processing complete:', {
+                totalConnections,
+                validConnections,
+                invalidConnections: invalidConnections.length,
+                successRate: `${((validConnections / totalConnections) * 100).toFixed(1)}%`
+            });
+            
+            if (invalidConnections.length > 0) {
+                console.warn('Invalid connections found:', invalidConnections.slice(0, 10));
+            }
+            
+            // Update connection status display
+            const statusDiv = document.getElementById('connectionStatus');
+            if (statusDiv) {
+                if (validConnections > 0) {
+                    statusDiv.style.cssText = 'background: #e8f5e8; border: 1px solid #4caf50; padding: 10px; margin-top: 10px; border-radius: 4px; font-size: 11px; color: #2e7d32;';
+                    statusDiv.innerHTML = `✅ <strong>${validConnections} connections mapped successfully</strong><br>
+                        ${totalConnections} total connections in data (${((validConnections / totalConnections) * 100).toFixed(1)}% success rate)<br>
+                        ${invalidConnections.length > 0 ? `<span style="color: #ff9800;">${invalidConnections.length} connections to missing entities</span>` : 'All connections valid'}`;
+                } else if (totalConnections > 0) {
+                    statusDiv.style.cssText = 'background: #ffebee; border: 1px solid #f44336; padding: 10px; margin-top: 10px; border-radius: 4px; font-size: 11px; color: #c62828;';
+                    statusDiv.innerHTML = `❌ <strong>Connection mapping failed</strong><br>
+                        ${totalConnections} connections found but none could be mapped to existing nodes<br>
+                        Check console for details about missing target IDs`;
+                }
+            }
+        }
+        
+        function createVisualization() {
+            // Clear existing visualization
+            g.selectAll("*").remove();
+            
+            // Resize SVG
+            svg.attr("width", width()).attr("height", height());
+            
+            // Create simple bubble simulation
+            simulation = d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(links).id(d => d.id)
+                    .distance(100)
+                    .strength(0.5)
+                )
+                .force("charge", d3.forceManyBody()
+                    .strength(-150)
+                )
+                .force("center", d3.forceCenter(width() / 2, height() / 2))
+                .force("collision", d3.forceCollide()
+                    .radius(d => {
+                        const baseRadius = { af: 20, proj: 18, msr: 15, ind: 12 };
+                        return baseRadius[d.type] || 15;
+                    })
+                    .strength(0.7)
+                );
+            
+            // Create links with confidence-based styling
+            const link = g.append("g")
+                .selectAll("line")
+                .data(links)
+                .join("line")
+                .attr("class", d => {
+                    const baseClass = "link";
+                    if (d.confidence >= 0.8) return baseClass + " link-high-confidence";
+                    if (d.confidence >= 0.6) return baseClass + " link-medium-confidence";
+                    return baseClass + " link-low-confidence";
+                })
+                .attr("stroke-width", d => Math.sqrt(d.confidence * 3));
+            
+            // Create node symbols with different shapes for different types
+            const nodeSymbols = g.append("g")
+                .selectAll("path")
+                .data(nodes)
+                .join("path")
+                .attr("class", d => `node node-${d.type}`)
+                .attr("d", d => {
+                    const size = d.type === 'af' ? 400 : d.type === 'proj' ? 300 : d.type === 'msr' ? 200 : 150;
+                    let symbolType;
+                    switch(d.type) {
+                        case 'af': symbolType = d3.symbolSquare; break;    // Action Fields as squares
+                        case 'proj': symbolType = d3.symbolCircle; break;  // Projects as circles
+                        case 'msr': symbolType = d3.symbolTriangle; break; // Measures as triangles
+                        case 'ind': symbolType = d3.symbolDiamond; break;  // Indicators as diamonds
+                        default: symbolType = d3.symbolCircle; break;
+                    }
+                    return d3.symbol().type(symbolType).size(size)();
+                })
+                .style("opacity", 0)  // Start invisible
+                .call(d3.drag()  // Add drag behavior immediately
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            // Keep reference to nodes for backwards compatibility
+            const node = nodeSymbols;
+            
+            // Add tooltips and click handlers
+            node
+                .on("mouseover", showTooltip)
+                .on("mouseout", hideTooltip)
+                .on("click", selectNode);
+            
+            // Simple fade-in animation
+            node.style("opacity", 0)
+                .transition()
+                .duration(800)
+                .style("opacity", 1);
+            
+            // Add labels
+            const label = g.append("g")
+                .selectAll("text")
+                .data(nodes)
+                .join("text")
+                .attr("class", "node-label")
+                .text(d => {
+                    const name = d.name || d.id || 'Unknown';
+                    return name.length > 20 ? name.substring(0, 20) + "..." : name;
+                });
+            
+            // Update positions on simulation tick
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+                
+                node
+                    .attr("transform", d => `translate(${d.x},${d.y})`);
+                
+                label
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y + 4);
+            });
+        }
+        
+        function setupEventListeners() {
+            // Confidence slider
+            const slider = document.getElementById('confidenceSlider');
+            const valueDisplay = document.getElementById('confidenceValue');
+            
+            slider.addEventListener('input', function() {
+                valueDisplay.textContent = parseFloat(this.value).toFixed(1);
+                updateVisualization();
+            });
+            
+            // Entity type checkboxes
+            ['af', 'proj', 'msr', 'ind'].forEach(type => {
+                document.getElementById(`show-${type}`).addEventListener('change', updateVisualization);
+            });
+            
+            // Search functionality
+            const searchInput = document.getElementById('searchInput');
+            searchInput.addEventListener('input', function() {
+                performSearch(this.value);
+            });
+        }
+        
+        function performSearch(searchTerm) {
+            const resultsDiv = document.getElementById('searchResults');
+            
+            if (!searchTerm.trim()) {
+                resultsDiv.textContent = '';
+                // Reset all node highlighting
+                g.selectAll(".node").style("opacity", 1).classed("search-highlight", false);
+                return;
+            }
+            
+            const searchLower = searchTerm.toLowerCase();
+            const matchingNodes = nodes.filter(node => {
+                const nameMatch = node.name.toLowerCase().includes(searchLower);
+                const descriptionMatch = node.content && node.content.description && 
+                                       node.content.description.toLowerCase().includes(searchLower);
+                return nameMatch || descriptionMatch;
+            });
+            
+            // Update search results display
+            if (matchingNodes.length > 0) {
+                resultsDiv.textContent = `${matchingNodes.length} results found`;
+                
+                // Highlight matching nodes
+                g.selectAll(".node")
+                    .style("opacity", d => matchingNodes.includes(d) ? 1 : 0.3)
+                    .classed("search-highlight", d => matchingNodes.includes(d));
+                    
+                // Highlight connections between matching nodes
+                g.selectAll(".link")
+                    .style("opacity", l => {
+                        const sourceMatch = matchingNodes.some(n => n.id === l.source.id);
+                        const targetMatch = matchingNodes.some(n => n.id === l.target.id);
+                        return (sourceMatch || targetMatch) ? 1 : 0.2;
+                    });
+            } else {
+                resultsDiv.textContent = 'No results found';
+                g.selectAll(".node").style("opacity", 0.3);
+                g.selectAll(".link").style("opacity", 0.2);
+            }
+        }
+        
+        function updateVisualization() {
+            const minConfidence = parseFloat(document.getElementById('confidenceSlider').value);
+            const showTypes = {
+                af: document.getElementById('show-af').checked,
+                proj: document.getElementById('show-proj').checked,
+                msr: document.getElementById('show-msr').checked,
+                ind: document.getElementById('show-ind').checked
+            };
+            
+            // Filter nodes and links
+            const filteredNodes = nodes.filter(n => showTypes[n.type]);
+            const filteredLinks = links.filter(l => 
+                l.confidence >= minConfidence &&
+                showTypes[nodes.find(n => n.id === l.source.id || n.id === l.source).type] &&
+                showTypes[nodes.find(n => n.id === l.target.id || n.id === l.target).type]
+            );
+            
+            // Update visualization with confidence-based styling
+            g.selectAll(".link").data(filteredLinks, d => `${d.source.id}-${d.target.id}`)
+                .join("line")
+                .attr("class", d => {
+                    const baseClass = "link";
+                    if (d.confidence >= 0.8) return baseClass + " link-high-confidence";
+                    if (d.confidence >= 0.6) return baseClass + " link-medium-confidence";
+                    return baseClass + " link-low-confidence";
+                })
+                .attr("stroke-width", d => Math.sqrt(d.confidence * 3))
+                .style("opacity", d => showTypes[d.source.type] && showTypes[d.target.type] ? 1 : 0);
+            
+            g.selectAll(".node").data(filteredNodes, d => d.id)
+                .join("path")
+                .attr("class", d => `node node-${d.type}`)
+                .attr("d", d => {
+                    const size = d.type === 'af' ? 600 : d.type === 'proj' ? 400 : d.type === 'msr' ? 200 : 150;
+                    let symbolType;
+                    switch(d.type) {
+                        case 'af': symbolType = d3.symbolSquare; break;
+                        case 'proj': symbolType = d3.symbolCircle; break;
+                        case 'msr': symbolType = d3.symbolTriangle; break;
+                        case 'ind': symbolType = d3.symbolDiamond; break;
+                        default: symbolType = d3.symbolCircle; break;
+                    }
+                    return d3.symbol().type(symbolType).size(size)();
+                })
+                .style("opacity", d => showTypes[d.type] ? 1 : 0);
+            
+            g.selectAll(".node-label").data(filteredNodes, d => d.id)
+                .join("text")
+                .attr("class", "node-label")
+                .style("opacity", d => showTypes[d.type] ? 1 : 0);
+            
+            // Update simulation
+            simulation.nodes(filteredNodes);
+            simulation.force("link").links(filteredLinks);
+            simulation.alpha(0.3).restart();
+        }
+        
+        // Enhanced tooltip functions
+        function showTooltip(event, d) {
+            // Freeze node position to prevent drift during hover
+            d.fx = d.x;
+            d.fy = d.y;
+            
+            const tooltip = document.getElementById('tooltip');
+            tooltip.style.display = 'block';
+            tooltip.style.left = (event.pageX + 10) + 'px';
+            tooltip.style.top = (event.pageY - 10) + 'px';
+            tooltip.style.maxWidth = '400px';
+            tooltip.style.whiteSpace = 'normal';
+            
+            let content = `<strong>${d.name}</strong><br>`;
+            content += `<span style="color: #ccc; font-size: 10px;">${d.type.toUpperCase()} • ID: ${d.id}</span><br><br>`;
+            
+            // Show description (main focus of new extraction)
+            if (d.content && d.content.description) {
+                content += `<strong>Beschreibung:</strong><br>`;
+                content += `<span style="font-style: italic;">${d.content.description}</span><br><br>`;
+            }
+            
+            // Show project type if available
+            if (d.type === 'proj' && d.content && d.content.type) {
+                content += `<strong>Projekttyp:</strong> ${d.content.type}<br>`;
+            }
+            
+            // Show indicator-specific fields
+            if (d.type === 'ind' && d.content) {
+                if (d.content.unit) {
+                    content += `<strong>Einheit:</strong> ${d.content.unit}<br>`;
+                }
+                if (d.content.calculation) {
+                    content += `<strong>Berechnung:</strong> ${d.content.calculation}<br>`;
+                }
+                if (d.content.valuesSource) {
+                    content += `<strong>Datenquelle:</strong> ${d.content.valuesSource}<br>`;
+                }
+            }
+            
+            // Show source information
+            if (d.sources && d.sources.length > 0) {
+                content += `<strong>Quellen:</strong><br>`;
+                d.sources.forEach((source, idx) => {
+                    if (idx < 2) { // Limit to first 2 sources to avoid tooltip overflow
+                        content += `<span style="font-size: 10px; color: #999;">`;
+                        if (source.page_number) content += `Seite ${source.page_number}: `;
+                        if (source.quote) content += `"${source.quote.substring(0, 80)}${source.quote.length > 80 ? '...' : ''}"`;
+                        content += `</span><br>`;
+                    }
+                });
+                if (d.sources.length > 2) {
+                    content += `<span style="font-size: 10px; color: #999;">...und ${d.sources.length - 2} weitere</span><br>`;
+                }
+            }
+            
+            // Show connections with confidence scores
+            if (d.connections && d.connections.length > 0) {
+                content += `<br><strong>Verbindungen (${d.connections.length}):</strong><br>`;
+                d.connections.slice(0, 3).forEach(conn => {
+                    const targetNode = nodes.find(n => n.id === conn.target_id);
+                    const targetName = targetNode ? targetNode.name : conn.target_id;
+                    const confidenceColor = getConfidenceColor(conn.confidence_score);
+                    content += `<span style="font-size: 11px;">`;
+                    content += `→ ${targetName.substring(0, 30)}${targetName.length > 30 ? '...' : ''} `;
+                    content += `<span style="color: ${confidenceColor}; font-weight: bold;">${(conn.confidence_score * 100).toFixed(0)}%</span>`;
+                    content += `</span><br>`;
+                });
+                if (d.connections.length > 3) {
+                    content += `<span style="font-size: 10px; color: #999;">...und ${d.connections.length - 3} weitere</span>`;
+                }
+            }
+            
+            tooltip.innerHTML = content;
+        }
+        
+        function getConfidenceColor(confidence) {
+            if (confidence >= 0.8) return '#4caf50'; // Green for high confidence
+            if (confidence >= 0.6) return '#ff9800'; // Orange for medium confidence
+            return '#f44336'; // Red for low confidence
+        }
+        
+        function hideTooltip(event, d) {
+            // Release node position to allow normal movement
+            if (d) {
+                d.fx = null;
+                d.fy = null;
+            }
+            document.getElementById('tooltip').style.display = 'none';
+        }
+        
+        function selectNode(event, d) {
+            // Remove previous selection
+            g.selectAll(".node").classed("selected", false);
+            
+            // Add selection to clicked node
+            d3.select(this).classed("selected", true);
+            
+            // Highlight connected nodes
+            const connectedIds = d.connections ? d.connections.map(c => c.target_id) : [];
+            connectedIds.push(d.id);
+            
+            g.selectAll(".node")
+                .style("opacity", n => connectedIds.includes(n.id) ? 1 : 0.3);
+            
+            g.selectAll(".link")
+                .style("opacity", l => 
+                    (l.source.id === d.id || l.target.id === d.id) ? 1 : 0.1
+                );
+            
+            // Open details panel with entity information
+            openDetailsPanel(d);
+        }
+        
+        function openDetailsPanel(entity) {
+            const panel = document.getElementById('detailsPanel');
+            const title = document.getElementById('detailsTitle');
+            const type = document.getElementById('detailsType');
+            const content = document.getElementById('detailsContent');
+            
+            // Set header
+            title.textContent = entity.name;
+            type.textContent = entity.type.toUpperCase();
+            
+            // Build content
+            let html = '';
+            
+            // Description section (main focus)
+            if (entity.content && entity.content.description) {
+                html += `
+                    <div class="detail-section">
+                        <h4>Beschreibung</h4>
+                        <p>${entity.content.description}</p>
+                    </div>
+                `;
+            }
+            
+            // Entity-specific fields
+            if (entity.type === 'proj' && entity.content && entity.content.type) {
+                html += `
+                    <div class="detail-section">
+                        <h4>Projekttyp</h4>
+                        <p>${entity.content.type}</p>
+                    </div>
+                `;
+            }
+            
+            if (entity.type === 'ind' && entity.content) {
+                let indicatorDetails = '';
+                if (entity.content.unit) indicatorDetails += `<p><strong>Einheit:</strong> ${entity.content.unit}</p>`;
+                if (entity.content.calculation) indicatorDetails += `<p><strong>Berechnung:</strong> ${entity.content.calculation}</p>`;
+                if (entity.content.valuesSource) indicatorDetails += `<p><strong>Datenquelle:</strong> ${entity.content.valuesSource}</p>`;
+                
+                if (indicatorDetails) {
+                    html += `
+                        <div class="detail-section">
+                            <h4>Indikator-Details</h4>
+                            ${indicatorDetails}
+                        </div>
+                    `;
+                }
+            }
+            
+            // Sources section
+            if (entity.sources && entity.sources.length > 0) {
+                html += `
+                    <div class="detail-section">
+                        <h4>Quellen (${entity.sources.length})</h4>
+                `;
+                entity.sources.forEach(source => {
+                    html += `
+                        <div class="source-item">
+                            ${source.page_number ? `<div class="page-number">Seite ${source.page_number}</div>` : ''}
+                            ${source.quote ? `<div class="quote">"${source.quote}"</div>` : ''}
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+            
+            // Connections section
+            if (entity.connections && entity.connections.length > 0) {
+                html += `
+                    <div class="detail-section">
+                        <h4>Verbindungen (${entity.connections.length})</h4>
+                `;
+                entity.connections.forEach(conn => {
+                    const targetNode = nodes.find(n => n.id === conn.target_id);
+                    const targetName = targetNode ? targetNode.name : conn.target_id;
+                    const confidenceColor = getConfidenceColor(conn.confidence_score);
+                    const confidencePercent = (conn.confidence_score * 100).toFixed(0);
+                    
+                    html += `
+                        <div class="connection-item">
+                            <div class="target-name">${targetName}</div>
+                            <span class="confidence" style="background-color: ${confidenceColor};">${confidencePercent}%</span>
+                            ${conn.justification ? `<div class="justification">${conn.justification}</div>` : ''}
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+            
+            // Metadata section
+            html += `
+                <div class="detail-section">
+                    <h4>Metadaten</h4>
+                    <p><strong>ID:</strong> ${entity.id}</p>
+                    <p><strong>Typ:</strong> ${entity.type.toUpperCase()}</p>
+                </div>
+            `;
+            
+            content.innerHTML = html;
+            panel.classList.add('open');
+        }
+        
+        function closeDetailsPanel() {
+            const panel = document.getElementById('detailsPanel');
+            panel.classList.remove('open');
+            
+            // Reset node and link opacity, clear search and selection
+            g.selectAll(".node").style("opacity", 1).classed("selected", false).classed("search-highlight", false);
+            g.selectAll(".link").style("opacity", 1);
+            
+            // Clear search input and results
+            const searchInput = document.getElementById('searchInput');
+            const searchResults = document.getElementById('searchResults');
+            if (searchInput) searchInput.value = '';
+            if (searchResults) searchResults.textContent = '';
+        }
+        
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+        
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+        
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+        
+        // Export functions
+        function exportAsSVG() {
+            if (!data) {
+                alert('No data loaded to export');
+                return;
+            }
+            
+            // Clone the SVG
+            const svgElement = document.getElementById('visualization');
+            const svgClone = svgElement.cloneNode(true);
+            
+            // Set proper dimensions
+            svgClone.setAttribute('width', width());
+            svgClone.setAttribute('height', height());
+            
+            // Create a standalone SVG
+            const svgData = new XMLSerializer().serializeToString(svgClone);
+            const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+            
+            // Download the file
+            const url = URL.createObjectURL(svgBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'curate_visualization.svg';
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function exportAsCSV() {
+            if (!data) {
+                alert('No data loaded to export');
+                return;
+            }
+            
+            let csvContent = 'Type,ID,Name,Description,Connections\n';
+            
+            // Add all entities to CSV
+            [...data.action_fields, ...data.projects, ...data.measures, ...data.indicators].forEach(entity => {
+                const type = entity.id.startsWith('af_') ? 'Action Field' : 
+                           entity.id.startsWith('proj_') ? 'Project' : 
+                           entity.id.startsWith('msr_') ? 'Measure' : 'Indicator';
+                
+                const name = entity.content.name || entity.content.title || 'N/A';
+                const description = entity.content.description || 'N/A';
+                const connections = entity.connections ? entity.connections.length : 0;
+                
+                // Escape CSV values
+                const escapeCsv = str => `"${str.toString().replace(/"/g, '""')}"`;
+                
+                csvContent += `${escapeCsv(type)},${escapeCsv(entity.id)},${escapeCsv(name)},${escapeCsv(description)},${connections}\n`;
+            });
+            
+            // Download the CSV
+            const csvBlob = new Blob([csvContent], {type: 'text/csv;charset=utf-8'});
+            const url = URL.createObjectURL(csvBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'curate_entities.csv';
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function exportSummary() {
+            if (!data) {
+                alert('No data loaded to export');
+                return;
+            }
+            
+            const totalConnections = [...data.action_fields, ...data.projects, ...data.measures, ...data.indicators]
+                .reduce((sum, entity) => sum + (entity.connections ? entity.connections.length : 0), 0);
+            
+            const highConfConnections = links.filter(l => l.confidence >= 0.8).length;
+            const mediumConfConnections = links.filter(l => l.confidence >= 0.6 && l.confidence < 0.8).length;
+            const lowConfConnections = links.filter(l => l.confidence < 0.6).length;
+            
+            const summary = `CURATE Structure Analysis Summary
+Generated: ${new Date().toLocaleString()}
+
+=== ENTITY OVERVIEW ===
+Action Fields: ${data.action_fields.length}
+Projects: ${data.projects.length}
+Measures: ${data.measures.length}
+Indicators: ${data.indicators.length}
+Total Entities: ${data.action_fields.length + data.projects.length + data.measures.length + data.indicators.length}
+
+=== CONNECTION OVERVIEW ===
+Total Connections: ${totalConnections}
+High Confidence (80%+): ${highConfConnections}
+Medium Confidence (60-79%): ${mediumConfConnections}
+Low Confidence (<60%): ${lowConfConnections}
+
+=== QUALITY METRICS ===
+Average Connections per Entity: ${(totalConnections / (data.action_fields.length + data.projects.length + data.measures.length + data.indicators.length)).toFixed(2)}
+High Confidence Rate: ${((highConfConnections / totalConnections) * 100).toFixed(1)}%
+
+=== TOP ENTITIES BY CONNECTIONS ===
+Action Fields:
+${data.action_fields
+    .sort((a, b) => (b.connections?.length || 0) - (a.connections?.length || 0))
+    .slice(0, 3)
+    .map(af => `- ${af.content.name || af.id}: ${af.connections?.length || 0} connections`)
+    .join('\n')}
+
+Projects:
+${data.projects
+    .sort((a, b) => (b.connections?.length || 0) - (a.connections?.length || 0))
+    .slice(0, 3)
+    .map(proj => `- ${proj.content.title || proj.id}: ${proj.connections?.length || 0} connections`)
+    .join('\n')}
+
+=== ENTITY DETAILS WITH DESCRIPTIONS ===
+${data.action_fields.map(af => 
+    `Action Field: ${af.content.name || af.id}\nDescription: ${af.content.description || 'N/A'}\nConnections: ${af.connections?.length || 0}\n`
+).join('\n')}
+
+${data.projects.map(proj => 
+    `Project: ${proj.content.title || proj.id}\nType: ${proj.content.type || 'N/A'}\nDescription: ${proj.content.description || 'N/A'}\nConnections: ${proj.connections?.length || 0}\n`
+).join('\n')}
+`;
+            
+            // Download the summary
+            const summaryBlob = new Blob([summary], {type: 'text/plain;charset=utf-8'});
+            const url = URL.createObjectURL(summaryBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'curate_summary.txt';
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (simulation) {
+                svg.attr("width", width()).attr("height", height());
+                simulation.force("center", d3.forceCenter(width() / 2, height() / 2));
+                simulation.alpha(0.3).restart();
+            }
+        });
+    </script>
+</body>
+</html>
