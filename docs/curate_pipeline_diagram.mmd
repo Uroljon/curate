@@ -109,13 +109,13 @@ graph TB
     %% File Storage
     subgraph FileStorage["File Storage (data/uploads/)"]
         FS[(Upload Folder)]
-        FS --> FS1[Original PDFs with Safe Filenames]
-        FS --> FS2[Page-Aware Text - {source_id}_pages.txt]
-        FS --> FS3[Enhanced Extraction Dialog - {source_id}_enhanced_extraction.jsonl]
-        FS --> FS4[Enhanced Results - {source_id}_enhanced_structure.json]
-        FS --> FS5[Operations Dialog - {source_id}_operations_extraction.jsonl]
-        FS --> FS6[Operations Results - {source_id}_operations_result.json]
-        FS --> FS7[Legacy Files - {source_id}_llm_dialog.txt, _intermediate_extraction.json]
+        FS --> FS1["Original PDFs with Safe Filenames"]
+        FS --> FS2["Page-Aware Text<br/>source_id_pages.txt"]
+        FS --> FS3["Enhanced Extraction Dialog<br/>source_id_enhanced_extraction.jsonl"]
+        FS --> FS4["Enhanced Results<br/>source_id_enhanced_structure.json"]
+        FS --> FS5["Operations Dialog<br/>source_id_operations_extraction.jsonl"]
+        FS --> FS6["Operations Results<br/>source_id_operations_result.json"]
+        FS --> FS7["Legacy Files<br/>source_id_llm_dialog.txt<br/>source_id_intermediate_extraction.json"]
     end
 
     %% LLM Backend Integration
