@@ -132,8 +132,10 @@ class ConfidenceMetrics:
             source_type = type_mapping[entity_type]
 
             for entity in data.get(entity_type, []):
-                entity_low_counts, entity_total_counts = self._process_entity_connections(entity, source_type)
-                
+                entity_low_counts, entity_total_counts = (
+                    self._process_entity_connections(entity, source_type)
+                )
+
                 # Merge counts
                 for conn_type, count in entity_low_counts.items():
                     low_confidence_counts[conn_type] += count
@@ -175,9 +177,7 @@ class ConfidenceMetrics:
 
         return low_counts, total_counts
 
-    def _detect_ambiguous_nodes(
-        self, data: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    def _detect_ambiguous_nodes(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         """Detect nodes with many low-confidence or conflicting connections."""
         ambiguous_nodes = []
         entity_types = ["action_fields", "projects", "measures", "indicators"]
@@ -204,7 +204,7 @@ class ConfidenceMetrics:
 
         confidences = [conn.get("confidence_score", 1.0) for conn in connections]
         low_confidence_count = self._count_low_confidence_connections(confidences)
-        
+
         is_ambiguous, ambiguity_reasons = self._analyze_ambiguity_indicators(
             connections, confidences, low_confidence_count
         )
@@ -213,20 +213,26 @@ class ConfidenceMetrics:
             return None
 
         return self._create_ambiguous_node_record(
-            entity_id, entity_type, entity, connections, 
-            low_confidence_count, confidences, ambiguity_reasons
+            entity_id,
+            entity_type,
+            entity,
+            connections,
+            low_confidence_count,
+            confidences,
+            ambiguity_reasons,
         )
 
     def _count_low_confidence_connections(self, confidences: list[float]) -> int:
         """Count connections below the low confidence threshold."""
         return sum(
-            1 for c in confidences 
-            if c < self.thresholds.low_confidence_threshold
+            1 for c in confidences if c < self.thresholds.low_confidence_threshold
         )
 
     def _analyze_ambiguity_indicators(
-        self, connections: list[dict[str, Any]], confidences: list[float], 
-        low_confidence_count: int
+        self,
+        connections: list[dict[str, Any]],
+        confidences: list[float],
+        low_confidence_count: int,
     ) -> tuple[bool, list[str]]:
         """Analyze various indicators to determine if a node is ambiguous."""
         is_ambiguous = False
@@ -246,9 +252,7 @@ class ConfidenceMetrics:
             conf_std = stdev(confidences)
             if conf_std > self.thresholds.confidence_std_threshold:
                 is_ambiguous = True
-                ambiguity_reasons.append(
-                    f"High confidence variance: {conf_std:.2f}"
-                )
+                ambiguity_reasons.append(f"High confidence variance: {conf_std:.2f}")
 
         # Check for too many connections (potential over-connection)
         if len(connections) > 10:
@@ -258,9 +262,14 @@ class ConfidenceMetrics:
         return is_ambiguous, ambiguity_reasons
 
     def _create_ambiguous_node_record(
-        self, entity_id: str, entity_type: str, entity: dict[str, Any],
-        connections: list[dict[str, Any]], low_confidence_count: int,
-        confidences: list[float], ambiguity_reasons: list[str]
+        self,
+        entity_id: str,
+        entity_type: str,
+        entity: dict[str, Any],
+        connections: list[dict[str, Any]],
+        low_confidence_count: int,
+        confidences: list[float],
+        ambiguity_reasons: list[str],
     ) -> dict[str, Any]:
         """Create a record for an ambiguous node."""
         content = entity.get("content", {})
@@ -361,7 +370,9 @@ class ConfidenceMetrics:
                     if isinstance(confidence, int | float):
                         confidences.append(confidence)
 
-            histograms[entity_type] = self._create_confidence_histogram(confidences, bins)
+            histograms[entity_type] = self._create_confidence_histogram(
+                confidences, bins
+            )
 
         return histograms
 
@@ -393,7 +404,7 @@ class ConfidenceMetrics:
     ) -> list[dict[str, Any]]:
         """Find connections with outlier confidence scores (using standard deviation)."""
         all_confidences = self._collect_all_confidence_scores(data)
-        
+
         if len(all_confidences) < 2:
             return []
 
@@ -402,7 +413,7 @@ class ConfidenceMetrics:
         std_conf = stdev(all_confidences)
 
         outliers = self._find_outlier_connections(data, mean_conf, std_conf, threshold)
-        
+
         # Sort by z-score (most extreme first)
         outliers.sort(key=lambda x: x["z_score"], reverse=True)
         return outliers
@@ -418,7 +429,7 @@ class ConfidenceMetrics:
                     confidence = connection.get("confidence_score", 1.0)
                     if isinstance(confidence, int | float):
                         all_confidences.append(confidence)
-        
+
         return all_confidences
 
     def _find_outlier_connections(
@@ -434,11 +445,15 @@ class ConfidenceMetrics:
                     entity, mean_conf, std_conf, threshold
                 )
                 outliers.extend(entity_outliers)
-        
+
         return outliers
 
     def _check_entity_for_outliers(
-        self, entity: dict[str, Any], mean_conf: float, std_conf: float, threshold: float
+        self,
+        entity: dict[str, Any],
+        mean_conf: float,
+        std_conf: float,
+        threshold: float,
     ) -> list[dict[str, Any]]:
         """Check a single entity for outlier connections."""
         outliers = []
@@ -454,13 +469,15 @@ class ConfidenceMetrics:
                 z_score = abs(confidence - mean_conf) / std_conf
 
                 if z_score > threshold:
-                    outliers.append({
-                        "source_id": entity_id,
-                        "source_name": name,
-                        "target_id": target_id,
-                        "confidence": confidence,
-                        "z_score": z_score,
-                        "deviation": confidence - mean_conf,
-                    })
-        
+                    outliers.append(
+                        {
+                            "source_id": entity_id,
+                            "source_name": name,
+                            "target_id": target_id,
+                            "confidence": confidence,
+                            "z_score": z_score,
+                            "deviation": confidence - mean_conf,
+                        }
+                    )
+
         return outliers

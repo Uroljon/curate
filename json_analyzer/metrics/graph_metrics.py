@@ -167,7 +167,7 @@ class GraphMetrics:
 
             af_node = f"af:{action_field}"
             graph.add_node(af_node, type="action_field", name=action_field)
-            
+
             self._add_projects_for_action_field(graph, af_node, action_field_data)
 
         return graph
@@ -215,22 +215,25 @@ class GraphMetrics:
         entity_types = ["action_fields", "projects", "measures", "indicators"]
         type_mapping = {
             "action_fields": "action_field",
-            "projects": "project", 
+            "projects": "project",
             "measures": "measure",
             "indicators": "indicator",
         }
 
         # Add all nodes first
         self._add_all_nodes_from_enriched_data(data, graph, entity_types, type_mapping)
-        
+
         # Add edges based on connections
         self._add_all_edges_from_enriched_data(data, graph, entity_types)
 
         return graph
 
     def _add_all_nodes_from_enriched_data(
-        self, data: dict[str, Any], graph: nx.Graph, 
-        entity_types: list[str], type_mapping: dict[str, str]
+        self,
+        data: dict[str, Any],
+        graph: nx.Graph,
+        entity_types: list[str],
+        type_mapping: dict[str, str],
     ) -> None:
         """Add all nodes from enriched review data to the graph."""
         for entity_type in entity_types:

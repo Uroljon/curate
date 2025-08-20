@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+aiofiles
 pymupdf>=1.23.0
 python-multipart
 pytesseract

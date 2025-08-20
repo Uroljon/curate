@@ -225,7 +225,7 @@ class SourceMetrics:
         entity_id = entity.get("id", "")
         content = entity.get("content", {})
         name = content.get("title") or content.get("name", "")
-        
+
         total_quotes = 0
         valid_quotes = 0
         invalid_quotes = []
@@ -248,8 +248,11 @@ class SourceMetrics:
         }
 
     def _validate_single_quote(
-        self, source: dict[str, Any], entity_id: str, entity_name: str, 
-        page_text: dict[int, str]
+        self,
+        source: dict[str, Any],
+        entity_id: str,
+        entity_name: str,
+        page_text: dict[int, str],
     ) -> dict[str, Any] | None:
         """Validate a single quote against page text."""
         quote = source.get("quote", "").strip()
@@ -264,12 +267,12 @@ class SourceMetrics:
                 "valid": False,
                 "error_record": self._create_invalid_quote_record(
                     entity_id, entity_name, quote, page_num, "page_not_found"
-                )
+                ),
             }
 
         # Check if quote exists in page
         page_content = page_text[page_num]
-        
+
         # Exact match first
         if quote in page_content:
             return {"valid": True, "error_record": None}
@@ -282,14 +285,23 @@ class SourceMetrics:
             return {
                 "valid": False,
                 "error_record": self._create_invalid_quote_record(
-                    entity_id, entity_name, quote, page_num, 
-                    "quote_not_found", fuzzy_match
-                )
+                    entity_id,
+                    entity_name,
+                    quote,
+                    page_num,
+                    "quote_not_found",
+                    fuzzy_match,
+                ),
             }
 
     def _create_invalid_quote_record(
-        self, entity_id: str, entity_name: str, quote: str, 
-        page_num: int, error_type: str, best_match_score: float = None
+        self,
+        entity_id: str,
+        entity_name: str,
+        quote: str,
+        page_num: int,
+        error_type: str,
+        best_match_score: float | None = None,
     ) -> dict[str, Any]:
         """Create a record for an invalid quote."""
         record = {
@@ -299,10 +311,10 @@ class SourceMetrics:
             "page_number": page_num,
             "error": error_type,
         }
-        
+
         if best_match_score is not None:
             record["best_match_score"] = best_match_score
-            
+
         return record
 
     def _find_fuzzy_match(self, quote: str, page_content: str) -> float:
@@ -368,7 +380,7 @@ class SourceMetrics:
         page_stats["page_range"] = {"min": min_page, "max": max_page}
 
         entity_types = ["measures", "indicators"]
-        
+
         for entity_type in entity_types:
             self._process_entity_type_page_refs(
                 data, entity_type, available_pages, min_page, max_page, page_stats
@@ -396,8 +408,13 @@ class SourceMetrics:
         return 0, 0
 
     def _process_entity_type_page_refs(
-        self, data: dict[str, Any], entity_type: str, available_pages: set[int],
-        min_page: int, max_page: int, page_stats: dict[str, Any]
+        self,
+        data: dict[str, Any],
+        entity_type: str,
+        available_pages: set[int],
+        min_page: int,
+        max_page: int,
+        page_stats: dict[str, Any],
     ) -> None:
         """Process page references for all entities of a specific type."""
         for entity in data.get(entity_type, []):
@@ -407,21 +424,31 @@ class SourceMetrics:
             )
 
     def _process_entity_page_refs(
-        self, entity: dict[str, Any], entity_id: str, available_pages: set[int],
-        min_page: int, max_page: int, page_stats: dict[str, Any]
+        self,
+        entity: dict[str, Any],
+        entity_id: str,
+        available_pages: set[int],
+        min_page: int,
+        max_page: int,
+        page_stats: dict[str, Any],
     ) -> None:
         """Process page references for a single entity."""
         for source in entity.get("sources") or []:
             page_num = source.get("page_number", 0)
-            
+
             if page_num and isinstance(page_num, int):
                 self._validate_single_page_ref(
                     page_num, entity_id, available_pages, min_page, max_page, page_stats
                 )
 
     def _validate_single_page_ref(
-        self, page_num: int, entity_id: str, available_pages: set[int],
-        min_page: int, max_page: int, page_stats: dict[str, Any]
+        self,
+        page_num: int,
+        entity_id: str,
+        available_pages: set[int],
+        min_page: int,
+        max_page: int,
+        page_stats: dict[str, Any],
     ) -> None:
         """Validate a single page reference."""
         page_stats["total_page_refs"] += 1
@@ -431,11 +458,13 @@ class SourceMetrics:
             page_stats["valid_page_refs"] += 1
         else:
             page_stats["invalid_page_refs"] += 1
-            page_stats["out_of_range_pages"].append({
-                "entity_id": entity_id,
-                "page_number": page_num,
-                "available_range": f"{min_page}-{max_page}",
-            })
+            page_stats["out_of_range_pages"].append(
+                {
+                    "entity_id": entity_id,
+                    "page_number": page_num,
+                    "available_range": f"{min_page}-{max_page}",
+                }
+            )
 
     def _finalize_page_stats(
         self, page_stats: dict[str, Any], available_pages: set[int]

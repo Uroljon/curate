@@ -100,12 +100,12 @@ class IntegrityMetrics:
                     entity_id.startswith(prefix) for prefix in expected_prefixes
                 ):
                     invalid_prefixes.append(
-                            {
-                                "type": entity_type,
-                                "id": entity_id,
-                                "expected": expected_prefixes,
-                            }
-                        )
+                        {
+                            "type": entity_type,
+                            "id": entity_id,
+                            "expected": expected_prefixes,
+                        }
+                    )
 
         return {
             "total_ids": len(all_ids),

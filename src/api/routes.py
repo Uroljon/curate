@@ -7,6 +7,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 
+import aiofiles
 from fastapi import Request, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
@@ -79,9 +80,9 @@ async def upload_pdf(request: Request, file: UploadFile):
         safe_filename = f"{timestamp}_{unique_id}_{file.filename}"
         file_path = os.path.join(UPLOAD_FOLDER, safe_filename)
 
-        with open(file_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
+        content = await file.read()
+        async with aiofiles.open(file_path, "wb") as f:
+            await f.write(content)
         monitor.end_stage("file_upload", file_size=len(content))
 
         # Stage 2: Page-aware text extraction
@@ -91,10 +92,10 @@ async def upload_pdf(request: Request, file: UploadFile):
         # Save page-aware text as .txt file (for debugging) with safe filename
         txt_filename = os.path.splitext(safe_filename)[0] + "_pages.txt"
         txt_path = os.path.join(UPLOAD_FOLDER, txt_filename)
-        with open(txt_path, "w", encoding="utf-8") as txt_file:
+        async with aiofiles.open(txt_path, "w", encoding="utf-8") as txt_file:
             for text, page_num in page_aware_text:
-                txt_file.write(f"\n\n[Page {page_num}]\n\n")
-                txt_file.write(text)
+                await txt_file.write(f"\n\n[Page {page_num}]\n\n")
+                await txt_file.write(text)
 
         total_text_length = sum(len(text) for text, _ in page_aware_text)
         monitor.end_stage(
@@ -239,8 +240,8 @@ async def extract_enhanced(
 
         # Save the same format as /enhance_structure endpoint for compatibility
         enhanced_data = extraction_result["extraction_result"]
-        with open(enhanced_path, "w", encoding="utf-8") as f:
-            json.dump(enhanced_data, f, ensure_ascii=False, indent=2)
+        async with aiofiles.open(enhanced_path, "w", encoding="utf-8") as f:
+            await f.write(json.dumps(enhanced_data, ensure_ascii=False, indent=2))
 
         print(f"💾 Saved enhanced structure to: {enhanced_filename}")
         monitor.end_stage(
@@ -435,9 +436,10 @@ async def extract_enhanced_operations(
             result_filename = f"{source_id}_operations_result.json"
             result_path = upload_dir / result_filename
 
-            import aiofiles
             async with aiofiles.open(result_path, "w", encoding="utf-8") as f:
-                await f.write(json.dumps(extraction_result, indent=2, ensure_ascii=False))
+                await f.write(
+                    json.dumps(extraction_result, indent=2, ensure_ascii=False)
+                )
 
             print(f"💾 Operations result saved to {result_filename}")
 
@@ -449,20 +451,6 @@ async def extract_enhanced_operations(
         log_api_response("/extract_enhanced_operations", 200, response_time)
 
         return JSONResponse(content=extraction_result)
-
-    except ValueError as e:
-        monitor.log_error("operations_extraction", e)
-        response_time = time.time() - start_time
-        log_api_response("/extract_enhanced_operations", 404, response_time)
-
-        return JSONResponse(
-            content={
-                "error": "File not found",
-                "detail": str(e),
-                "source_id": source_id,
-            },
-            status_code=404,
-        )
 
     except json.JSONDecodeError as e:
         monitor.log_error("operations_extraction", e)
@@ -476,6 +464,20 @@ async def extract_enhanced_operations(
                 "source_id": source_id,
             },
             status_code=400,
+        )
+
+    except ValueError as e:
+        monitor.log_error("operations_extraction", e)
+        response_time = time.time() - start_time
+        log_api_response("/extract_enhanced_operations", 404, response_time)
+
+        return JSONResponse(
+            content={
+                "error": "File not found",
+                "detail": str(e),
+                "source_id": source_id,
+            },
+            status_code=404,
         )
 
     except Exception as e:

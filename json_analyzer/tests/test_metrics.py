@@ -5,6 +5,7 @@ Tests for individual metric calculators.
 from collections import defaultdict
 
 import networkx as nx
+import pytest
 
 from ..config import (
     AnalyzerConfig,
@@ -173,14 +174,16 @@ def test_connectivity_metrics():
     result = metrics.calculate(graph, test_data)
 
     # Action field coverage should be 100% (1 AF with 1 connection)
-    assert result.action_field_coverage == 1.0
+    assert result.action_field_coverage == pytest.approx(1.0)
 
     # Project coverage should be 100% (1 project connected to AF and measure)
-    assert result.project_coverage == 1.0
+    assert result.project_coverage == pytest.approx(1.0)
 
     # Should have measures per project stats
     assert "mean" in result.measures_per_project
-    assert result.measures_per_project["mean"] == 1.0  # 1 measure per 1 project
+    assert result.measures_per_project["mean"] == pytest.approx(
+        1.0
+    )  # 1 measure per 1 project
 
     print("✅ Connectivity metrics test passed")
 
@@ -214,14 +217,18 @@ def test_source_metrics():
 
     # Should calculate source coverage
     assert "measures" in result.source_coverage
-    assert result.source_coverage["measures"] == 1.0  # 1/1 measures have sources
+    assert result.source_coverage["measures"] == pytest.approx(
+        1.0
+    )  # 1/1 measures have sources
 
     # Quote match rate should be 0 (no page text provided)
-    assert result.quote_match_rate == 0.0
+    assert result.quote_match_rate == pytest.approx(0.0)
 
     # Should have evidence density
     assert "measures" in result.evidence_density
-    assert result.evidence_density["measures"] == 1.0  # 1 source per measure
+    assert result.evidence_density["measures"] == pytest.approx(
+        1.0
+    )  # 1 source per measure
 
     print("✅ Source metrics test passed")
 

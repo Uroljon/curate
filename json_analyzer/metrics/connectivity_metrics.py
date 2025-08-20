@@ -64,9 +64,7 @@ class ConnectivityMetrics:
             coverage_metrics=coverage_metrics,
         )
 
-    def _calculate_action_field_coverage(
-        self, graph: nx.Graph
-    ) -> float:
+    def _calculate_action_field_coverage(self, graph: nx.Graph) -> float:
         """Calculate percentage of action fields that have incoming connections."""
         af_nodes = [
             node
@@ -86,9 +84,7 @@ class ConnectivityMetrics:
 
         return connected_afs / len(af_nodes)
 
-    def _calculate_project_coverage(
-        self, graph: nx.Graph
-    ) -> float:
+    def _calculate_project_coverage(self, graph: nx.Graph) -> float:
         """Calculate percentage of projects connected to both action fields and measures."""
         project_nodes = [
             node
@@ -112,9 +108,7 @@ class ConnectivityMetrics:
 
         return well_connected_projects / len(project_nodes)
 
-    def _calculate_measures_per_project(
-        self, graph: nx.Graph
-    ) -> dict[str, float]:
+    def _calculate_measures_per_project(self, graph: nx.Graph) -> dict[str, float]:
         """Calculate statistics on measures per project."""
         project_nodes = [
             node
@@ -265,9 +259,7 @@ class ConnectivityMetrics:
         except Exception:
             return []
 
-    def _calculate_detailed_coverage(
-        self, graph: nx.Graph
-    ) -> dict[str, Any]:
+    def _calculate_detailed_coverage(self, graph: nx.Graph) -> dict[str, Any]:
         """Calculate detailed coverage metrics."""
         node_types = ["action_field", "project", "measure", "indicator"]
         coverage_stats = {}

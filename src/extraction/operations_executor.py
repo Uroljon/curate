@@ -392,9 +392,7 @@ class OperationExecutor:
             else:
                 self._merge_existing_field(target_entity, key, value)
 
-    def _merge_existing_field(
-        self, target_entity: Any, key: str, value: Any
-    ) -> None:
+    def _merge_existing_field(self, target_entity: Any, key: str, value: Any) -> None:
         """Merge a new value with an existing field value."""
         existing_value = target_entity.content[key]
 

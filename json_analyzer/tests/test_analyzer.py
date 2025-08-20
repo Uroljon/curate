@@ -6,6 +6,8 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from ..analyzer import JSONAnalyzer
 from ..config import AnalyzerConfig
 from ..models import AnalysisResult
@@ -68,7 +70,7 @@ def test_analyzer_initialization_with_custom_config():
     config.integrity_thresholds.max_duplicate_rate = 0.1
 
     analyzer = JSONAnalyzer(config)
-    assert analyzer.config.integrity_thresholds.max_duplicate_rate == 0.1
+    assert analyzer.config.integrity_thresholds.max_duplicate_rate == pytest.approx(0.1)
 
 
 def test_analyze_data_basic():
