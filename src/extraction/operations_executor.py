@@ -320,7 +320,7 @@ class OperationExecutor:
             # Determine success - succeed if we created at least one connection
             successful_connections = (total_connections - skipped_connections)
             is_success = successful_connections > 0
-            
+
             error_msg = None
             if skipped_connections > 0 and successful_connections > 0:
                 error_msg = f"Partial success: {skipped_connections}/{total_connections} connections skipped"

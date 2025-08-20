@@ -20,8 +20,8 @@ except ImportError:
 PROJECT_ROOT = Path(__file__).parent.parent.parent  # Goes up to curate/
 
 # API Configuration
-# LLM Backend Selection ('ollama', 'vllm', 'openai', or 'gemini')
-LLM_BACKEND = os.getenv("LLM_BACKEND", "ollama")
+# LLM Backend Selection ('ollama', 'vllm', 'openai', 'openrouter', or 'gemini')
+LLM_BACKEND = os.getenv("LLM_BACKEND", "openrouter")
 
 # Model Configuration
 MODEL_NAME = "qwen3:14b"  # Options: "qwen3:7b", "qwen3:14b", "llama3:8b", etc.

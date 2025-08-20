@@ -806,7 +806,7 @@ async def extract_enhanced(
         # Save the enhanced structure JSON file for visualization tool (same format as /enhance_structure)
         enhanced_filename = f"{source_id}_enhanced_structure.json"
         enhanced_path = os.path.join(UPLOAD_FOLDER, enhanced_filename)
-        
+
         # Save the same format as /enhance_structure endpoint for compatibility
         enhanced_data = extraction_result["extraction_result"]
         with open(enhanced_path, "w", encoding="utf-8") as f:
@@ -956,7 +956,7 @@ async def extract_enhanced_operations(
             raise ValueError(error_msg)
 
         print(f"📄 Loaded {len(page_aware_text)} pages from page-aware text file")
-        
+
         monitor.end_stage("file_loading", success=True)
 
         # Stage 2: Operations-based extraction
@@ -994,15 +994,15 @@ async def extract_enhanced_operations(
         try:
             upload_dir = PROJECT_ROOT / "data" / "uploads"
             upload_dir.mkdir(exist_ok=True)
-            
+
             result_filename = f"{source_id}_operations_result.json"
             result_path = upload_dir / result_filename
-            
+
             with open(result_path, 'w', encoding='utf-8') as f:
                 json.dump(extraction_result, f, indent=2, ensure_ascii=False)
-            
+
             print(f"💾 Operations result saved to {result_filename}")
-            
+
         except Exception as save_error:
             print(f"⚠️ Failed to save operations result: {save_error}")
             # Continue despite save failure
