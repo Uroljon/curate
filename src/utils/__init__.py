@@ -1,7 +1,6 @@
 """Utility functions for CURATE."""
 
 from .monitoring import (
-    ChunkQualityMonitor,
     ExtractionMonitor,
     StructuredLogger,
     error_logger,
@@ -13,7 +12,6 @@ from .monitoring import (
 )
 
 __all__ = [
-    "ChunkQualityMonitor",
     "ExtractionMonitor",
     "StructuredLogger",
     "error_logger",

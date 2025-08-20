@@ -21,7 +21,6 @@ from src.core import (
 from src.core.config import PROJECT_ROOT
 from src.processing import extract_text_with_ocr_fallback
 from src.utils import (
-    ChunkQualityMonitor,
     get_extraction_monitor,
     log_api_request,
     log_api_response,
@@ -151,9 +150,6 @@ async def upload_pdf(request: Request, file: UploadFile):
         response_time = time.time() - start_time
         log_api_response("/upload", 500, response_time)
         raise
-
-
-
 
 
 async def extract_enhanced(
