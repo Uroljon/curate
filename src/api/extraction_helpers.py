@@ -104,12 +104,13 @@ CONSOLIDATE_EXAMPLES = """NUR DIESE FÄLLE konsolidieren:
 # SHARED UTILITY FUNCTIONS
 # ============================================================================
 
+
 def prepare_chunks_for_extraction(
     page_aware_text: list[tuple[str, int]],
     source_id: str,
     max_chars: int,
     min_chars: int,
-    max_chunks: int
+    max_chunks: int,
 ) -> list[tuple[str, list[int]]]:
     """Prepare chunks for extraction with shared logic."""
     from src.core.config import ENHANCED_CHUNK_OVERLAP
@@ -118,7 +119,9 @@ def prepare_chunks_for_extraction(
     if not page_aware_text:
         raise ValueError("No page-aware text provided")
 
-    print(f"📝 Chunking with settings: {min_chars}-{max_chars} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap")
+    print(
+        f"📝 Chunking with settings: {min_chars}-{max_chars} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap"
+    )
 
     chunks_with_pages = chunk_for_llm_with_pages(
         page_aware_text=page_aware_text,
@@ -139,6 +142,7 @@ def prepare_chunks_for_extraction(
     print(f"📄 Processing {len(chunks_with_pages)} chunks")
     return chunks_with_pages
 
+
 def execute_llm_extraction(
     llm_provider,
     prompt: str,
@@ -147,7 +151,7 @@ def execute_llm_extraction(
     log_file_path: str | None,
     log_context: str,
     chunk_index: int,
-    override_num_predict: int | None = None
+    override_num_predict: int | None = None,
 ):
     """Execute LLM extraction with shared error handling."""
     try:
@@ -164,7 +168,10 @@ def execute_llm_extraction(
         print(f"❌ Error processing chunk {chunk_index + 1}: {e}")
         return None
 
-def create_unique_entity_id(prefix: str, title: str, used_ids: set, id_counters: dict) -> str:
+
+def create_unique_entity_id(
+    prefix: str, title: str, used_ids: set, id_counters: dict
+) -> str:
     """Generate guaranteed unique ID with shared logic."""
     # Try sequential numbering
     for i in range(1, 10000):  # Reasonable upper limit
@@ -176,6 +183,7 @@ def create_unique_entity_id(prefix: str, title: str, used_ids: set, id_counters:
 
     # Fallback with title hash if sequential fails
     import hashlib
+
     hash_suffix = hashlib.md5(title.encode()).hexdigest()[:4]
     candidate_id = f"{prefix}_{hash_suffix}"
 
@@ -188,14 +196,20 @@ def create_unique_entity_id(prefix: str, title: str, used_ids: set, id_counters:
     used_ids.add(candidate_id)
     return candidate_id
 
+
 def format_context_json(context_data) -> str:
     """Format context data as JSON string for prompts."""
     if not context_data:
         return "Noch keine Strukturen extrahiert - dies ist der erste Chunk."
 
     import json
+
     context_json_str = json.dumps(
-        context_data.model_dump() if hasattr(context_data, "model_dump") else context_data,
+        (
+            context_data.model_dump()
+            if hasattr(context_data, "model_dump")
+            else context_data
+        ),
         indent=2,
         ensure_ascii=False,
     )
@@ -204,7 +218,13 @@ def format_context_json(context_data) -> str:
 
 WICHTIG: Erweitern Sie diese bestehende Struktur. Verwenden Sie exakte IDs und Namen aus dem obigen JSON. Erstellen Sie Verbindungen zu bestehenden Entities."""
 
-def create_extraction_prompt(template_type: str, chunk_text: str, context_data=None, page_numbers: list[int] = None) -> str:
+
+def create_extraction_prompt(
+    template_type: str,
+    chunk_text: str,
+    context_data=None,
+    page_numbers: list[int] = None,
+) -> str:
     """Create extraction prompts using templates."""
     if template_type == "simplified":
         context_text = format_context_json(context_data)
@@ -225,7 +245,11 @@ TEXT:
 Erstellen Sie die 4-Bucket-Struktur mit KORREKTER HIERARCHIE und unter Verwendung der bereits bekannten Handlungsfelder, wo zutreffend."""
 
     elif template_type == "operations":
-        context_text = format_context_json(context_data) if context_data else "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
+        context_text = (
+            format_context_json(context_data)
+            if context_data
+            else "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
+        )
         page_list = ", ".join(map(str, sorted(page_numbers))) if page_numbers else "N/A"
 
         return f"""Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.
@@ -258,6 +282,7 @@ Antworten Sie NUR mit der Operations-Liste im JSON-Format:
     else:
         raise ValueError(f"Unknown template type: {template_type}")
 
+
 def add_page_attribution_to_enhanced_result(result, page_numbers: list[int]) -> None:
     """Add page attribution to all entities in enhanced result."""
     page_str = f"Seiten {', '.join(map(str, sorted(page_numbers)))}"
@@ -272,6 +297,7 @@ def add_page_attribution_to_enhanced_result(result, page_numbers: list[int]) -> 
         for entity in entity_list:
             if "page_source" not in entity.content:
                 entity.content["page_source"] = page_str
+
 
 def merge_enhanced_results(results: list) -> dict | None:
     """Merge multiple enhanced results with simple concatenation."""
@@ -900,8 +926,11 @@ def extract_direct_to_enhanced(
 
     # Step 1: Create smaller chunks optimized for focused extraction
     chunks_with_pages = prepare_chunks_for_extraction(
-        page_aware_text, source_id, ENHANCED_CHUNK_MAX_CHARS,
-        ENHANCED_CHUNK_MIN_CHARS, FAST_EXTRACTION_MAX_CHUNKS
+        page_aware_text,
+        source_id,
+        ENHANCED_CHUNK_MAX_CHARS,
+        ENHANCED_CHUNK_MIN_CHARS,
+        FAST_EXTRACTION_MAX_CHUNKS,
     )
 
     # Step 2: Extract from each chunk using simplified prompts
@@ -923,14 +952,21 @@ def extract_direct_to_enhanced(
 
         # Create context-aware extraction prompt with full JSON structure
         system_message = EXTRACTION_SYSTEM_MESSAGE
-        main_prompt = create_extraction_prompt("simplified", chunk_text, accumulated_json)
+        main_prompt = create_extraction_prompt(
+            "simplified", chunk_text, accumulated_json
+        )
 
         # Enhanced log context
         enhanced_log_context = f"direct_enhanced_{source_id}_chunk_{i+1}"
 
         result = execute_llm_extraction(
-            llm_provider, main_prompt, EnrichedReviewJSON, system_message,
-            log_file_path, enhanced_log_context, i
+            llm_provider,
+            main_prompt,
+            EnrichedReviewJSON,
+            system_message,
+            log_file_path,
+            enhanced_log_context,
+            i,
         )
 
         if result:
@@ -1050,8 +1086,11 @@ def extract_direct_to_enhanced_with_operations(
 
     # Step 1: Create smaller chunks optimized for focused extraction
     chunks_with_pages = prepare_chunks_for_extraction(
-        page_aware_text, source_id, ENHANCED_CHUNK_MAX_CHARS,
-        ENHANCED_CHUNK_MIN_CHARS, FAST_EXTRACTION_MAX_CHUNKS
+        page_aware_text,
+        source_id,
+        ENHANCED_CHUNK_MAX_CHARS,
+        ENHANCED_CHUNK_MIN_CHARS,
+        FAST_EXTRACTION_MAX_CHUNKS,
     )
 
     # Step 2: Initialize empty extraction state and operations executor
@@ -1071,14 +1110,21 @@ def extract_direct_to_enhanced_with_operations(
 
         # Create operations-focused prompt
         system_message = OPERATIONS_SYSTEM_MESSAGE
-        main_prompt = create_extraction_prompt("operations", chunk_text, current_state, page_numbers)
+        main_prompt = create_extraction_prompt(
+            "operations", chunk_text, current_state, page_numbers
+        )
 
         # Enhanced log context
         enhanced_log_context = f"operations_{source_id}_chunk_{i+1}"
 
         operations_result = execute_llm_extraction(
-            llm_provider, main_prompt, ExtractionOperations, system_message,
-            log_file_path, enhanced_log_context, i
+            llm_provider,
+            main_prompt,
+            ExtractionOperations,
+            system_message,
+            log_file_path,
+            enhanced_log_context,
+            i,
         )
 
         if operations_result and operations_result.operations:
@@ -1110,9 +1156,7 @@ def extract_direct_to_enhanced_with_operations(
                 )
                 operations_result.operations = valid_operations
 
-            if (
-                operations_result.operations
-            ):  # Only proceed if we have valid operations
+            if operations_result.operations:  # Only proceed if we have valid operations
                 # Apply validated operations to current state
                 try:
                     new_state, operation_log = executor.apply_operations(
@@ -1339,7 +1383,9 @@ def _load_pages_from_file(source_id: str) -> list[tuple[str, int]]:
     return page_aware_text
 
 
-async def load_and_validate_pages(source_id: str, monitor: Any) -> list[tuple[str, int]]:
+async def load_and_validate_pages(
+    source_id: str, monitor: Any
+) -> list[tuple[str, int]]:
     """Load and validate page-aware text, with monitoring."""
     with monitor_stage(monitor, "file_loading", source_id=source_id):
         page_aware_text = _load_pages_from_file(source_id)

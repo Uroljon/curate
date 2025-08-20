@@ -64,15 +64,13 @@ IMPORTANT: Respond with valid JSON matching this schema:
 
 Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
 
-    def _parse_json_response(
-        self, content: str, response_model: type[T]
-    ) -> T | None:
+    def _parse_json_response(self, content: str, response_model: type[T]) -> T | None:
         """Parse and validate JSON response with fallback repair."""
         # Handle Qwen3 thinking mode output if present
         if "<think>" in content and "</think>" in content:
             think_end = content.find("</think>")
             if think_end != -1:
-                actual_content = content[think_end + 8:].strip()
+                actual_content = content[think_end + 8 :].strip()
                 if actual_content:
                     content = actual_content
 
@@ -85,6 +83,7 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
             # Try json-repair as fallback
             try:
                 from json_repair import repair_json
+
                 repaired = repair_json(content)
                 return response_model.model_validate(repaired)
             except Exception as repair_error:
@@ -182,6 +181,7 @@ class OpenAICompatibleProvider(LLMProvider):
         """Initialize OpenAI client."""
         try:
             from openai import OpenAI
+
             self.client = OpenAI(
                 api_key=self.api_key,
                 base_url=self.base_url,
@@ -274,7 +274,12 @@ class OllamaProvider(LLMProvider):
 
                 # Process response using shared method
                 return self._process_llm_response(
-                    content, response_model, log_file_path, system_message, prompt, log_context
+                    content,
+                    response_model,
+                    log_file_path,
+                    system_message,
+                    prompt,
+                    log_context,
                 )
 
             return None
@@ -300,7 +305,9 @@ class VLLMProvider(OpenAICompatibleProvider):
         timeout: int = 600,
     ):
         base_url = f"http://{vllm_host}/v1"
-        super().__init__(model_name, temperature, base_url, api_key, max_tokens, timeout)
+        super().__init__(
+            model_name, temperature, base_url, api_key, max_tokens, timeout
+        )
 
         # Initialize OpenAI client
         self._init_openai_client()
@@ -392,7 +399,9 @@ class VLLMProvider(OpenAICompatibleProvider):
                     print(f"      🤖 LLM response in {llm_response_time:.2f}s")
                 except Exception:
                     # Final fallback: Use prompt-based JSON generation
-                    print("⚠️ vLLM structured output not available, using prompt-based JSON generation")
+                    print(
+                        "⚠️ vLLM structured output not available, using prompt-based JSON generation"
+                    )
                     llm_start_time = time.time()
                     extra_params = {
                         "temperature": temperature,
@@ -413,7 +422,12 @@ class VLLMProvider(OpenAICompatibleProvider):
 
             # Process response using shared method
             return self._process_llm_response(
-                content, response_model, log_file_path, system_message, structured_prompt, log_context
+                content,
+                response_model,
+                log_file_path,
+                system_message,
+                structured_prompt,
+                log_context,
             )
 
         except Exception as e:
@@ -433,7 +447,9 @@ class OpenRouterProvider(OpenAICompatibleProvider):
         timeout: int = 300,
     ):
         base_url = "https://openrouter.ai/api/v1"
-        super().__init__(model_name, temperature, base_url, api_key, max_tokens, timeout)
+        super().__init__(
+            model_name, temperature, base_url, api_key, max_tokens, timeout
+        )
 
         # Initialize OpenAI client with OpenRouter endpoint
         self._init_openai_client()
@@ -483,7 +499,12 @@ class OpenRouterProvider(OpenAICompatibleProvider):
 
             # Process response using shared method
             return self._process_llm_response(
-                content, response_model, log_file_path, system_message, structured_prompt, log_context
+                content,
+                response_model,
+                log_file_path,
+                system_message,
+                structured_prompt,
+                log_context,
             )
 
         except Exception as e:
@@ -613,7 +634,12 @@ class ExternalAPIProvider(LLMProvider):
 
             # Process response using shared method
             return self._process_llm_response(
-                content, response_model, log_file_path, system_message, structured_prompt, log_context
+                content,
+                response_model,
+                log_file_path,
+                system_message,
+                structured_prompt,
+                log_context,
             )
 
         except Exception as e:
@@ -637,7 +663,9 @@ class ExternalAPIProvider(LLMProvider):
                 full_prompt = f"{system_message}\n\n{prompt}"
 
             # Build structured prompt using shared method
-            structured_prompt = self._build_structured_prompt(full_prompt, response_model)
+            structured_prompt = self._build_structured_prompt(
+                full_prompt, response_model
+            )
 
             llm_start_time = time.time()
             response = self.client.generate_content(
@@ -654,7 +682,12 @@ class ExternalAPIProvider(LLMProvider):
 
             # Process response using shared method
             return self._process_llm_response(
-                content, response_model, log_file_path, system_message, structured_prompt, log_context
+                content,
+                response_model,
+                log_file_path,
+                system_message,
+                structured_prompt,
+                log_context,
             )
 
         except Exception as e:

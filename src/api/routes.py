@@ -35,7 +35,6 @@ from src.api.extraction_helpers import (
 )
 
 
-
 async def upload_pdf(request: Request, file: UploadFile):
     """Handle PDF upload and processing with page attribution support."""
     start_time = time.time()
@@ -48,7 +47,9 @@ async def upload_pdf(request: Request, file: UploadFile):
 
     try:
         # Stage 1: File upload
-        with monitor_stage(monitor, "file_upload", filename=file.filename, size=file.size):
+        with monitor_stage(
+            monitor, "file_upload", filename=file.filename, size=file.size
+        ):
             # Generate unique filename to prevent race conditions
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             unique_id = str(uuid.uuid4())[:8]
@@ -61,7 +62,9 @@ async def upload_pdf(request: Request, file: UploadFile):
 
         # Stage 2: Page-aware text extraction
         with monitor_stage(monitor, "text_extraction"):
-            page_aware_text, extraction_metadata = extract_text_with_ocr_fallback(file_path)
+            page_aware_text, extraction_metadata = extract_text_with_ocr_fallback(
+                file_path
+            )
 
             # Save page-aware text as .txt file (for debugging) with safe filename
             txt_filename = os.path.splitext(safe_filename)[0] + "_pages.txt"
@@ -97,7 +100,7 @@ async def upload_pdf(request: Request, file: UploadFile):
         # Log error and re-raise for FastAPI to handle
         monitor.log_error("upload", e)
         response_time = time.time() - start_time
-        
+
         # Determine status code based on exception type
         if isinstance(e, FileNotFoundError):
             status_code = 404
@@ -105,7 +108,7 @@ async def upload_pdf(request: Request, file: UploadFile):
             status_code = 403
         else:
             status_code = 500
-            
+
         log_api_response("/upload", status_code, response_time)
         raise
 
@@ -179,7 +182,9 @@ async def extract_enhanced(
             # Save the enhanced structure JSON file for visualization tool
             enhanced_filename = f"{source_id}_enhanced_structure.json"
             enhanced_data = extraction_result["extraction_result"]
-            enhanced_path = await save_json_file(enhanced_data, enhanced_filename, UPLOAD_FOLDER)
+            enhanced_path = await save_json_file(
+                enhanced_data, enhanced_filename, UPLOAD_FOLDER
+            )
             print(f"💾 Saved enhanced structure to: {enhanced_filename}")
 
         # Stage 4: Prepare response
@@ -189,7 +194,7 @@ async def extract_enhanced(
                 "metadata": extraction_result["metadata"],
                 "processing_stages": [
                     "file_loading",
-                    "enhanced_extraction", 
+                    "enhanced_extraction",
                     "file_saving",
                     "response_preparation",
                 ],
@@ -206,20 +211,48 @@ async def extract_enhanced(
 
     except FileNotFoundError as e:
         return create_error_response(
-            "/extract_enhanced", "File not found", 404, source_id, e, start_time, monitor, "file_loading",
-            "Make sure to upload the PDF first using /upload endpoint"
+            "/extract_enhanced",
+            "File not found",
+            404,
+            source_id,
+            e,
+            start_time,
+            monitor,
+            "file_loading",
+            "Make sure to upload the PDF first using /upload endpoint",
         )
     except ValueError as e:
         return create_error_response(
-            "/extract_enhanced", "Invalid data", 400, source_id, e, start_time, monitor, "file_loading"
+            "/extract_enhanced",
+            "Invalid data",
+            400,
+            source_id,
+            e,
+            start_time,
+            monitor,
+            "file_loading",
         )
     except RuntimeError as e:
         return create_error_response(
-            "/extract_enhanced", "Extraction failed", 500, source_id, e, start_time, monitor, "enhanced_extraction"
+            "/extract_enhanced",
+            "Extraction failed",
+            500,
+            source_id,
+            e,
+            start_time,
+            monitor,
+            "enhanced_extraction",
         )
     except Exception as e:
         return create_error_response(
-            "/extract_enhanced", "Internal server error", 500, source_id, e, start_time, monitor, "enhanced_extraction"
+            "/extract_enhanced",
+            "Internal server error",
+            500,
+            source_id,
+            e,
+            start_time,
+            monitor,
+            "enhanced_extraction",
         )
 
 
@@ -308,15 +341,30 @@ async def extract_enhanced_operations(
 
     except json.JSONDecodeError as e:
         return create_error_response(
-            "/extract_enhanced_operations", "Invalid JSON in extraction", 400, source_id, e, start_time, monitor, "operations_extraction"
+            "/extract_enhanced_operations",
+            "Invalid JSON in extraction",
+            400,
+            source_id,
+            e,
+            start_time,
+            monitor,
+            "operations_extraction",
         )
     except ValueError as e:
         return create_error_response(
-            "/extract_enhanced_operations", "File not found", 404, source_id, e, start_time, monitor, "operations_extraction"
+            "/extract_enhanced_operations",
+            "File not found",
+            404,
+            source_id,
+            e,
+            start_time,
+            monitor,
+            "operations_extraction",
         )
     except Exception as e:
         # Log the exception for debugging
         import traceback
+
         error_details = {
             "error_type": type(e).__name__,
             "error_message": str(e),
@@ -325,5 +373,12 @@ async def extract_enhanced_operations(
         print(f"❌ Operations extraction error: {json.dumps(error_details, indent=2)}")
 
         return create_error_response(
-            "/extract_enhanced_operations", "Internal server error", 500, source_id, e, start_time, monitor, "operations_extraction"
+            "/extract_enhanced_operations",
+            "Internal server error",
+            500,
+            source_id,
+            e,
+            start_time,
+            monitor,
+            "operations_extraction",
         )

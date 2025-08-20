@@ -18,7 +18,12 @@ class IntegrityMetrics:
     """Calculator for data integrity and schema validation metrics."""
 
     # Class constants to reduce repetition
-    ENTITY_TYPES: ClassVar[list[str]] = ["action_fields", "projects", "measures", "indicators"]
+    ENTITY_TYPES: ClassVar[list[str]] = [
+        "action_fields",
+        "projects",
+        "measures",
+        "indicators",
+    ]
     TYPE_MAPPING: ClassVar[dict[str, str]] = {
         "action_fields": "af",
         "projects": "proj",
@@ -246,7 +251,9 @@ class IntegrityMetrics:
                     # Check if connection is valid
                     if target_type not in self.VALID_CONNECTIONS.get(
                         source_type, []
-                    ) and source_type not in self.VALID_CONNECTIONS.get(target_type, []):
+                    ) and source_type not in self.VALID_CONNECTIONS.get(
+                        target_type, []
+                    ):
                         violations.append(
                             {
                                 "source_id": entity_id,

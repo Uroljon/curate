@@ -76,37 +76,47 @@ class TerminalVisualizer:
         header = f"{emoji} {title}" if emoji else title
         print(self._colorize(header, "bold"))
 
-    def _display_metric_list(self, items: list, color: str, max_items: int = 5, indent: str = "  ") -> None:
+    def _display_metric_list(
+        self, items: list, color: str, max_items: int = 5, indent: str = "  "
+    ) -> None:
         """Display a list of items with consistent formatting."""
         shown_items = items[:max_items]
         for item in shown_items:
             print(f"{indent}{self._colorize(item, color)}")
-        
+
         if len(items) > max_items:
             remaining = len(items) - max_items
             print(f"{indent}... and {remaining} more")
 
-    def _display_issue_examples(self, items: list, title: str, color: str, max_items: int = 3, 
-                               item_formatter=None) -> None:
+    def _display_issue_examples(
+        self,
+        items: list,
+        title: str,
+        color: str,
+        max_items: int = 3,
+        item_formatter=None,
+    ) -> None:
         """Display issue examples with consistent formatting."""
         if not items:
             return
-            
+
         print(f"  {self._colorize(title, color)}")
         shown_items = items[:max_items]
-        
+
         for i, item in enumerate(shown_items):
             if item_formatter:
                 formatted_item = item_formatter(item, i)
             else:
                 formatted_item = f"{i+1}. {truncate_text(str(item), 60)}"
             print(f"    {formatted_item}")
-            
+
         if len(items) > max_items:
             remaining = len(items) - max_items
             print(f"    ... and {remaining} more")
 
-    def _categorize_issues(self, result: AnalysisResult, verbose: bool = False) -> tuple[list, list]:
+    def _categorize_issues(
+        self, result: AnalysisResult, verbose: bool = False
+    ) -> tuple[list, list]:
         """Categorize issues into critical and minor lists."""
         critical_issues = []
         minor_issues = []
@@ -247,14 +257,20 @@ class TerminalVisualizer:
         print(f"  Nodes: {total_nodes}, Edges: {total_edges}")
 
         if stats.nodes_by_type:
-            print("  Node types breakdown:" if verbose else "  Node types:", end=" " if not verbose else "\n")
-            
+            print(
+                "  Node types breakdown:" if verbose else "  Node types:",
+                end=" " if not verbose else "\n",
+            )
+
             if verbose:
                 for node_type, count in stats.nodes_by_type.items():
                     percentage = self._safe_percentage(count, total_nodes)
                     print(f"    {node_type}: {count} ({percentage:.1f}%)")
             else:
-                type_strs = [f"{node_type}: {count}" for node_type, count in stats.nodes_by_type.items()]
+                type_strs = [
+                    f"{node_type}: {count}"
+                    for node_type, count in stats.nodes_by_type.items()
+                ]
                 print(", ".join(type_strs))
 
         if verbose and stats.edges_by_relation:
@@ -281,7 +297,9 @@ class TerminalVisualizer:
             )
 
             if verbose:
-                fragmentation_rate = self._safe_percentage(isolated_islands, total_nodes)
+                fragmentation_rate = self._safe_percentage(
+                    isolated_islands, total_nodes
+                )
                 print(
                     f"  Graph fragmentation: {fragmentation_rate:.1f}% of nodes disconnected"
                 )
@@ -317,8 +335,13 @@ class TerminalVisualizer:
         self._display_section_header("🔍 Data Integrity Issues")
 
         if stats.dangling_refs:
-            refs = [f"{ref['source_id']} → {ref['target_id']}" for ref in stats.dangling_refs]
-            self._display_issue_examples(refs, "Dangling References:", "red", max_items=5)
+            refs = [
+                f"{ref['source_id']} → {ref['target_id']}"
+                for ref in stats.dangling_refs
+            ]
+            self._display_issue_examples(
+                refs, "Dangling References:", "red", max_items=5
+            )
 
         if any(stats.duplicate_rate.values()):
             print(f"  {self._colorize('Duplicate Rates:', 'yellow')}")
@@ -356,12 +379,18 @@ class TerminalVisualizer:
         self._display_section_header("🎯 Confidence Issues")
 
         if stats.ambiguous_nodes:
+
             def format_ambiguous_node(node, i):
                 reasons = ", ".join(node["reasons"])
                 return f"{node['id']}: {truncate_text(reasons, 60)}"
-            
-            self._display_issue_examples(stats.ambiguous_nodes, "Ambiguous Nodes:", "yellow", 
-                                       max_items=3, item_formatter=format_ambiguous_node)
+
+            self._display_issue_examples(
+                stats.ambiguous_nodes,
+                "Ambiguous Nodes:",
+                "yellow",
+                max_items=3,
+                item_formatter=format_ambiguous_node,
+            )
 
         print()
 
@@ -476,8 +505,10 @@ class TerminalVisualizer:
             )
 
         if stats.normalization_issues:
-            print(f"  {self._colorize(f'Normalization issues: {len(stats.normalization_issues)}', 'yellow')}")
-            
+            print(
+                f"  {self._colorize(f'Normalization issues: {len(stats.normalization_issues)}', 'yellow')}"
+            )
+
             if verbose:
                 print("  Examples (first 3):")
                 for i, issue in enumerate(stats.normalization_issues[:3]):
@@ -682,7 +713,7 @@ class HTMLReportGenerator:
         for row in rows:
             cells = "".join(f"<td>{cell}</td>" for cell in row)
             row_html += f"<tr>{cells}</tr>"
-        
+
         return f"""
         <table>
             <tr>{header_html}</tr>
@@ -781,8 +812,14 @@ class HTMLReportGenerator:
         main_metrics = [
             (str(result.graph_stats.total_nodes), "Total Entities"),
             (str(result.graph_stats.total_edges), "Connections"),
-            (str(len(result.integrity_stats.dangling_refs) + len(result.source_stats.invalid_quotes)), "Critical Issues"),
-            (f"{result.connectivity_stats.action_field_coverage:.1%}", "AF Coverage")
+            (
+                str(
+                    len(result.integrity_stats.dangling_refs)
+                    + len(result.source_stats.invalid_quotes)
+                ),
+                "Critical Issues",
+            ),
+            (f"{result.connectivity_stats.action_field_coverage:.1%}", "AF Coverage"),
         ]
 
         for value, label in main_metrics:
@@ -868,11 +905,15 @@ class HTMLReportGenerator:
 
         # Score comparison metrics
         score_metrics = [
-            (f'<span class="{self._get_grade_class(result.before.quality_score.grade)}">{before_score:.1f}</span>', 
-             f"Before (Grade {result.before.quality_score.grade})"),
-            (f'<span class="{self._get_grade_class(result.after.quality_score.grade)}">{after_score:.1f}</span>', 
-             f"After (Grade {result.after.quality_score.grade})"),
-            (f'<span class="{diff_class}">{score_diff:+.1f}</span>', "Change")
+            (
+                f'<span class="{self._get_grade_class(result.before.quality_score.grade)}">{before_score:.1f}</span>',
+                f"Before (Grade {result.before.quality_score.grade})",
+            ),
+            (
+                f'<span class="{self._get_grade_class(result.after.quality_score.grade)}">{after_score:.1f}</span>',
+                f"After (Grade {result.after.quality_score.grade})",
+            ),
+            (f'<span class="{diff_class}">{score_diff:+.1f}</span>', "Change"),
         ]
 
         for value, label in score_metrics:
@@ -884,17 +925,20 @@ class HTMLReportGenerator:
 
         if result.drift_stats:
             content += '<div class="metric-grid">'
-            
+
             # Stability metrics
             stability_metrics = [
                 (f"{result.drift_stats.stability_score:.1f}", "Stability Score"),
                 (f"{result.drift_stats.churn_rate:.1%}", "Churn Rate"),
-                (f"{result.drift_stats.structural_similarity:.1%}", "Structural Similarity")
+                (
+                    f"{result.drift_stats.structural_similarity:.1%}",
+                    "Structural Similarity",
+                ),
             ]
-            
+
             for value, label in stability_metrics:
                 content += self._generate_metric_card(value, label)
-                
+
             content += "</div>"
 
         # Changes summary
@@ -921,21 +965,24 @@ class HTMLReportGenerator:
 
         # Graph structure
         content += "<h2>🌐 Graph Structure</h2>"
-        
+
         graph_rows = [
             ["Total Nodes", str(result.graph_stats.total_nodes)],
             ["Total Edges", str(result.graph_stats.total_edges)],
             ["Average Degree", f"{result.graph_stats.avg_degree:.2f}"],
             ["Connected Components", str(result.graph_stats.components)],
-            ["Isolated Nodes", str(result.graph_stats.isolated_nodes)]
+            ["Isolated Nodes", str(result.graph_stats.isolated_nodes)],
         ]
-        
+
         content += self._generate_table(["Metric", "Value"], graph_rows)
 
         # Node type distribution
         if result.graph_stats.nodes_by_type:
             content += "<h3>Node Type Distribution</h3>"
-            node_type_rows = [[node_type, str(count)] for node_type, count in result.graph_stats.nodes_by_type.items()]
+            node_type_rows = [
+                [node_type, str(count)]
+                for node_type, count in result.graph_stats.nodes_by_type.items()
+            ]
             content += self._generate_table(["Type", "Count"], node_type_rows)
 
         return content

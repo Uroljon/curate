@@ -58,7 +58,9 @@ class ConfidenceMetrics:
             "count": len(values),
         }
 
-    def _collect_confidences_from_connections(self, data: dict[str, Any]) -> list[float]:
+    def _collect_confidences_from_connections(
+        self, data: dict[str, Any]
+    ) -> list[float]:
         """Collect all confidence scores from entity connections."""
         confidences = []
         for _, entity, _ in self._iterate_entities(data):
@@ -73,7 +75,9 @@ class ConfidenceMetrics:
         target_type = self._infer_type_from_id(target_id)
         return f"{source_type}_to_{target_type}"
 
-    def _calculate_confidence_ratio(self, confidences: list[float], threshold: float, above: bool = False) -> float:
+    def _calculate_confidence_ratio(
+        self, confidences: list[float], threshold: float, above: bool = False
+    ) -> float:
         """Calculate ratio of values below/above threshold."""
         if not confidences:
             return 0.0
@@ -148,8 +152,8 @@ class ConfidenceMetrics:
         total_counts = defaultdict(int)
 
         for _, entity, source_type in self._iterate_entities(data):
-            entity_low_counts, entity_total_counts = (
-                self._process_entity_connections(entity, source_type)
+            entity_low_counts, entity_total_counts = self._process_entity_connections(
+                entity, source_type
             )
 
             # Merge counts
@@ -257,7 +261,6 @@ class ConfidenceMetrics:
             "reasons": ambiguity_reasons,
         }
 
-
     def _analyze_confidence_distributions(
         self, data: dict[str, Any]
     ) -> dict[str, list[float]]:
@@ -283,9 +286,16 @@ class ConfidenceMetrics:
         return {
             "overall_mean_confidence": mean(all_confidences),
             "confidence_range": max(all_confidences) - min(all_confidences),
-            "high_confidence_ratio": self._calculate_confidence_ratio(all_confidences, 0.9, above=True),
-            "medium_confidence_ratio": sum(1 for c in all_confidences if 0.7 <= c <= 0.9) / len(all_confidences),
-            "low_confidence_ratio": self._calculate_confidence_ratio(all_confidences, 0.7),
+            "high_confidence_ratio": self._calculate_confidence_ratio(
+                all_confidences, 0.9, above=True
+            ),
+            "medium_confidence_ratio": sum(
+                1 for c in all_confidences if 0.7 <= c <= 0.9
+            )
+            / len(all_confidences),
+            "low_confidence_ratio": self._calculate_confidence_ratio(
+                all_confidences, 0.7
+            ),
         }
 
     def _infer_type_from_id(self, entity_id: str) -> str:
