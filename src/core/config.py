@@ -67,44 +67,6 @@ OPENROUTER_MAX_TOKENS = int(
     os.getenv("OPENROUTER_MAX_TOKENS", "65536")
 )  # Increased default to reduce truncation with large JSON outputs
 
-# Recommended model configurations for different providers
-EXTERNAL_MODEL_CONFIGS = {
-    "openai": {
-        "gpt-4o": {"max_tokens": 4096, "temperature": 0.1},
-        "gpt-4o-mini": {"max_tokens": 16384, "temperature": 0.1},
-        "gpt-4-turbo": {"max_tokens": 4096, "temperature": 0.1},
-        "o1-preview": {
-            "max_tokens": 32768,
-            "temperature": 1.0,
-        },  # o1 models don't support temperature control
-        "o1-mini": {"max_tokens": 65536, "temperature": 1.0},
-    },
-    "gemini": {
-        "gemini-2.0-flash-exp": {"max_tokens": 8192, "temperature": 0.1},
-        "gemini-1.5-pro": {"max_tokens": 8192, "temperature": 0.1},
-        "gemini-1.5-flash": {"max_tokens": 8192, "temperature": 0.1},
-    },
-    "openrouter": {
-        # OpenAI models via OpenRouter
-        "openai/gpt-4o": {"max_tokens": 4096, "temperature": 0.1},
-        "openai/gpt-4o-mini": {"max_tokens": 16384, "temperature": 0.1},
-        "openai/o4-mini-high": {
-            "max_tokens": 100000,
-            "temperature": 0.1,
-        },  # 200K context, cheaper and better
-        "openai/o1-preview": {"max_tokens": 32768, "temperature": 1.0},
-        "openai/o1-mini": {"max_tokens": 65536, "temperature": 1.0},
-        # Anthropic models via OpenRouter
-        "anthropic/claude-3.5-sonnet": {"max_tokens": 8192, "temperature": 0.1},
-        "anthropic/claude-3-haiku": {"max_tokens": 8192, "temperature": 0.1},
-        # Google models via OpenRouter
-        "google/gemini-2.0-flash-exp": {"max_tokens": 8192, "temperature": 0.1},
-        "google/gemini-pro": {"max_tokens": 8192, "temperature": 0.1},
-        # Cost-effective alternatives
-        "meta-llama/llama-3.1-405b-instruct": {"max_tokens": 4096, "temperature": 0.1},
-        "qwen/qwen-2.5-72b-instruct": {"max_tokens": 8192, "temperature": 0.1},
-    },
-}
 
 # Chunk Configuration - Optimized to prevent LLM output truncation
 # Adjust chunk size based on backend
@@ -190,7 +152,6 @@ FAST_EXTRACTION_MAX_CHUNKS = 50  # Limit chunks for speed (0 = no limit)
 
 # Source Attribution Configuration
 QUOTE_MATCH_THRESHOLD = 0.4  # Minimum score for fuzzy quote matching (0-1)
-MIN_QUOTE_LENGTH = 15  # Minimum characters for a quote to be considered for matching
 
 # Aggregation Configuration
 AGGREGATION_CHUNK_SIZE = (

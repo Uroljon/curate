@@ -449,24 +449,6 @@ class OperationExecutor:
 
 
 # Convenience functions for direct use
-def apply_operations_to_state(
-    current_state: EnrichedReviewJSON,
-    operations: ExtractionOperations,
-    chunk_index: int | None = None,
-) -> tuple[EnrichedReviewJSON, OperationLog]:
-    """
-    Convenience function to apply operations to state.
-
-    Args:
-        current_state: Current extraction state
-        operations: Operations to apply
-        chunk_index: Optional chunk index for logging
-
-    Returns:
-        Tuple of (new_state, operation_log)
-    """
-    executor = OperationExecutor()
-    return executor.apply_operations(current_state, operations.operations, chunk_index)
 
 
 def validate_operations(

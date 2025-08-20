@@ -26,54 +26,6 @@ from src.extraction.structure_extractor import (
 )
 
 
-def extract_project_details_for_field(
-    chunks: list[str], action_field: str, projects: list[str]
-) -> dict[str, Any]:
-    """
-    Extract details for all projects in an action field.
-
-    Args:
-        chunks: List of text chunks
-        action_field: Action field name
-        projects: List of project titles
-
-    Returns:
-        Action field data with projects and details
-    """
-    action_field_data: dict[str, Any] = {
-        "action_field": action_field,
-        "projects": [],
-    }
-
-    print(f"\n{'=' * 60}")
-    print(f"STAGE 3: EXTRACTING DETAILS FOR {len(projects)} PROJECTS")
-    print("=" * 60)
-
-    for proj_idx, project_title in enumerate(projects):
-        print(f"\n📁 Project {proj_idx + 1}/{len(projects)}: {project_title}")
-
-        # Use Chain-of-Thought extraction if enabled
-        if USE_CHAIN_OF_THOUGHT:
-            print(
-                f"   🧠 Using Chain-of-Thought classification (confidence ≥ {CONFIDENCE_THRESHOLD})"
-            )
-            details = extract_project_details_cot(
-                chunks, action_field, project_title, CONFIDENCE_THRESHOLD
-            )
-        else:
-            details = extract_project_details(chunks, action_field, project_title)
-
-        project_data: dict[str, Any] = {"title": project_title}
-        if details.measures:
-            project_data["measures"] = details.measures
-        if details.indicators:
-            project_data["indicators"] = details.indicators
-
-        action_field_data["projects"].append(project_data)
-
-    return action_field_data
-
-
 def deduplicate_extraction_results(
     extracted_data: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -489,12 +441,6 @@ def merge_project_details(existing_projects: list[dict], new_project: dict) -> N
                     if indicator not in existing["indicators"]:
                         existing["indicators"].append(indicator)
             break
-
-
-
-
-
-
 
 
 def aggregate_extraction_results(
@@ -2312,129 +2258,6 @@ def extract_direct_to_enhanced_with_operations(
 
     # Return in same format as other endpoints for visualization tool compatibility
     return current_state.model_dump()
-
-
-def create_simplified_system_message() -> str:
-    """Create simplified system message focused on descriptions."""
-    return """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten und Indikatoren aus deutschen kommunalen Strategiedokumenten.
-
-HIERARCHISCHE STRUKTUR - KRITISCH WICHTIG:
-- Handlungsfelder (action_fields): BREITE STRATEGISCHE BEREICHE (max. 8-15 Stück)
-  → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
-    → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
-      → Indikatoren: Messbare Kennzahlen
-
-HANDLUNGSFELDER - NUR ÜBERGEORDNETE BEREICHE:
-✅ RICHTIG: "Mobilität und Verkehr", "Klimaschutz und Klimaanpassung", "Energie", "Siedlungsentwicklung", "Wirtschaft und Wissenschaft"
-❌ FALSCH: "Stadtbahn", "Neuer ZOB", "Green Deal", "Solaranlagen", "Radwegenetz" (das sind PROJEKTE!)
-
-TYPISCHE HANDLUNGSFELDER KOMMUNALER STRATEGIEN:
-- Mobilität und Verkehr
-- Klimaschutz und Klimaanpassung
-- Energie
-- Siedlungs- und Quartiersentwicklung
-- Freiraumentwicklung
-- Wirtschaft und Wissenschaft
-- Digitalisierung
-- Soziales und Integration
-- Bildung und Betreuung
-- Kultur und Sport
-
-PFLICHTFELDER:
-- Handlungsfelder: name + description (1-3 Sätze über den strategischen Bereich)
-- Projekte: title + description (1-2 Sätze) + type
-- Maßnahmen: title + description (1-2 Sätze)
-- Indikatoren: title + description (Was wird gemessen?)
-
-OPTIONALE FELDER (NUR mit Quellenbeleg):
-- unit: Nur wenn explizit genannt (z.B. "Tonnen CO2/Jahr")
-- calculation: Nur wenn Berechnungsmethode beschrieben
-- valuesSource: Nur wenn Datenquelle erwähnt
-
-WICHTIGE REGELN:
-1. HIERARCHIE BEACHTEN: Spezifische Projekte NIEMALS als Handlungsfelder extrahieren
-2. Konservative Extraktion: Nur was eindeutig im Text steht
-3. Keine Erfindung von Metadaten (Budget, Termine, Abteilungen)
-4. Qualitätsbeschreibungen: Jede Entität braucht aussagekräftige deutsche Beschreibung
-5. Verbindungen mit Konfidenz-Scores (0.5-1.0) basierend auf Textkontext
-
-Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der EnrichedReviewJSON-Struktur entspricht."""
-
-
-def create_simplified_extraction_prompt(chunk_text: str, source_id: str) -> str:
-    """Create simplified extraction prompt for direct 4-bucket extraction."""
-    return f"""Extrahieren Sie aus diesem Textabschnitt die HIERARCHISCH KORREKTEN Strukturen.
-
-KRITISCH: Handlungsfelder sind NUR breite strategische Bereiche (max. 8-15 total), NICHT spezifische Projekte!
-
-BEISPIELE DER HIERARCHIE:
-• Handlungsfeld: "Mobilität und Verkehr"
-  → Projekt: "Stadtbahn Regensburg"
-  → Projekt: "Radwegenetz Ausbau"
-  → Projekt: "Neuer Zentraler Omnibusbahnhof"
-
-• Handlungsfeld: "Klimaschutz und Klimaanpassung"
-  → Projekt: "Green Deal Regensburg"
-  → Projekt: "Klimaneutrale Verwaltung"
-
-• Handlungsfeld: "Energie"
-  → Projekt: "Solaroffensive"
-  → Projekt: "Windkraftausbau"
-
-FALSCHE EXTRAKTION VERMEIDEN:
-❌ "Stadtbahn" als Handlungsfeld → ✅ "Mobilität und Verkehr" als Handlungsfeld, "Stadtbahn" als Projekt
-❌ "Green Deal" als Handlungsfeld → ✅ "Klimaschutz" als Handlungsfeld, "Green Deal" als Projekt
-
-TEXT:
-{chunk_text}
-
-Erstellen Sie die 4-Bucket-Struktur mit KORREKTER HIERARCHIE:
-
-1. action_fields: [{{
-   "id": "af_1",
-   "content": {{
-     "name": "Breiter strategischer Bereich (z.B. 'Mobilität und Verkehr')",
-     "description": "1-3 Sätze über diesen ÜBERGEORDNETEN strategischen Bereich"
-   }},
-   "connections": []
-}}]
-
-2. projects: [{{
-   "id": "proj_1",
-   "content": {{
-     "title": "Projekttitel",
-     "description": "1-2 Sätze Projektbeschreibung",
-     "type": "Infrastructure/Policy/Program/Study"
-   }},
-   "connections": [{{"target_id": "af_1", "confidence_score": 0.9}}]
-}}]
-
-3. measures: [{{
-   "id": "msr_1",
-   "content": {{
-     "title": "Maßnahmentitel",
-     "description": "1-2 Sätze was diese Maßnahme beinhaltet"
-   }},
-   "connections": [{{"target_id": "proj_1", "confidence_score": 0.8}}]
-}}]
-
-4. indicators: [{{
-   "id": "ind_1",
-   "content": {{
-     "title": "Indikatorname",
-     "description": "Was wird hier gemessen/überwacht",
-     "unit": "Nur wenn explizit genannt",
-     "calculation": "Nur wenn beschrieben"
-   }},
-   "connections": [{{"target_id": "msr_1", "confidence_score": 0.9}}]
-}}]
-
-KONFIDENZ-SCORES:
-- 0.9-1.0: Explizit verbunden oder gruppiert
-- 0.7-0.8: Starke thematische Verbindung
-- 0.5-0.6: Schwache/inferierte Verbindung
-
-ID-FORMAT: af_1, proj_1, msr_1, ind_1 (fortlaufend nummeriert)"""
 
 
 def create_simplified_system_message_with_context() -> str:

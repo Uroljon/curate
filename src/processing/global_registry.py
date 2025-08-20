@@ -130,21 +130,6 @@ class GlobalEntityRegistry:
 
         return best_match
 
-    def get_known_entities(self, entity_type: str = "action_field") -> list[str]:
-        """
-        Get list of known canonical entities for inclusion in prompts.
-
-        Args:
-            entity_type: Type of entities to retrieve
-
-        Returns:
-            List of canonical entity names
-        """
-        if entity_type == "action_field":
-            return sorted(list(self.canonical_entities))
-        else:
-            return []
-
     def get_statistics(self) -> dict[str, any]:
         """Get registry statistics for monitoring and debugging."""
         return {
@@ -176,33 +161,3 @@ class GlobalEntityRegistry:
 
 
 # Utility functions for integration with existing code
-
-
-def create_global_registry() -> GlobalEntityRegistry:
-    """Create a new global entity registry with optimal settings for German text."""
-    return GlobalEntityRegistry(similarity_threshold=0.8)
-
-
-def format_known_entities_for_prompt(known_entities: list[str]) -> str:
-    """Format known entities for inclusion in LLM prompts."""
-    if not known_entities:
-        return "Keine bereits bekannten Handlungsfelder."
-
-    formatted = "\n".join(f"  - {entity}" for entity in known_entities)
-    return f"BEREITS BEKANNTE HANDLUNGSFELDER:\n{formatted}"
-
-
-def extract_entity_names_from_result(
-    result, entity_type: str = "action_field"
-) -> list[str]:
-    """Extract entity names from extraction result for registry processing."""
-    if entity_type == "action_field":
-        if hasattr(result, "action_fields"):
-            return [
-                af.content.get("name", "")
-                for af in result.action_fields
-                if af.content.get("name")
-            ]
-        else:
-            return []
-    return []

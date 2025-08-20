@@ -68,34 +68,6 @@ class EntityOperation(BaseModel):
         default=None, description="Relevant quote from source text"
     )
 
-    @validator("entity_id")
-    def validate_entity_id_for_update_operations(_, v, values):
-        """Ensure entity_id is provided for operations that require it. For CREATE, ignore provided entity_id."""
-        operation = values.get("operation")
-        # For CREATE operations, ignore any provided entity_id (it will be auto-generated)
-        if operation == OperationType.CREATE:
-            return None  # Force to None for CREATE operations
-        if operation == OperationType.UPDATE:
-            if not v:
-                raise ValueError(f"{operation} operations require entity_id")
-        return v
-
-    @validator("content")
-    def validate_content_for_create(_, v, values):
-        """Ensure content is provided for CREATE operations."""
-        operation = values.get("operation")
-        if operation == OperationType.CREATE and not v:
-            raise ValueError("CREATE operations require content")
-        return v
-
-    @validator("connections")
-    def validate_connections_for_connect(_, v, values):
-        """Ensure connections are provided for CONNECT operations."""
-        operation = values.get("operation")
-        if operation == OperationType.CONNECT and not v:
-            raise ValueError("CONNECT operations require connections")
-        return v
-
 
 class ExtractionOperations(BaseModel):
     """

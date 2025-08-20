@@ -377,60 +377,6 @@ def extract_project_details_cot(
     return details
 
 
-def validate_extraction_schema(data: Any) -> bool:
-    """
-    Validate that extracted data matches the expected schema.
-
-    Expected schema: List of action field objects with projects.
-    """
-    if not isinstance(data, list):
-        return False
-
-    for item in data:
-        if not isinstance(item, dict):
-            return False
-
-        # Required fields
-        if "action_field" not in item or "projects" not in item:
-            return False
-
-        if not isinstance(item["action_field"], str) or not isinstance(
-            item["projects"], list
-        ):
-            return False
-
-        # Check for English content in action field
-        action_field = item["action_field"]
-        if any(term in action_field for term in ENGLISH_FILTER_TERMS):
-            print(f"⚠️ Rejecting English action field: {action_field}")
-            return False
-
-        # Validate project structure
-        for project in item["projects"]:
-            if not isinstance(project, dict):
-                return False
-
-            if "title" not in project:
-                return False
-
-            if not isinstance(project["title"], str):
-                return False
-
-            # Check for English content in project title
-            if any(term in project["title"] for term in ENGLISH_FILTER_TERMS):
-                print(f"⚠️ Rejecting English project title: {project['title']}")
-                return False
-
-            # measures and indicators are optional but must be lists if present
-            if "measures" in project and not isinstance(project["measures"], list):
-                return False
-
-            if "indicators" in project and not isinstance(project["indicators"], list):
-                return False
-
-    return True
-
-
 def extract_structures_with_retry(
     chunk_text: str,
     max_retries: int = EXTRACTION_MAX_RETRIES,
