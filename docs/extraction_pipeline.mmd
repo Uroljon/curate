@@ -1,0 +1,83 @@
+graph TB
+    %% Upload Endpoint (Entry Point)
+    subgraph Upload["/upload - Document Ingestion"]
+        A[PDF Upload] --> B[Text Extraction + OCR]
+        B --> C[Page-Aware Text Processing]
+        C --> D[Save: source_id_pages.txt]
+        D --> E[Return Source ID]
+    end
+
+    %% Shared Processing Components
+    subgraph Shared["Shared Processing Components"]
+        F[Load source_id_pages.txt]
+        G[Create 8K-12K char chunks with 10% overlap]
+        H[extract_structures_with_retry per chunk]
+    end
+
+    %% LLM Backend
+    subgraph LLM["Multi-Provider LLM Backend"]
+        I[Provider Abstraction]
+        I --> I1[OpenRouter: o4-mini-high - Default]
+        I --> I2[Ollama: Local Models]
+        I --> I3[vLLM: High Performance]
+        I --> I4[OpenAI/Gemini: Direct APIs]
+        
+        I --> J[200K+ Context, 65K Output, German Support]
+    end
+
+    %% The Key Difference: What the LLM Returns
+    subgraph Difference["Key Difference: LLM Output Strategy"]
+        K1["/extract_enhanced<br/>Returns: Complete 4-bucket JSON"]
+        K2["/extract_enhanced_operations<br/>Returns: CREATE/UPDATE/CONNECT operations"]
+    end
+
+    %% Post-Processing (Different for Each Method)
+    subgraph PostProcess["Post-Processing"]
+        L1[Enhanced: Conservative entity resolution]
+        L2[Operations: OperationExecutor + Global registry]
+        
+        M1[Enhanced: _enhanced_structure.json]
+        M2[Operations: _operations_result.json]
+    end
+
+    %% File Storage
+    subgraph Storage["File Storage (data/uploads/)"]
+        N[source_id_pages.txt - Always created]
+        O[Dialog logs: .jsonl files]
+        P[Results: .json files]
+        Q[Legacy: _llm_dialog.txt, _intermediate_extraction.json]
+    end
+
+    %% Flow Connections
+    E --> F
+    F --> G
+    G --> H
+    H --> I
+    I --> K1
+    I --> K2
+    
+    K1 --> L1
+    K2 --> L2
+    
+    L1 --> M1
+    L2 --> M2
+    
+    D -.-> N
+    M1 -.-> P
+    M2 -.-> P
+    H -.-> O
+
+    %% Styling
+    classDef upload fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef shared fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef llm fill:#ffccbc,stroke:#f57c00,stroke-width:2px
+    classDef difference fill:#fff3e0,stroke:#ff6f00,stroke-width:3px
+    classDef post fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef storage fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
+
+    class A,B,C,D,E upload
+    class F,G,H shared
+    class I,I1,I2,I3,I4,J llm
+    class K1,K2 difference
+    class L1,L2,M1,M2 post
+    class N,O,P,Q storage
