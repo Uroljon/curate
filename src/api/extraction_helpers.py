@@ -2748,9 +2748,8 @@ IHRE AUFGABE: Analysieren Sie Textpassagen und erstellen Sie OPERATIONEN (nicht 
 
 VERFÜGBARE OPERATIONEN:
 - CREATE: Neue Entity erstellen (nur wenn wirklich neu und einzigartig) - NIEMALS entity_id angeben, wird automatisch generiert!
-- UPDATE: Bestehende Entity mit zusätzlichen Details erweitern - entity_id erforderlich
-- MERGE: Neue Inhalte in bestehende Entity einarbeiten - merge_with_id erforderlich
-- CONNECT: Verbindungen zwischen Entities erstellen - connections erforderlich
+ - UPDATE: Bestehende Entity mit zusätzlichen Details erweitern (intelligentes Mergen) - entity_id erforderlich
+ - CONNECT: Verbindungen zwischen Entities erstellen - connections erforderlich
 
 HIERARCHISCHE STRUKTUR:
 - Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE (max. 8-15 total)
@@ -2759,7 +2758,7 @@ HIERARCHISCHE STRUKTUR:
       → Indikatoren: Messbare Kennzahlen für Projekte/Maßnahmen
 
 WICHTIGE PRINZIPIEN:
-- Bevorzugen Sie UPDATE/MERGE gegenüber CREATE für ähnliche Konzepte
+- Bevorzugen Sie UPDATE gegenüber CREATE für ähnliche/gleichartige Konzepte
 - Verwenden Sie exakte Entity-IDs für Verbindungen
 - Fügen Sie immer Quellenangaben (source_pages, source_quote) hinzu
 - Seien Sie konservativ bei neuen Handlungsfeldern

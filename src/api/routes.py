@@ -912,7 +912,7 @@ async def extract_enhanced_operations(
 
     This endpoint implements the operations-based approach:
     1. Reads {source_id}_pages.txt directly
-    2. For each chunk, LLM returns operations (CREATE, UPDATE, MERGE, CONNECT)
+    2. For each chunk, LLM returns operations (CREATE, UPDATE, CONNECT)
     3. Operations are applied deterministically to build final state
     4. No copy degradation or context bloat issues
 

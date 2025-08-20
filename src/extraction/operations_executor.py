@@ -18,7 +18,7 @@ class OperationExecutor:
     """
     Executor for applying operations to extraction state.
     
-    Handles CREATE, UPDATE, MERGE, CONNECT, and ENHANCE operations
+    Handles CREATE, UPDATE (with intelligent merge), and CONNECT operations
     with validation and error handling.
     """
 

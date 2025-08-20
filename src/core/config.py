@@ -62,8 +62,8 @@ EXTERNAL_MAX_TOKENS = int(
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")  # OpenRouter API key
 OPENROUTER_MODEL_NAME = os.getenv("OPENROUTER_MODEL_NAME", "openai/o4-mini-high")  # Default model
 OPENROUTER_MAX_TOKENS = int(
-    os.getenv("OPENROUTER_MAX_TOKENS", "4096")
-)  # Conservative default for cost optimization
+    os.getenv("OPENROUTER_MAX_TOKENS", "65536")
+)  # Increased default to reduce truncation with large JSON outputs
 
 # Recommended model configurations for different providers
 EXTERNAL_MODEL_CONFIGS = {

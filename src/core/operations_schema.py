@@ -34,7 +34,7 @@ class EntityOperation(BaseModel):
         description="Type of entity this operation affects"
     )
 
-    # For UPDATE/MERGE/ENHANCE operations
+    # For UPDATE operations
     entity_id: str | None = Field(
         default=None,
         description="ID of existing entity to modify (required for UPDATE)"
