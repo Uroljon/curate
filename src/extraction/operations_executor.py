@@ -386,30 +386,46 @@ class OperationExecutor:
         self, target_entity: Any, new_content: dict[str, Any]
     ) -> None:
         """Intelligently merge new content into existing entity."""
-
         for key, value in new_content.items():
             if key not in target_entity.content:
-                # New field - add it
                 target_entity.content[key] = value
             else:
-                existing_value = target_entity.content[key]
+                self._merge_existing_field(target_entity, key, value)
 
-                if isinstance(existing_value, str) and isinstance(value, str):
-                    # String fields - append if different
-                    if value not in existing_value:
-                        target_entity.content[key] = f"{existing_value}. {value}"
-                elif isinstance(existing_value, list) and isinstance(value, list):
-                    # List fields - extend with unique items
-                    for item in value:
-                        if item not in existing_value:
-                            existing_value.append(item)
-                elif isinstance(existing_value, dict) and isinstance(value, dict):
-                    # Dict fields - recursive merge
-                    existing_value.update(value)
-                else:
-                    # Other types - prefer longer/more detailed value
-                    if len(str(value)) > len(str(existing_value)):
-                        target_entity.content[key] = value
+    def _merge_existing_field(
+        self, target_entity: Any, key: str, value: Any
+    ) -> None:
+        """Merge a new value with an existing field value."""
+        existing_value = target_entity.content[key]
+
+        if isinstance(existing_value, str) and isinstance(value, str):
+            self._merge_string_fields(target_entity, key, existing_value, value)
+        elif isinstance(existing_value, list) and isinstance(value, list):
+            self._merge_list_fields(existing_value, value)
+        elif isinstance(existing_value, dict) and isinstance(value, dict):
+            existing_value.update(value)
+        else:
+            self._merge_other_fields(target_entity, key, existing_value, value)
+
+    def _merge_string_fields(
+        self, target_entity: Any, key: str, existing: str, new: str
+    ) -> None:
+        """Merge string fields by appending if different."""
+        if new not in existing:
+            target_entity.content[key] = f"{existing}. {new}"
+
+    def _merge_list_fields(self, existing_list: list[Any], new_list: list[Any]) -> None:
+        """Merge list fields by extending with unique items."""
+        for item in new_list:
+            if item not in existing_list:
+                existing_list.append(item)
+
+    def _merge_other_fields(
+        self, target_entity: Any, key: str, existing: Any, new: Any
+    ) -> None:
+        """Merge other field types by preferring longer/more detailed value."""
+        if len(str(new)) > len(str(existing)):
+            target_entity.content[key] = new
 
     def _generate_entity_id(self, entity_type: str) -> str:
         """Generate a unique ID for a new entity."""

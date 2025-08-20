@@ -86,7 +86,7 @@ class IntegrityMetrics:
                     all_ids.add(entity_id)
 
                 # Check ID format (should be alphanumeric with underscores)
-                if not re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", entity_id):
+                if not re.match(r"^[a-zA-Z]\w*$", entity_id):
                     format_errors.append(
                         {
                             "type": entity_type,
