@@ -741,6 +741,7 @@ def get_llm_provider(
     from .config import (
         LLM_BACKEND,
         MODEL_MAPPINGS,
+        MODEL_NAME,
         MODEL_TEMPERATURE,
         MODEL_TIMEOUT,
         OLLAMA_HOST,
@@ -755,7 +756,6 @@ def get_llm_provider(
 
     if backend == "openrouter":
         from .config import (
-            MODEL_NAME,
             OPENROUTER_API_KEY,
             OPENROUTER_MAX_TOKENS,
             OPENROUTER_MODEL_NAME,
