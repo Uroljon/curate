@@ -7,7 +7,7 @@ centrality measures, and structural patterns.
 
 from collections import Counter, defaultdict
 from statistics import mean, median
-from typing import Any, Dict, List, Set
+from typing import Any
 
 import networkx as nx
 

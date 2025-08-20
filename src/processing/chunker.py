@@ -586,7 +586,3 @@ def chunk_for_llm_with_pages(
         chunks_with_headers = add_overlap_to_page_chunks(chunks_with_headers)
 
     return chunks_with_headers
-
-
-
-

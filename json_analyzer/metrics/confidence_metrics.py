@@ -7,7 +7,7 @@ and calibration metrics for extracted data.
 
 from collections import Counter, defaultdict
 from statistics import mean, median, stdev
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import networkx as nx
 

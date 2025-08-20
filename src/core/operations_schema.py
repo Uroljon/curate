@@ -55,7 +55,6 @@ class EntityOperation(BaseModel):
         default=0.8, ge=0.0, le=1.0, description="Confidence in this operation"
     )
 
-
     # Source attribution
     source_pages: list[int] | None = Field(
         default=None, description="Page numbers where this information was found"
@@ -87,7 +86,6 @@ class ExtractionOperations(BaseModel):
     )
 
 
-
 class ConnectionOperation(BaseModel):
     """
     Represents a connection between two entities.
@@ -99,11 +97,9 @@ class ConnectionOperation(BaseModel):
 
     to_id: str = Field(description="ID of the target entity")
 
-
     confidence: float = Field(
         default=0.8, ge=0.0, le=1.0, description="Confidence in this connection"
     )
-
 
 
 class OperationResult(BaseModel):

@@ -237,5 +237,3 @@ def extract_text_with_ocr_fallback(pdf_path: str) -> tuple[list[tuple[str, int]]
     }
 
     return page_aware_text, metadata
-
-

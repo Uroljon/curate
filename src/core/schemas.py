@@ -87,7 +87,6 @@ class ProjectDetailsEnhanced(BaseModel):
 class ConnectionWithConfidence(BaseModel):
     """Represents a connection between entities with confidence scoring."""
 
-
     target_id: str = Field(..., description="ID of the target entity")
 
 

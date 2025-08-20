@@ -7,7 +7,7 @@ degree statistics, and connectivity metrics.
 
 from collections import Counter, defaultdict
 from statistics import mean, median
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import networkx as nx
 

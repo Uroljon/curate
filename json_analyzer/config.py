@@ -2,7 +2,7 @@
 Configuration and thresholds for JSON quality analysis.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from pydantic import BaseModel, Field
 

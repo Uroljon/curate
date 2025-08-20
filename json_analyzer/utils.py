@@ -5,7 +5,7 @@ Utility functions for JSON quality analysis.
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional
 
 
 def load_json_file(file_path: str | Path) -> dict[str, Any]:

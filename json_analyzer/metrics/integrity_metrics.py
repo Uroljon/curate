@@ -8,7 +8,7 @@ field completeness, and duplicate detection.
 import re
 from collections import Counter, defaultdict
 from difflib import SequenceMatcher
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any
 
 from ..config import ID_PREFIXES, IntegrityThresholds
 from ..models import IntegrityStats

@@ -3,7 +3,7 @@ Pydantic models for JSON quality analysis results.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -152,6 +152,6 @@ class BatchAnalysisResult(BaseModel):
 
 
 # Utility types for internal use
-NodeType = Union[str, int]
+NodeType = str | int
 EdgeType = tuple[NodeType, NodeType, dict[str, Any]]
 GraphData = dict[str, Any]

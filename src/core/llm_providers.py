@@ -36,7 +36,6 @@ class LLMProvider(ABC):
         """Query LLM with structured output using Pydantic models."""
         pass
 
-
     def _log_llm_dialog(
         self,
         log_file_path: str,
@@ -175,7 +174,6 @@ class OllamaProvider(LLMProvider):
         except Exception as e:
             print(f"❌ Unexpected error: {e!s}")
             return None
-
 
 
 class VLLMProvider(LLMProvider):
@@ -383,7 +381,6 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
             return None
 
 
-
 class OpenRouterProvider(LLMProvider):
     """OpenRouter provider for unified access to multiple LLM providers."""
 
@@ -497,7 +494,6 @@ Respond ONLY with the JSON object, no additional text."""
         except Exception as e:
             print(f"❌ OpenRouter API Error: {e}")
             return None
-
 
 
 class ExternalAPIProvider(LLMProvider):
@@ -722,9 +718,6 @@ Respond ONLY with the JSON object, no additional text."""
         except Exception as e:
             print(f"❌ Gemini API Error: {e}")
             return None
-
-
-
 
 
 def get_llm_provider(

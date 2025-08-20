@@ -8,7 +8,7 @@ for analyzing JSON extraction results.
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
 from .config import (
     DEFAULT_CONFIG,

@@ -8,7 +8,7 @@ normalization issues, and overall content quality.
 import re
 from collections import Counter, defaultdict
 from statistics import mean, median
-from typing import Any, Dict, List, Set
+from typing import Any
 
 from ..config import ContentThresholds
 from ..models import ContentStats

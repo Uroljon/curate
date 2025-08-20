@@ -7,7 +7,7 @@ edge churn, coverage deltas, confidence drift, and structural similarity.
 
 from collections import Counter, defaultdict
 from statistics import mean
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any
 
 from ..config import AnalyzerConfig
 from ..models import DriftStats
