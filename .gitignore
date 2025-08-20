@@ -76,6 +76,16 @@ Thumbs.db
 *.temp
 *.bak
 
+# SonarQube
+.sonar/
+.scannerwork/
+sonar-project.properties
+docker-compose.sonar.yml
+requirements-sonar.txt
+coverage.xml
+pytest-results.xml
+sonar-report.json
+
 # Project specific
 GEMINI.md
 AGENTS.md
