@@ -81,7 +81,12 @@ class TerminalVisualizer:
             for category, score in result.quality_score.category_scores.items():
                 weight = result.quality_score.weights.get(category, 0.0)
                 contribution = score * weight
-                color = "green" if score >= 80 else "yellow" if score >= 60 else "red"
+                if score >= 80:
+                    color = "green"
+                elif score >= 60:
+                    color = "yellow"
+                else:
+                    color = "red"
                 print(
                     f"  {category.title()}: {self._colorize(f'{score:.1f}', color)} "
                     f"(weight: {weight:.1%}, contribution: {contribution:.1f})"
@@ -101,7 +106,12 @@ class TerminalVisualizer:
         # Category breakdown
         print(self._colorize("📈 Category Scores", "bold"))
         for category, score in result.quality_score.category_scores.items():
-            color = "green" if score >= 80 else "yellow" if score >= 60 else "red"
+            if score >= 80:
+                color = "green"
+            elif score >= 60:
+                color = "yellow"
+            else:
+                color = "red"
             print(f"  {category.title()}: {self._colorize(f'{score:.1f}', color)}")
         print()
 

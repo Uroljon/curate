@@ -161,7 +161,6 @@ WICHTIG: Ihre Antwort MUSS ausschließlich ein JSON-Objekt sein, das dem vorgege
 
 def get_stage3_prompt(
     chunk: str,
-    action_field: str,
     project_title: str,
     document_hierarchy: dict | None = None,
 ) -> str:

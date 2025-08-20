@@ -206,7 +206,7 @@ def extract_project_details(
         if not chunk.strip():
             continue
 
-        prompt = get_stage3_prompt(chunk, action_field, project_title)
+        prompt = get_stage3_prompt(chunk, project_title)
 
         result = query_ollama_structured(
             prompt=prompt,

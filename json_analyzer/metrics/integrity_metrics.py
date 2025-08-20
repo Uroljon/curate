@@ -96,11 +96,10 @@ class IntegrityMetrics:
                     )
 
                 # Check prefix
-                if expected_prefixes:
-                    if not any(
-                        entity_id.startswith(prefix) for prefix in expected_prefixes
-                    ):
-                        invalid_prefixes.append(
+                if expected_prefixes and not any(
+                    entity_id.startswith(prefix) for prefix in expected_prefixes
+                ):
+                    invalid_prefixes.append(
                             {
                                 "type": entity_type,
                                 "id": entity_id,

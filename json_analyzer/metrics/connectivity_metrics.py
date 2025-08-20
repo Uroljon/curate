@@ -36,11 +36,11 @@ class ConnectivityMetrics:
             return ConnectivityStats()
 
         # Coverage metrics
-        af_coverage = self._calculate_action_field_coverage(graph, data)
-        project_coverage = self._calculate_project_coverage(graph, data)
+        af_coverage = self._calculate_action_field_coverage(graph)
+        project_coverage = self._calculate_project_coverage(graph)
 
         # Measures per project distribution
-        measures_per_project = self._calculate_measures_per_project(graph, data)
+        measures_per_project = self._calculate_measures_per_project(graph)
 
         # Path length analysis
         path_lengths = self._calculate_path_lengths(graph)
@@ -52,7 +52,7 @@ class ConnectivityMetrics:
         cycles = self._detect_cycles(graph)
 
         # Additional coverage metrics
-        coverage_metrics = self._calculate_detailed_coverage(graph, data)
+        coverage_metrics = self._calculate_detailed_coverage(graph)
 
         return ConnectivityStats(
             action_field_coverage=af_coverage,
@@ -65,7 +65,7 @@ class ConnectivityMetrics:
         )
 
     def _calculate_action_field_coverage(
-        self, graph: nx.Graph, data: dict[str, Any]
+        self, graph: nx.Graph
     ) -> float:
         """Calculate percentage of action fields that have incoming connections."""
         af_nodes = [
@@ -87,7 +87,7 @@ class ConnectivityMetrics:
         return connected_afs / len(af_nodes)
 
     def _calculate_project_coverage(
-        self, graph: nx.Graph, data: dict[str, Any]
+        self, graph: nx.Graph
     ) -> float:
         """Calculate percentage of projects connected to both action fields and measures."""
         project_nodes = [
@@ -113,7 +113,7 @@ class ConnectivityMetrics:
         return well_connected_projects / len(project_nodes)
 
     def _calculate_measures_per_project(
-        self, graph: nx.Graph, data: dict[str, Any]
+        self, graph: nx.Graph
     ) -> dict[str, float]:
         """Calculate statistics on measures per project."""
         project_nodes = [
@@ -266,7 +266,7 @@ class ConnectivityMetrics:
             return []
 
     def _calculate_detailed_coverage(
-        self, graph: nx.Graph, data: dict[str, Any]
+        self, graph: nx.Graph
     ) -> dict[str, Any]:
         """Calculate detailed coverage metrics."""
         node_types = ["action_field", "project", "measure", "indicator"]

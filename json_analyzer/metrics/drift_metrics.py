@@ -144,11 +144,10 @@ class DriftMetrics:
         # Find modified entities
         modified = set()
         for entity_id in before_lookup:
-            if entity_id in after_lookup:
-                if self._entities_differ(
-                    before_lookup[entity_id], after_lookup[entity_id]
-                ):
-                    modified.add(entity_id)
+            if entity_id in after_lookup and self._entities_differ(
+                before_lookup[entity_id], after_lookup[entity_id]
+            ):
+                modified.add(entity_id)
 
         return modified
 

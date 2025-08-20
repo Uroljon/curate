@@ -396,11 +396,12 @@ class ContentMetrics:
                     elif english_matches > german_matches:
                         english_score += 1
 
-        primary_lang = (
-            "de"
-            if german_score > english_score
-            else "en" if english_score > 0 else "unknown"
-        )
+        if german_score > english_score:
+            primary_lang = "de"
+        elif english_score > 0:
+            primary_lang = "en"
+        else:
+            primary_lang = "unknown"
         primary_count = max(german_score, english_score)
         inconsistency = 1.0 - (primary_count / total_texts) if total_texts > 0 else 0.0
 

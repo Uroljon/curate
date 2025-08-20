@@ -39,7 +39,7 @@ class ConfidenceMetrics:
         low_confidence_edges = self._find_low_confidence_edges(data)
 
         # Detect ambiguous nodes
-        ambiguous_nodes = self._detect_ambiguous_nodes(data, graph)
+        ambiguous_nodes = self._detect_ambiguous_nodes(data)
 
         # Analyze confidence distributions
         confidence_distributions = self._analyze_confidence_distributions(data)
@@ -159,7 +159,7 @@ class ConfidenceMetrics:
         return dict(result)
 
     def _detect_ambiguous_nodes(
-        self, data: dict[str, Any], graph: nx.Graph
+        self, data: dict[str, Any]
     ) -> list[dict[str, Any]]:
         """Detect nodes with many low-confidence or conflicting connections."""
         ambiguous_nodes = []
