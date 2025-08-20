@@ -83,6 +83,24 @@ curl -X GET "http://127.0.0.1:8000/extract_enhanced_operations?source_id=your-so
 python test_operations_fixes.py  # Operations extraction fixes test
 ```
 
+**JSON Quality Analysis:**
+```bash
+# Analyze extraction quality with JSON analyzer
+python -m json_analyzer analyze output.json
+
+# Generate HTML quality report
+python -m json_analyzer analyze output.json --format html --output report.html --verbose
+
+# Compare two extraction results
+python -m json_analyzer compare before.json after.json
+
+# Batch analyze all JSON files in directory
+python -m json_analyzer batch data/uploads/ --output quality_report.csv
+
+# Generate custom configuration file
+python -m json_analyzer config --output strict_config.json
+```
+
 ## Architecture
 
 **Processing Pipeline:**
@@ -147,6 +165,15 @@ Phase 3: **Enhanced Structure** (`/enhance_structure`)
 
 - **`src/api/extraction_helpers.py`**: Helper functions that break down complex extraction logic into manageable, testable units. Contains `extract_direct_to_enhanced()` for the new consolidated extraction endpoint.
 
+- **`json_analyzer/`**: Comprehensive JSON quality analysis system for measuring extraction results:
+  - `analyzer.py`: Main orchestrator for quality assessment across 7 metric categories
+  - `metrics/`: Individual metric calculators (graph, integrity, connectivity, confidence, sources, content, drift)
+  - `config.py`: Configurable thresholds and quality scoring weights
+  - `models.py`: Pydantic data models for analysis results
+  - `cli.py`: Command-line interface with batch processing, comparison, and reporting
+  - `visualizer.py`: Terminal and HTML report generation with color-coded quality indicators
+  - Quality scoring: Composite A-F grading based on weighted categories prioritizing structural integrity
+
 **LLM Processing Strategy:**
 - **Recommended (extract_enhanced_operations)**: Operations-based extraction using CREATE/UPDATE/CONNECT schema with global entity registry for consistency
 - **Legacy (extract_structure)**: Independent processing of each chunk with single-pass extraction using complete ExtractionResult schema  
@@ -179,6 +206,8 @@ Phase 3: **Enhanced Structure** (`/enhance_structure`)
 - openai (OpenAI/OpenRouter API client)
 - requests (LLM API communication)
 - python-dotenv (environment configuration)
+- networkx (graph analysis for JSON quality analyzer)
+- rapidfuzz (fuzzy text matching for duplicate detection)
 
 **Development Dependencies:**
 - ruff (fast Python linter with multiple rule sets)
@@ -309,6 +338,12 @@ When using vLLM, the system automatically maps Ollama model names to vLLM equiva
 - Monitor with built-in telemetry (`src/utils/monitoring.py`)
 - Check performance metrics in `logs/performance.jsonl`
 
+**JSON Quality Issues:**
+- Use JSON analyzer to identify structural problems: `python -m json_analyzer analyze output.json --verbose`
+- Check for dangling references (should be 0), duplicate entities (<5%), and low confidence edges (<15%)
+- Validate source quotes against original `*_pages.txt` files
+- Monitor extraction quality regression with comparison functionality: `python -m json_analyzer compare baseline.json current.json`
+
 ## Recent Updates (August 2025)
 
 **Operations-Based Extraction System:**
@@ -328,6 +363,15 @@ When using vLLM, the system automatically maps Ollama model names to vLLM equiva
 - Interactive D3.js visualization tool (`visualization_tool.html`)
 - Compatible JSON output for all extraction endpoints
 - Better entity relationship visualization
+
+**JSON Quality Analyzer System (August 2025):**
+- Comprehensive quality assessment tool for extraction results
+- 7 metric categories: Graph structure, data integrity, connectivity, confidence, sources, content, drift
+- Configurable thresholds and composite quality scoring (A-F grades)
+- Rebalanced weights: Integrity (35%), Content (25%), Connectivity (25%), Confidence (10%), Sources (5%)
+- CLI interface with HTML reports, batch processing, and drift analysis
+- Auto-detects both EnrichedReviewJSON and ExtractionResult formats
+- Quality monitoring pipeline for production extraction workflows
 
 ## Recent Refactoring (July 2025)
 
