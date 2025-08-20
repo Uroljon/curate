@@ -2815,39 +2815,34 @@ CREATE neue Entity:
   "confidence": 0.9
 }}
 
-UPDATE bestehende Entity:
+UPDATE bestehende Entity (intelligent merging):
 {{
   "operation": "UPDATE", 
   "entity_type": "project",
   "entity_id": "proj_1",
-  "content": {{"additional_info": "Neue Details aus dem Text"}},
+  "content": {{"description": "Neue oder erweiterte Beschreibung", "status": "active"}},
   "source_pages": [{page_list}],
-  "source_quote": "Zusätzlicher Textauszug (max. 50 Wörter)"
+  "source_quote": "Zusätzlicher Textauszug (max. 50 Wörter)",
+  "confidence": 0.8
 }}
 
 CONNECT Entities:
 {{
   "operation": "CONNECT",
-  "entity_type": "project",
+  "entity_type": "project", 
   "connections": [
-    {{"from_id": "proj_2", "to_id": "af_1", "confidence": 0.8}}
-  ]
-}}
-
-MERGE in bestehende Entity:
-{{
-  "operation": "MERGE",
-  "entity_type": "measure", 
-  "merge_with_id": "msr_3",
-  "content": {{"enhanced_description": "Ergänzte Beschreibung"}},
-  "reason": "Gleiche Maßnahme, zusätzliche Details"
+    {{"from_id": "proj_2", "to_id": "af_1", "confidence": 0.8}},
+    {{"from_id": "proj_2", "to_id": "msr_1", "confidence": 0.9}}
+  ],
+  "confidence": 0.8
 }}
 
 WICHTIG: 
 - Verwenden Sie exakte Entity-IDs aus dem aktuellen Stand
-- Fügen Sie IMMER source_pages und source_quote hinzu
+- Fügen Sie IMMER source_pages und source_quote hinzu (außer bei CONNECT)
 - Seien Sie sparsam mit CREATE für Handlungsfelder
-- Bevorzugen Sie UPDATE/MERGE bei ähnlichen Konzepten
+- Verwenden Sie UPDATE für alle Änderungen an bestehenden Entities
+- CONNECT kann mehrere Verbindungen gleichzeitig erstellen
 
 Antworten Sie NUR mit der Operations-Liste im JSON-Format:
 {{"operations": [...]}}"""

@@ -86,7 +86,7 @@ EXTERNAL_MODEL_CONFIGS = {
         # OpenAI models via OpenRouter
         "openai/gpt-4o": {"max_tokens": 4096, "temperature": 0.1},
         "openai/gpt-4o-mini": {"max_tokens": 16384, "temperature": 0.1},
-        "openai/o4-mini-high": {"max_tokens": 200000, "temperature": 0.1},  # 200K context, cheaper and better
+        "openai/o4-mini-high": {"max_tokens": 100000, "temperature": 0.1},  # 200K context, cheaper and better
         "openai/o1-preview": {"max_tokens": 32768, "temperature": 1.0},
         "openai/o1-mini": {"max_tokens": 65536, "temperature": 1.0},
         # Anthropic models via OpenRouter

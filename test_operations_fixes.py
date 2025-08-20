@@ -110,6 +110,8 @@ def test_fix_2_per_operation_validation():
     
     print(f"   📋 Total operations: {len(mixed_operations)}")
     print(f"   ⚠️  Total validation errors: {len(validation_errors)}")
+    for error in validation_errors:
+        print(f"      - {error}")
     
     # Simulate the new filtering logic (from extraction_helpers.py)
     valid_operations = []
@@ -167,9 +169,9 @@ def test_fix_3_cross_chunk_consolidation():
             content={"description": "Neue Stadtbahn für Regensburg"}
         ),
         EntityOperation(
-            operation=OperationType.MERGE,
+            operation=OperationType.UPDATE,
             entity_type="measure",
-            merge_with_id="msr_1",  # Merge with entity from chunk 1
+            entity_id="msr_1",  # Update entity from chunk 1 (now uses UPDATE instead of MERGE)
             content={"timeline": "2024-2026", "department": "Tiefbau"}
         )
     ]
@@ -181,19 +183,19 @@ def test_fix_3_cross_chunk_consolidation():
     measure = state2.measures[0]
     
     print(f"   📊 Project after UPDATE: {project.content}")
-    print(f"   📊 Measure after MERGE: {measure.content}")
+    print(f"   📊 Measure after UPDATE (intelligent merging): {measure.content}")
     
     # Check UPDATE worked
     assert "description" in project.content
     assert project.content["description"] == "Neue Stadtbahn für Regensburg"
     
-    # Check MERGE worked (should have combined fields)
+    # Check UPDATE worked with intelligent merging (should have combined fields)
     assert "budget" in measure.content  # Original field
     assert "timeline" in measure.content  # Merged field
     assert "department" in measure.content  # Merged field
     
     print("   ✅ Cross-chunk UPDATE working")
-    print("   ✅ Cross-chunk MERGE working")
+    print("   ✅ Cross-chunk intelligent merging working")
     print("   ✅ Entity consolidation successful")
 
 
@@ -221,7 +223,7 @@ def test_fix_4_full_workflow_simulation():
         ],
         # Chunk 3: More consolidation
         [
-            EntityOperation(operation=OperationType.MERGE, merge_with_id="msr_1", entity_type="measure", content={"budget": "10M"}),
+            EntityOperation(operation=OperationType.UPDATE, entity_id="msr_1", entity_type="measure", content={"budget": "10M"}),
             EntityOperation(operation=OperationType.CREATE, entity_type="indicator", content={"title": "CO2 Reduktion"})
         ]
     ]
@@ -282,7 +284,7 @@ def test_fix_4_full_workflow_simulation():
     assert "status" in project.content
     assert project.content["status"] == "active"
     
-    # Verify merge worked (measure has budget)
+    # Verify intelligent merging worked (measure has budget)
     measure = current_state.measures[0] 
     assert "budget" in measure.content
     assert measure.content["budget"] == "10M"

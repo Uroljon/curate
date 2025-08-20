@@ -107,12 +107,8 @@ class OperationExecutor:
             return self._handle_create_operation(state, operation)
         elif operation.operation == OperationType.UPDATE:
             return self._handle_update_operation(state, operation)
-        elif operation.operation == OperationType.MERGE:
-            return self._handle_merge_operation(state, operation)
         elif operation.operation == OperationType.CONNECT:
             return self._handle_connect_operation(state, operation)
-        elif operation.operation == OperationType.ENHANCE:
-            return self._handle_enhance_operation(state, operation)
         else:
             return OperationResult(
                 operation=operation,
@@ -207,7 +203,7 @@ class OperationExecutor:
         state: EnrichedReviewJSON,
         operation: EntityOperation
     ) -> OperationResult:
-        """Handle UPDATE operation - modify existing entity."""
+        """Handle UPDATE operation - modify existing entity with intelligent merging."""
 
         if not operation.entity_id:
             return OperationResult(
@@ -230,9 +226,9 @@ class OperationExecutor:
             )
 
         try:
-            # Update content
+            # Update content using intelligent merging
             if operation.content:
-                entity.content.update(operation.content)
+                self._merge_entity_content(entity, operation.content)
 
             # Add source attribution if provided (only for measures and indicators)
             if operation.source_pages and operation.source_quote and hasattr(entity, 'sources'):
@@ -264,74 +260,13 @@ class OperationExecutor:
                 new_entity_id=None
             )
 
-    def _handle_merge_operation(
-        self,
-        state: EnrichedReviewJSON,
-        operation: EntityOperation
-    ) -> OperationResult:
-        """Handle MERGE operation - merge new content into existing entity."""
-
-        if not operation.merge_with_id:
-            return OperationResult(
-                operation=operation,
-                success=False,
-                error_message="MERGE operation requires merge_with_id",
-                entities_affected=[],
-                new_entity_id=None
-            )
-
-        # Find target entity
-        target_entity = self._find_entity_by_id(state, operation.merge_with_id)
-        if not target_entity:
-            return OperationResult(
-                operation=operation,
-                success=False,
-                error_message=f"Target entity {operation.merge_with_id} not found",
-                entities_affected=[],
-                new_entity_id=None
-            )
-
-        try:
-            # Merge content intelligently
-            if operation.content:
-                self._merge_entity_content(target_entity, operation.content)
-
-            # Add source attribution (only for measures and indicators)
-            if operation.source_pages and operation.source_quote and hasattr(target_entity, 'sources'):
-                from src.core.schemas import SourceAttribution
-                new_sources = [SourceAttribution(
-                    page_number=page,
-                    quote=operation.source_quote
-                ) for page in operation.source_pages]
-
-                if target_entity.sources:
-                    target_entity.sources.extend(new_sources)
-                else:
-                    target_entity.sources = new_sources
-
-            return OperationResult(
-                operation=operation,
-                success=True,
-                error_message=None,
-                entities_affected=[operation.merge_with_id],
-                new_entity_id=None
-            )
-
-        except Exception as e:
-            return OperationResult(
-                operation=operation,
-                success=False,
-                error_message=f"Failed to merge content: {e!s}",
-                entities_affected=[],
-                new_entity_id=None
-            )
 
     def _handle_connect_operation(
         self,
         state: EnrichedReviewJSON,
         operation: EntityOperation
     ) -> OperationResult:
-        """Handle CONNECT operation - create connections between entities."""
+        """Handle CONNECT operation - create connections between entities with partial success support."""
 
         if not operation.connections:
             return OperationResult(
@@ -343,6 +278,8 @@ class OperationExecutor:
             )
 
         affected_entities = []
+        skipped_connections = 0
+        total_connections = len(operation.connections)
 
         try:
             for conn_data in operation.connections:
@@ -351,16 +288,19 @@ class OperationExecutor:
                 confidence = conn_data.get('confidence', operation.confidence)
 
                 if not from_id or not to_id:
+                    skipped_connections += 1
                     continue
 
                 # Find source entity
                 source_entity = self._find_entity_by_id(state, from_id)
                 if not source_entity:
+                    skipped_connections += 1
                     continue
 
                 # Verify target entity exists
                 target_entity = self._find_entity_by_id(state, to_id)
                 if not target_entity:
+                    skipped_connections += 1
                     continue
 
                 # Create connection
@@ -374,11 +314,23 @@ class OperationExecutor:
                 if to_id not in existing_connections:
                     source_entity.connections.append(connection)
                     affected_entities.extend([from_id, to_id])
+                else:
+                    skipped_connections += 1  # Already exists
+
+            # Determine success - succeed if we created at least one connection
+            successful_connections = (total_connections - skipped_connections)
+            is_success = successful_connections > 0
+            
+            error_msg = None
+            if skipped_connections > 0 and successful_connections > 0:
+                error_msg = f"Partial success: {skipped_connections}/{total_connections} connections skipped"
+            elif skipped_connections == total_connections:
+                error_msg = f"All {total_connections} connections failed (invalid IDs or duplicates)"
 
             return OperationResult(
                 operation=operation,
-                success=True,
-                error_message=None,
+                success=is_success,
+                error_message=error_msg,
                 entities_affected=affected_entities,
                 new_entity_id=None
             )
@@ -392,16 +344,6 @@ class OperationExecutor:
                 new_entity_id=None
             )
 
-    def _handle_enhance_operation(
-        self,
-        state: EnrichedReviewJSON,
-        operation: EntityOperation
-    ) -> OperationResult:
-        """Handle ENHANCE operation - add details without changing core fields."""
-
-        # ENHANCE is similar to UPDATE but more conservative
-        # Only adds to existing fields, doesn't overwrite
-        return self._handle_update_operation(state, operation)
 
     def _find_entity_by_id(
         self,
@@ -532,11 +474,8 @@ def validate_operations(
         if op.operation == OperationType.CREATE and not op.content:
             errors.append(f"{op_prefix}: CREATE requires content")
 
-        if op.operation in [OperationType.UPDATE, OperationType.ENHANCE] and not op.entity_id:
+        if op.operation == OperationType.UPDATE and not op.entity_id:
             errors.append(f"{op_prefix}: {op.operation} requires entity_id")
-
-        if op.operation == OperationType.MERGE and not op.merge_with_id:
-            errors.append(f"{op_prefix}: MERGE requires merge_with_id")
 
         if op.operation == OperationType.CONNECT and not op.connections:
             errors.append(f"{op_prefix}: CONNECT requires connections")

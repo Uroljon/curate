@@ -15,10 +15,8 @@ from pydantic import BaseModel, Field, validator
 class OperationType(str, Enum):
     """Types of operations that can be performed on extraction entities."""
     CREATE = "CREATE"      # Create new entity
-    UPDATE = "UPDATE"      # Modify existing entity (add/change fields)
-    MERGE = "MERGE"        # Merge new content into existing entity
+    UPDATE = "UPDATE"      # Modify existing entity (supports both replacement and merging)
     CONNECT = "CONNECT"    # Create/update connections between entities
-    ENHANCE = "ENHANCE"    # Add details without changing core fields
 
 
 class EntityOperation(BaseModel):
@@ -39,7 +37,7 @@ class EntityOperation(BaseModel):
     # For UPDATE/MERGE/ENHANCE operations
     entity_id: str | None = Field(
         default=None,
-        description="ID of existing entity to modify (required for UPDATE/MERGE/ENHANCE)"
+        description="ID of existing entity to modify (required for UPDATE)"
     )
 
     # For CREATE operations - content of new entity
@@ -48,11 +46,6 @@ class EntityOperation(BaseModel):
         description="Content data for the entity"
     )
 
-    # For MERGE operations - specify which entity to merge into
-    merge_with_id: str | None = Field(
-        default=None,
-        description="ID of entity to merge into (for MERGE operations)"
-    )
 
     # For CONNECT operations
     connections: list[dict[str, Any]] | None = Field(
@@ -91,18 +84,11 @@ class EntityOperation(BaseModel):
         # For CREATE operations, ignore any provided entity_id (it will be auto-generated)
         if operation == OperationType.CREATE:
             return None  # Force to None for CREATE operations
-        if operation in [OperationType.UPDATE, OperationType.MERGE, OperationType.ENHANCE]:
+        if operation == OperationType.UPDATE:
             if not v:
                 raise ValueError(f"{operation} operations require entity_id")
         return v
 
-    @validator('merge_with_id')
-    def validate_merge_with_id(cls, v, values):
-        """Ensure merge_with_id is provided for MERGE operations."""
-        operation = values.get('operation')
-        if operation == OperationType.MERGE and not v:
-            raise ValueError("MERGE operations require merge_with_id")
-        return v
 
     @validator('content')
     def validate_content_for_create(cls, v, values):
