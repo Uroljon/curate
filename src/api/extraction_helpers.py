@@ -2563,21 +2563,8 @@ def extract_direct_to_enhanced_with_operations(
         f"{len(current_state.indicators)} indicators"
     )
 
-    return {
-        "extraction_result": current_state.model_dump(),
-        "metadata": {
-            "extraction_time_seconds": round(extraction_time, 2),
-            "chunks_processed": len(chunks_with_pages),
-            "method": "operations_based",
-            "llm_backend": LLM_BACKEND,
-            "operation_summary": operation_summary,
-            "chunk_settings": {
-                "max_chars": ENHANCED_CHUNK_MAX_CHARS,
-                "min_chars": ENHANCED_CHUNK_MIN_CHARS,
-                "overlap": ENHANCED_CHUNK_OVERLAP,
-            }
-        }
-    }
+    # Return in same format as other endpoints for visualization tool compatibility
+    return current_state.model_dump()
 
 
 def create_simplified_system_message() -> str:
@@ -2824,7 +2811,7 @@ CREATE neue Entity:
   "entity_type": "action_field",
   "content": {{"title": "Mobilität", "description": "Nachhaltige Verkehrslösungen"}},
   "source_pages": [{page_list}],
-  "source_quote": "Relevanter Textauszug...",
+  "source_quote": "Kurzer relevanter Textauszug (max. 50 Wörter)",
   "confidence": 0.9
 }}
 
@@ -2835,12 +2822,13 @@ UPDATE bestehende Entity:
   "entity_id": "proj_1",
   "content": {{"additional_info": "Neue Details aus dem Text"}},
   "source_pages": [{page_list}],
-  "source_quote": "Zusätzlicher Textauszug..."
+  "source_quote": "Zusätzlicher Textauszug (max. 50 Wörter)"
 }}
 
 CONNECT Entities:
 {{
   "operation": "CONNECT",
+  "entity_type": "project",
   "connections": [
     {{"from_id": "proj_2", "to_id": "af_1", "confidence": 0.8}}
   ]
