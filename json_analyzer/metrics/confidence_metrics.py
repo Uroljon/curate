@@ -132,18 +132,13 @@ class ConfidenceMetrics:
             source_type = type_mapping[entity_type]
 
             for entity in data.get(entity_type, []):
-                for connection in entity.get("connections", []):
-                    target_id = connection.get("target_id", "")
-                    confidence = connection.get("confidence_score", 1.0)
-
-                    if target_id and isinstance(confidence, int | float):
-                        target_type = self._infer_type_from_id(target_id)
-                        connection_type = f"{source_type}_to_{target_type}"
-
-                        total_counts[connection_type] += 1
-
-                        if confidence < self.thresholds.low_confidence_threshold:
-                            low_confidence_counts[connection_type] += 1
+                entity_low_counts, entity_total_counts = self._process_entity_connections(entity, source_type)
+                
+                # Merge counts
+                for conn_type, count in entity_low_counts.items():
+                    low_confidence_counts[conn_type] += count
+                for conn_type, count in entity_total_counts.items():
+                    total_counts[conn_type] += count
 
         # Calculate ratios
         result = {}
@@ -157,6 +152,28 @@ class ConfidenceMetrics:
             }
 
         return dict(result)
+
+    def _process_entity_connections(
+        self, entity: dict[str, Any], source_type: str
+    ) -> tuple[dict[str, int], dict[str, int]]:
+        """Process connections for a single entity and return low confidence and total counts."""
+        low_counts = defaultdict(int)
+        total_counts = defaultdict(int)
+
+        for connection in entity.get("connections", []):
+            target_id = connection.get("target_id", "")
+            confidence = connection.get("confidence_score", 1.0)
+
+            if target_id and isinstance(confidence, int | float):
+                target_type = self._infer_type_from_id(target_id)
+                connection_type = f"{source_type}_to_{target_type}"
+
+                total_counts[connection_type] += 1
+
+                if confidence < self.thresholds.low_confidence_threshold:
+                    low_counts[connection_type] += 1
+
+        return low_counts, total_counts
 
     def _detect_ambiguous_nodes(
         self, data: dict[str, Any]
@@ -321,29 +338,32 @@ class ConfidenceMetrics:
                     if isinstance(confidence, int | float):
                         confidences.append(confidence)
 
-            if not confidences:
-                histograms[entity_type] = {}
-                continue
-
-            # Create histogram
-            min_conf = min(confidences)
-            max_conf = max(confidences)
-
-            if min_conf == max_conf:
-                histograms[entity_type] = {f"{min_conf:.1f}": len(confidences)}
-                continue
-
-            bin_width = (max_conf - min_conf) / bins
-            histogram = Counter()
-
-            for conf in confidences:
-                bin_index = min(int((conf - min_conf) / bin_width), bins - 1)
-                bin_label = f"{min_conf + bin_index * bin_width:.1f}-{min_conf + (bin_index + 1) * bin_width:.1f}"
-                histogram[bin_label] += 1
-
-            histograms[entity_type] = dict(histogram)
+            histograms[entity_type] = self._create_confidence_histogram(confidences, bins)
 
         return histograms
+
+    def _create_confidence_histogram(
+        self, confidences: list[float], bins: int = 10
+    ) -> dict[str, int]:
+        """Create histogram from confidence values."""
+        if not confidences:
+            return {}
+
+        min_conf = min(confidences)
+        max_conf = max(confidences)
+
+        if min_conf == max_conf:
+            return {f"{min_conf:.1f}": len(confidences)}
+
+        bin_width = (max_conf - min_conf) / bins
+        histogram = Counter()
+
+        for conf in confidences:
+            bin_index = min(int((conf - min_conf) / bin_width), bins - 1)
+            bin_label = f"{min_conf + bin_index * bin_width:.1f}-{min_conf + (bin_index + 1) * bin_width:.1f}"
+            histogram[bin_label] += 1
+
+        return dict(histogram)
 
     def get_confidence_outliers(
         self, data: dict[str, Any], threshold: float = 2.0

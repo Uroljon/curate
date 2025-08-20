@@ -167,32 +167,46 @@ class GraphMetrics:
 
             af_node = f"af:{action_field}"
             graph.add_node(af_node, type="action_field", name=action_field)
-
-            # Add projects
-            for project in action_field_data.get("projects", []):
-                project_title = project.get("title", "")
-                if not project_title:
-                    continue
-
-                proj_node = f"proj:{project_title}"
-                graph.add_node(proj_node, type="project", name=project_title)
-                graph.add_edge(af_node, proj_node, relation="af_to_proj")
-
-                # Add measures
-                for measure in project.get("measures", []):
-                    if measure:
-                        msr_node = f"msr:{measure}"
-                        graph.add_node(msr_node, type="measure", name=measure)
-                        graph.add_edge(proj_node, msr_node, relation="proj_to_msr")
-
-                # Add indicators
-                for indicator in project.get("indicators", []):
-                    if indicator:
-                        ind_node = f"ind:{indicator}"
-                        graph.add_node(ind_node, type="indicator", name=indicator)
-                        graph.add_edge(proj_node, ind_node, relation="proj_to_ind")
+            
+            self._add_projects_for_action_field(graph, af_node, action_field_data)
 
         return graph
+
+    def _add_projects_for_action_field(
+        self, graph: nx.Graph, af_node: str, action_field_data: dict[str, Any]
+    ) -> None:
+        """Add projects and their measures/indicators for an action field."""
+        for project in action_field_data.get("projects", []):
+            project_title = project.get("title", "")
+            if not project_title:
+                continue
+
+            proj_node = f"proj:{project_title}"
+            graph.add_node(proj_node, type="project", name=project_title)
+            graph.add_edge(af_node, proj_node, relation="af_to_proj")
+
+            self._add_measures_for_project(graph, proj_node, project)
+            self._add_indicators_for_project(graph, proj_node, project)
+
+    def _add_measures_for_project(
+        self, graph: nx.Graph, proj_node: str, project: dict[str, Any]
+    ) -> None:
+        """Add measures for a project."""
+        for measure in project.get("measures", []):
+            if measure:
+                msr_node = f"msr:{measure}"
+                graph.add_node(msr_node, type="measure", name=measure)
+                graph.add_edge(proj_node, msr_node, relation="proj_to_msr")
+
+    def _add_indicators_for_project(
+        self, graph: nx.Graph, proj_node: str, project: dict[str, Any]
+    ) -> None:
+        """Add indicators for a project."""
+        for indicator in project.get("indicators", []):
+            if indicator:
+                ind_node = f"ind:{indicator}"
+                graph.add_node(ind_node, type="indicator", name=indicator)
+                graph.add_edge(proj_node, ind_node, relation="proj_to_ind")
 
     def _build_from_enriched_review(
         self, data: dict[str, Any], graph: nx.Graph

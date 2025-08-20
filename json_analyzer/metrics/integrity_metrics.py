@@ -163,35 +163,49 @@ class IntegrityMetrics:
                 completeness[entity_type] = {}
                 continue
 
-            required_fields = self.thresholds.required_fields.get(entity_type, [])
-            field_counts = defaultdict(int)
-            total_entities = len(entities)
-
-            # Count field presence
-            for entity in entities:
-                content = entity.get("content", {})
-
-                # Check all possible fields
-                all_fields = set(content.keys()) | set(required_fields)
-
-                for field in all_fields:
-                    value = content.get(field)
-                    if value and str(value).strip():  # Non-empty value
-                        field_counts[field] += 1
-
-            # Calculate percentages
-            field_completeness = {}
-            for field, count in field_counts.items():
-                field_completeness[field] = count / total_entities
-
-            # Add missing required fields as 0%
-            for required_field in required_fields:
-                if required_field not in field_completeness:
-                    field_completeness[required_field] = 0.0
-
+            field_completeness = self._calculate_entity_type_completeness(
+                entities, entity_type
+            )
             completeness[entity_type] = field_completeness
 
         return completeness
+
+    def _calculate_entity_type_completeness(
+        self, entities: list[dict[str, Any]], entity_type: str
+    ) -> dict[str, float]:
+        """Calculate field completeness for a specific entity type."""
+        required_fields = self.thresholds.required_fields.get(entity_type, [])
+        field_counts = self._count_field_presence(entities, required_fields)
+        total_entities = len(entities)
+
+        # Calculate percentages
+        field_completeness = {
+            field: count / total_entities for field, count in field_counts.items()
+        }
+
+        # Add missing required fields as 0%
+        for required_field in required_fields:
+            if required_field not in field_completeness:
+                field_completeness[required_field] = 0.0
+
+        return field_completeness
+
+    def _count_field_presence(
+        self, entities: list[dict[str, Any]], required_fields: list[str]
+    ) -> dict[str, int]:
+        """Count field presence across entities."""
+        field_counts = defaultdict(int)
+
+        for entity in entities:
+            content = entity.get("content", {})
+            all_fields = set(content.keys()) | set(required_fields)
+
+            for field in all_fields:
+                value = content.get(field)
+                if value and str(value).strip():  # Non-empty value
+                    field_counts[field] += 1
+
+        return field_counts
 
     def _check_type_compatibility(self, data: dict[str, Any]) -> list[dict[str, str]]:
         """Check for invalid connection types between entities."""
