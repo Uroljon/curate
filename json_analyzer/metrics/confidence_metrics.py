@@ -180,79 +180,102 @@ class ConfidenceMetrics:
     ) -> list[dict[str, Any]]:
         """Detect nodes with many low-confidence or conflicting connections."""
         ambiguous_nodes = []
-
         entity_types = ["action_fields", "projects", "measures", "indicators"]
 
         for entity_type in entity_types:
             for entity in data.get(entity_type, []):
-                entity_id = entity.get("id", "")
-                connections = entity.get("connections", [])
-
-                if not connections:
-                    continue
-
-                # Analyze confidence pattern
-                confidences = [
-                    conn.get("confidence_score", 1.0) for conn in connections
-                ]
-                low_confidence_count = sum(
-                    1
-                    for c in confidences
-                    if c < self.thresholds.low_confidence_threshold
-                )
-
-                # Check for ambiguity indicators
-                is_ambiguous = False
-                ambiguity_reasons = []
-
-                # Many low-confidence connections
-                if len(connections) > 0:
-                    low_conf_ratio = low_confidence_count / len(connections)
-                    if low_conf_ratio > 0.5:  # More than 50% low confidence
-                        is_ambiguous = True
-                        ambiguity_reasons.append(
-                            f"High low-confidence ratio: {low_conf_ratio:.2f}"
-                        )
-
-                # High variance in confidence scores
-                if len(confidences) > 2:
-                    conf_std = stdev(confidences)
-                    if conf_std > self.thresholds.confidence_std_threshold:
-                        is_ambiguous = True
-                        ambiguity_reasons.append(
-                            f"High confidence variance: {conf_std:.2f}"
-                        )
-
-                # Too many connections (potential over-connection)
-                if len(connections) > 10:
-                    is_ambiguous = True
-                    ambiguity_reasons.append(
-                        f"Too many connections: {len(connections)}"
-                    )
-
-                if is_ambiguous:
-                    content = entity.get("content", {})
-                    name = content.get("title") or content.get("name", "")
-
-                    ambiguous_nodes.append(
-                        {
-                            "id": entity_id,
-                            "type": entity_type,
-                            "name": name,
-                            "connection_count": len(connections),
-                            "low_confidence_count": low_confidence_count,
-                            "avg_confidence": mean(confidences),
-                            "confidence_std": (
-                                stdev(confidences) if len(confidences) > 1 else 0.0
-                            ),
-                            "reasons": ambiguity_reasons,
-                        }
-                    )
+                ambiguous_node = self._check_entity_ambiguity(entity, entity_type)
+                if ambiguous_node:
+                    ambiguous_nodes.append(ambiguous_node)
 
         # Sort by severity (lowest average confidence first)
         ambiguous_nodes.sort(key=lambda x: x["avg_confidence"])
-
         return ambiguous_nodes
+
+    def _check_entity_ambiguity(
+        self, entity: dict[str, Any], entity_type: str
+    ) -> dict[str, Any] | None:
+        """Check if a single entity is ambiguous based on its connections."""
+        entity_id = entity.get("id", "")
+        connections = entity.get("connections", [])
+
+        if not connections:
+            return None
+
+        confidences = [conn.get("confidence_score", 1.0) for conn in connections]
+        low_confidence_count = self._count_low_confidence_connections(confidences)
+        
+        is_ambiguous, ambiguity_reasons = self._analyze_ambiguity_indicators(
+            connections, confidences, low_confidence_count
+        )
+
+        if not is_ambiguous:
+            return None
+
+        return self._create_ambiguous_node_record(
+            entity_id, entity_type, entity, connections, 
+            low_confidence_count, confidences, ambiguity_reasons
+        )
+
+    def _count_low_confidence_connections(self, confidences: list[float]) -> int:
+        """Count connections below the low confidence threshold."""
+        return sum(
+            1 for c in confidences 
+            if c < self.thresholds.low_confidence_threshold
+        )
+
+    def _analyze_ambiguity_indicators(
+        self, connections: list[dict[str, Any]], confidences: list[float], 
+        low_confidence_count: int
+    ) -> tuple[bool, list[str]]:
+        """Analyze various indicators to determine if a node is ambiguous."""
+        is_ambiguous = False
+        ambiguity_reasons = []
+
+        # Check high ratio of low-confidence connections
+        if len(connections) > 0:
+            low_conf_ratio = low_confidence_count / len(connections)
+            if low_conf_ratio > 0.5:  # More than 50% low confidence
+                is_ambiguous = True
+                ambiguity_reasons.append(
+                    f"High low-confidence ratio: {low_conf_ratio:.2f}"
+                )
+
+        # Check high variance in confidence scores
+        if len(confidences) > 2:
+            conf_std = stdev(confidences)
+            if conf_std > self.thresholds.confidence_std_threshold:
+                is_ambiguous = True
+                ambiguity_reasons.append(
+                    f"High confidence variance: {conf_std:.2f}"
+                )
+
+        # Check for too many connections (potential over-connection)
+        if len(connections) > 10:
+            is_ambiguous = True
+            ambiguity_reasons.append(f"Too many connections: {len(connections)}")
+
+        return is_ambiguous, ambiguity_reasons
+
+    def _create_ambiguous_node_record(
+        self, entity_id: str, entity_type: str, entity: dict[str, Any],
+        connections: list[dict[str, Any]], low_confidence_count: int,
+        confidences: list[float], ambiguity_reasons: list[str]
+    ) -> dict[str, Any]:
+        """Create a record for an ambiguous node."""
+        content = entity.get("content", {})
+        name = content.get("title") or content.get("name", "")
+
+        return {
+            "id": entity_id,
+            "type": entity_type,
+            "name": name,
+            "connection_count": len(connections),
+            "low_confidence_count": low_confidence_count,
+            "avg_confidence": mean(confidences),
+            "confidence_std": stdev(confidences) if len(confidences) > 1 else 0.0,
+            "reasons": ambiguity_reasons,
+        }
 
     def _analyze_confidence_distributions(
         self, data: dict[str, Any]
@@ -369,9 +392,23 @@ class ConfidenceMetrics:
         self, data: dict[str, Any], threshold: float = 2.0
     ) -> list[dict[str, Any]]:
         """Find connections with outlier confidence scores (using standard deviation)."""
-        outliers = []
+        all_confidences = self._collect_all_confidence_scores(data)
+        
+        if len(all_confidences) < 2:
+            return []
 
-        # Collect all confidence scores
+        # Calculate mean and standard deviation
+        mean_conf = mean(all_confidences)
+        std_conf = stdev(all_confidences)
+
+        outliers = self._find_outlier_connections(data, mean_conf, std_conf, threshold)
+        
+        # Sort by z-score (most extreme first)
+        outliers.sort(key=lambda x: x["z_score"], reverse=True)
+        return outliers
+
+    def _collect_all_confidence_scores(self, data: dict[str, Any]) -> list[float]:
+        """Collect all confidence scores from the data."""
         all_confidences = []
         entity_types = ["action_fields", "projects", "measures", "indicators"]
 
@@ -381,41 +418,49 @@ class ConfidenceMetrics:
                     confidence = connection.get("confidence_score", 1.0)
                     if isinstance(confidence, int | float):
                         all_confidences.append(confidence)
+        
+        return all_confidences
 
-        if len(all_confidences) < 2:
-            return outliers
+    def _find_outlier_connections(
+        self, data: dict[str, Any], mean_conf: float, std_conf: float, threshold: float
+    ) -> list[dict[str, Any]]:
+        """Find connections that are outliers based on z-score threshold."""
+        outliers = []
+        entity_types = ["action_fields", "projects", "measures", "indicators"]
 
-        # Calculate mean and standard deviation
-        mean_conf = mean(all_confidences)
-        std_conf = stdev(all_confidences)
-
-        # Find outliers
         for entity_type in entity_types:
             for entity in data.get(entity_type, []):
-                entity_id = entity.get("id", "")
-                content = entity.get("content", {})
-                name = content.get("title") or content.get("name", "")
+                entity_outliers = self._check_entity_for_outliers(
+                    entity, mean_conf, std_conf, threshold
+                )
+                outliers.extend(entity_outliers)
+        
+        return outliers
 
-                for connection in entity.get("connections", []):
-                    confidence = connection.get("confidence_score", 1.0)
-                    target_id = connection.get("target_id", "")
+    def _check_entity_for_outliers(
+        self, entity: dict[str, Any], mean_conf: float, std_conf: float, threshold: float
+    ) -> list[dict[str, Any]]:
+        """Check a single entity for outlier connections."""
+        outliers = []
+        entity_id = entity.get("id", "")
+        content = entity.get("content", {})
+        name = content.get("title") or content.get("name", "")
 
-                    if isinstance(confidence, int | float) and std_conf > 0:
-                        z_score = abs(confidence - mean_conf) / std_conf
+        for connection in entity.get("connections", []):
+            confidence = connection.get("confidence_score", 1.0)
+            target_id = connection.get("target_id", "")
 
-                        if z_score > threshold:
-                            outliers.append(
-                                {
-                                    "source_id": entity_id,
-                                    "source_name": name,
-                                    "target_id": target_id,
-                                    "confidence": confidence,
-                                    "z_score": z_score,
-                                    "deviation": confidence - mean_conf,
-                                }
-                            )
+            if isinstance(confidence, int | float) and std_conf > 0:
+                z_score = abs(confidence - mean_conf) / std_conf
 
-        # Sort by z-score (most extreme first)
-        outliers.sort(key=lambda x: x["z_score"], reverse=True)
-
+                if z_score > threshold:
+                    outliers.append({
+                        "source_id": entity_id,
+                        "source_name": name,
+                        "target_id": target_id,
+                        "confidence": confidence,
+                        "z_score": z_score,
+                        "deviation": confidence - mean_conf,
+                    })
+        
         return outliers

@@ -212,16 +212,27 @@ class GraphMetrics:
         self, data: dict[str, Any], graph: nx.Graph
     ) -> nx.Graph:
         """Build graph from EnrichedReviewJSON format."""
-        # Add nodes for each entity type
         entity_types = ["action_fields", "projects", "measures", "indicators"]
         type_mapping = {
             "action_fields": "action_field",
-            "projects": "project",
+            "projects": "project", 
             "measures": "measure",
             "indicators": "indicator",
         }
 
         # Add all nodes first
+        self._add_all_nodes_from_enriched_data(data, graph, entity_types, type_mapping)
+        
+        # Add edges based on connections
+        self._add_all_edges_from_enriched_data(data, graph, entity_types)
+
+        return graph
+
+    def _add_all_nodes_from_enriched_data(
+        self, data: dict[str, Any], graph: nx.Graph, 
+        entity_types: list[str], type_mapping: dict[str, str]
+    ) -> None:
+        """Add all nodes from enriched review data to the graph."""
         for entity_type in entity_types:
             for entity in data.get(entity_type, []):
                 entity_id = entity.get("id", "")
@@ -234,27 +245,33 @@ class GraphMetrics:
 
                 graph.add_node(entity_id, type=type_mapping[entity_type], name=name)
 
-        # Add edges based on connections
+    def _add_all_edges_from_enriched_data(
+        self, data: dict[str, Any], graph: nx.Graph, entity_types: list[str]
+    ) -> None:
+        """Add all edges from enriched review data to the graph."""
         for entity_type in entity_types:
             for entity in data.get(entity_type, []):
                 entity_id = entity.get("id", "")
                 if not entity_id:
                     continue
 
-                # Add connections as edges
-                for connection in entity.get("connections", []):
-                    target_id = connection.get("target_id", "")
-                    confidence = connection.get("confidence_score", 1.0)
+                self._add_entity_connections_to_graph(entity, entity_id, graph)
 
-                    if target_id and target_id in graph.nodes:
-                        graph.add_edge(
-                            entity_id,
-                            target_id,
-                            confidence=confidence,
-                            relation=f"{entity_id.split('_')[0]}_to_{target_id.split('_')[0]}",
-                        )
+    def _add_entity_connections_to_graph(
+        self, entity: dict[str, Any], entity_id: str, graph: nx.Graph
+    ) -> None:
+        """Add connections for a single entity to the graph as edges."""
+        for connection in entity.get("connections", []):
+            target_id = connection.get("target_id", "")
+            confidence = connection.get("confidence_score", 1.0)
 
-        return graph
+            if target_id and target_id in graph.nodes:
+                graph.add_edge(
+                    entity_id,
+                    target_id,
+                    confidence=confidence,
+                    relation=f"{entity_id.split('_')[0]}_to_{target_id.split('_')[0]}",
+                )
 
     def get_component_analysis(self, graph: nx.Graph) -> dict[str, Any]:
         """Get detailed analysis of graph components."""
