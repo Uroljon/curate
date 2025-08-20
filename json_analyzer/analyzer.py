@@ -81,7 +81,8 @@ class JSONAnalyzer:
             with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as e:
-            raise ValueError(f"Failed to load JSON file: {e}")
+            msg = f"Failed to load JSON file: {e}"
+            raise ValueError(msg)
 
         # Detect format
         format_detected = self._detect_format(data)
@@ -289,7 +290,7 @@ class JSONAnalyzer:
         # Penalize incomplete fields
         if stats.field_completeness:
             min_completeness = 1.0
-            for entity_type, fields in stats.field_completeness.items():
+            for _entity_type, fields in stats.field_completeness.items():
                 if fields:
                     min_completeness = min(min_completeness, min(fields.values()))
 

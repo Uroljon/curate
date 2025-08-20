@@ -545,7 +545,6 @@ class ContentMetrics:
     def get_content_quality_score(self, stats: ContentStats) -> dict[str, Any]:
         """Calculate overall content quality score."""
         penalties = 0.0
-        max_penalties = 100.0
 
         # Repetition penalty
         if stats.repetition_rate > self.thresholds.max_repetition_rate:

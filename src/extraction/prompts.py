@@ -81,7 +81,7 @@ SCHRITT 1 - KONTEXT VERSTEHEN:
 
 SCHRITT 2 - SPRACHLICHE ANALYSE:
 • Identifizieren Sie Handlungsverben (implementieren, schaffen, entwickeln, einrichten) → MASSNAHME
-• Identifizieren Sie Messverben (erreichen, reduzieren um, steigern auf) → INDIKATOR  
+• Identifizieren Sie Messverben (erreichen, reduzieren um, steigern auf) → INDIKATOR
 • Identifizieren Sie Quantifizierer (%, Anzahl, km, Euro, bis 2030) → INDIKATOR
 
 SCHRITT 3 - VERWALTUNGSLOGIK ANWENDEN:
@@ -160,7 +160,7 @@ WICHTIG: Ihre Antwort MUSS ausschließlich ein JSON-Objekt sein, das dem vorgege
 
 
 def get_stage3_prompt(
-    chunk: str, action_field: str, project_title: str, document_hierarchy: dict = None
+    chunk: str, action_field: str, project_title: str, document_hierarchy: dict | None = None
 ) -> str:
     # Add document hierarchy context if available
     hierarchy_context = ""

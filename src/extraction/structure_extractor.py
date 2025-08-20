@@ -822,7 +822,7 @@ def _refine_uncertain_classifications(
 
     print(f"   📄 Focusing on {len(relevant_chunks)} relevant chunks")
 
-    for i, chunk in enumerate(relevant_chunks):
+    for _i, chunk in enumerate(relevant_chunks):
         if not chunk.strip():
             continue
 
@@ -885,7 +885,7 @@ ERWEITERTE ANALYSEMETHODEN:
 
 1. ADMINISTRATIVE PRÄZEDENZ - Vergleichen Sie mit typischen Verwaltungsdokumenten
 2. ZEITLICHE DIMENSION - Sind Zeitangaben vorhanden? → Meist INDIKATOR
-3. QUANTITATIVE DIMENSION - Sind Zahlen/Prozente vorhanden? → Meist INDIKATOR  
+3. QUANTITATIVE DIMENSION - Sind Zahlen/Prozente vorhanden? → Meist INDIKATOR
 4. HANDLUNGSDIMENSION - Wird eine konkrete Aktion beschrieben? → Meist MASSNAHME
 5. MESSUNGSDIMENSION - Wird ein Zielwert definiert? → Meist INDIKATOR
 
@@ -932,7 +932,7 @@ EINDEUTIGE MASSNAHMEN-SIGNALE:
 ✓ Planungsbegriffe: "Konzept erstellen", "Strategie entwickeln", "Leitfaden erarbeiten"
 ✓ Amtsdeutsch: "Bereitstellung von", "Durchführung von", "Realisierung von"
 
-EINDEUTIGE INDIKATOR-SIGNALE:  
+EINDEUTIGE INDIKATOR-SIGNALE:
 ✓ Zahlenwerte: "15 Stationen", "30%", "bis 2030", "€ 2 Mio"
 ✓ Messgrößen: "Anzahl", "Anteil", "Reduktion um", "Steigerung auf"
 ✓ Erfolgskennzahlen: "Zielwert", "Kennzahl", "erreichen von"

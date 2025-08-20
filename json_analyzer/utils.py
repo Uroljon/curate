@@ -24,15 +24,18 @@ def load_json_file(file_path: str | Path) -> dict[str, Any]:
     file_path = Path(file_path)
 
     if not file_path.exists():
-        raise ValueError(f"File not found: {file_path}")
+        msg = f"File not found: {file_path}"
+        raise ValueError(msg)
 
     try:
         with open(file_path, encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON in {file_path}: {e}")
+        msg = f"Invalid JSON in {file_path}: {e}"
+        raise ValueError(msg)
     except Exception as e:
-        raise ValueError(f"Failed to load {file_path}: {e}")
+        msg = f"Failed to load {file_path}: {e}"
+        raise ValueError(msg)
 
 
 def save_json_file(

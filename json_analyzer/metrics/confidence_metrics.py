@@ -78,7 +78,7 @@ class ConfidenceMetrics:
                     target_id = connection.get("target_id", "")
                     confidence = connection.get("confidence_score", 1.0)
 
-                    if target_id and isinstance(confidence, (int, float)):
+                    if target_id and isinstance(confidence, int | float):
                         # Infer target type from ID
                         target_type = self._infer_type_from_id(target_id)
                         connection_type = f"{source_type}_to_{target_type}"
@@ -136,7 +136,7 @@ class ConfidenceMetrics:
                     target_id = connection.get("target_id", "")
                     confidence = connection.get("confidence_score", 1.0)
 
-                    if target_id and isinstance(confidence, (int, float)):
+                    if target_id and isinstance(confidence, int | float):
                         target_type = self._infer_type_from_id(target_id)
                         connection_type = f"{source_type}_to_{target_type}"
 
@@ -251,7 +251,7 @@ class ConfidenceMetrics:
             for entity in data.get(entity_type, []):
                 for connection in entity.get("connections", []):
                     confidence = connection.get("confidence_score", 1.0)
-                    if isinstance(confidence, (int, float)):
+                    if isinstance(confidence, int | float):
                         confidences.append(confidence)
 
             distributions[entity_type] = confidences
@@ -271,7 +271,7 @@ class ConfidenceMetrics:
             for entity in data.get(entity_type, []):
                 for connection in entity.get("connections", []):
                     confidence = connection.get("confidence_score", 1.0)
-                    if isinstance(confidence, (int, float)):
+                    if isinstance(confidence, int | float):
                         all_confidences.append(confidence)
 
         if not all_confidences:
@@ -318,7 +318,7 @@ class ConfidenceMetrics:
             for entity in data.get(entity_type, []):
                 for connection in entity.get("connections", []):
                     confidence = connection.get("confidence_score", 1.0)
-                    if isinstance(confidence, (int, float)):
+                    if isinstance(confidence, int | float):
                         confidences.append(confidence)
 
             if not confidences:
@@ -359,7 +359,7 @@ class ConfidenceMetrics:
             for entity in data.get(entity_type, []):
                 for connection in entity.get("connections", []):
                     confidence = connection.get("confidence_score", 1.0)
-                    if isinstance(confidence, (int, float)):
+                    if isinstance(confidence, int | float):
                         all_confidences.append(confidence)
 
         if len(all_confidences) < 2:
@@ -380,7 +380,7 @@ class ConfidenceMetrics:
                     confidence = connection.get("confidence_score", 1.0)
                     target_id = connection.get("target_id", "")
 
-                    if isinstance(confidence, (int, float)) and std_conf > 0:
+                    if isinstance(confidence, int | float) and std_conf > 0:
                         z_score = abs(confidence - mean_conf) / std_conf
 
                         if z_score > threshold:

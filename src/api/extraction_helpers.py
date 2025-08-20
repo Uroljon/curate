@@ -2345,7 +2345,7 @@ KRITISCHE VERBINDUNGSREGELN:
 
 ENTSCHEIDUNGSLOGIK (in dieser Reihenfolge):
 1. Prüfen Sie AKTUELLER EXTRAKTIONSSTAND: Existiert ähnliche Entity? → UPDATE verwenden
-2. Falls keine Ähnlichkeit: CREATE mit kanonischem Titel 
+2. Falls keine Ähnlichkeit: CREATE mit kanonischem Titel
 3. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
 4. Bevorzugen Sie UPDATE über CREATE bei semantischer Überlappung
 

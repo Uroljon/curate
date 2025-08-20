@@ -67,7 +67,7 @@ class GraphMetrics:
         """Count nodes by their type."""
         type_counts = Counter()
 
-        for node, data in graph.nodes(data=True):
+        for _node, data in graph.nodes(data=True):
             node_type = data.get("type", "unknown")
             type_counts[node_type] += 1
 
@@ -77,7 +77,7 @@ class GraphMetrics:
         """Count edges by relation type (inferred from node types)."""
         relation_counts = Counter()
 
-        for source, target, data in graph.edges(data=True):
+        for source, target, _data in graph.edges(data=True):
             # Get node types
             source_type = graph.nodes[source].get("type", "unknown")
             target_type = graph.nodes[target].get("type", "unknown")

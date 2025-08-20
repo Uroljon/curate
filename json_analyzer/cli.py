@@ -172,7 +172,8 @@ def load_config_file(config_path: str) -> AnalyzerConfig:
             config_data = json.load(f)
         return AnalyzerConfig(**config_data)
     except Exception as e:
-        raise ValueError(f"Failed to load configuration from {config_path}: {e}")
+        msg = f"Failed to load configuration from {config_path}: {e}"
+        raise ValueError(msg)
 
 
 def cmd_analyze(args, config: AnalyzerConfig):
@@ -180,7 +181,8 @@ def cmd_analyze(args, config: AnalyzerConfig):
     file_path = Path(args.file)
 
     if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
+        msg = f"File not found: {file_path}"
+        raise FileNotFoundError(msg)
 
     if not args.quiet:
         print(f"Analyzing {file_path}...")
@@ -227,7 +229,8 @@ def cmd_compare(args, config: AnalyzerConfig):
 
     for path in [before_path, after_path]:
         if not path.exists():
-            raise FileNotFoundError(f"File not found: {path}")
+            msg = f"File not found: {path}"
+            raise FileNotFoundError(msg)
 
     if not args.quiet:
         print(f"Comparing {before_path} → {after_path}...")
@@ -267,7 +270,8 @@ def cmd_batch(args, config: AnalyzerConfig):
     directory = Path(args.directory)
 
     if not directory.exists():
-        raise FileNotFoundError(f"Directory not found: {directory}")
+        msg = f"Directory not found: {directory}"
+        raise FileNotFoundError(msg)
 
     # Find JSON files
     json_files = find_json_files(directory, args.pattern)
@@ -355,7 +359,8 @@ def cmd_report(args, config: AnalyzerConfig):
     analysis_file = Path(args.analysis_file)
 
     if not analysis_file.exists():
-        raise FileNotFoundError(f"Analysis file not found: {analysis_file}")
+        msg = f"Analysis file not found: {analysis_file}"
+        raise FileNotFoundError(msg)
 
     # Load analysis result
     with open(analysis_file, encoding="utf-8") as f:
@@ -376,7 +381,8 @@ def cmd_report(args, config: AnalyzerConfig):
     elif args.format == "markdown":
         output_path = args.output or f"{analysis_file.stem}_report.md"
         # TODO: Implement markdown report generator
-        raise NotImplementedError("Markdown reports not yet implemented")
+        msg = "Markdown reports not yet implemented"
+        raise NotImplementedError(msg)
 
 
 def cmd_config(args, config: AnalyzerConfig):

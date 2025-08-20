@@ -164,14 +164,14 @@ class DriftMetrics:
             return True
 
         # Compare connections
-        connections1 = set(
+        connections1 = {
             (conn.get("target_id", ""), conn.get("confidence_score", 0.0))
             for conn in entity1.get("connections", [])
-        )
-        connections2 = set(
+        }
+        connections2 = {
             (conn.get("target_id", ""), conn.get("confidence_score", 0.0))
             for conn in entity2.get("connections", [])
-        )
+        }
 
         return connections1 != connections2
 
@@ -342,7 +342,7 @@ class DriftMetrics:
                     target_id = connection.get("target_id", "")
                     confidence = connection.get("confidence_score", 1.0)
 
-                    if source_id and target_id and isinstance(confidence, (int, float)):
+                    if source_id and target_id and isinstance(confidence, int | float):
                         source_type = self._infer_type_from_id(source_id)
                         target_type = self._infer_type_from_id(target_id)
                         conn_type = f"{source_type}_to_{target_type}"
@@ -402,14 +402,14 @@ class DriftMetrics:
         total_node_churn = 0
         total_nodes = 0
 
-        for entity_type, stats in node_churn.items():
+        for _entity_type, stats in node_churn.items():
             total_node_churn += stats["added"] + stats["removed"] + stats["modified"]
             total_nodes += stats["total_before"]
 
         total_edge_churn = 0
         total_edges = 0
 
-        for edge_type, stats in edge_churn.items():
+        for _edge_type, stats in edge_churn.items():
             total_edge_churn += stats["added"] + stats["removed"]
             total_edges += stats["total_before"]
 

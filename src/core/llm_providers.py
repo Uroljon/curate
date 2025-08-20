@@ -295,8 +295,9 @@ class VLLMProvider(LLMProvider):
                 self.max_tokens = min(max_tokens, 8192)
 
         except ImportError:
+            msg = "OpenAI client library required for vLLM. Install with: pip install openai"
             raise ImportError(
-                "OpenAI client library required for vLLM. Install with: pip install openai"
+                msg
             )
 
     def query_structured(
@@ -528,8 +529,9 @@ class OpenRouterProvider(LLMProvider):
             )
             print(f"📡 OpenRouter client initialized for model: {self.model_name}")
         except ImportError:
+            msg = "OpenAI library required for OpenRouter. Install with: pip install openai"
             raise ImportError(
-                "OpenAI library required for OpenRouter. Install with: pip install openai"
+                msg
             )
 
     def query_structured(
@@ -685,7 +687,8 @@ class ExternalAPIProvider(LLMProvider):
         elif self.api_provider == "gemini":
             self._init_gemini_client()
         else:
-            raise ValueError(f"Unsupported API provider: {api_provider}")
+            msg = f"Unsupported API provider: {api_provider}"
+            raise ValueError(msg)
 
     def _init_openai_client(self):
         """Initialize OpenAI client."""
@@ -698,8 +701,9 @@ class ExternalAPIProvider(LLMProvider):
             )
             print(f"📡 OpenAI client initialized for model: {self.model_name}")
         except ImportError:
+            msg = "OpenAI library required. Install with: pip install openai"
             raise ImportError(
-                "OpenAI library required. Install with: pip install openai"
+                msg
             )
 
     def _init_gemini_client(self):
@@ -711,8 +715,9 @@ class ExternalAPIProvider(LLMProvider):
             self.client = genai.GenerativeModel(self.model_name)
             print(f"📡 Gemini client initialized for model: {self.model_name}")
         except ImportError:
+            msg = "Google Generative AI library required. Install with: pip install google-generativeai"
             raise ImportError(
-                "Google Generative AI library required. Install with: pip install google-generativeai"
+                msg
             )
 
     def query_structured(
