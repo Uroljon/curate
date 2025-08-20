@@ -53,20 +53,45 @@ flowchart TD
         L2 --> M2
     end
 
-    %% LLM Backend (Shared Infrastructure)
-    subgraph LLM["Multi-Provider LLM Backend"]
-        LLM1["Provider Abstraction"]
-        LLM2["OpenRouter: o4-mini-high (Default)"]
-        LLM3["Ollama: Local Models"]
-        LLM4["vLLM: High Performance"]
-        LLM5["OpenAI/Gemini: Direct APIs"]
-        LLM6["200K+ Context, 65K Output, German Support"]
+    %% Configuration Layer
+    subgraph Config["Environment Configuration"]
+        CFG1["LLM_BACKEND=openrouter"]
+        CFG2["OPENROUTER_MODEL_NAME=google/gemini-2.5-pro"]
+        CFG3["OPENROUTER_MAX_TOKENS=400000"]
         
-        LLM1 --> LLM2
-        LLM1 --> LLM3
-        LLM1 --> LLM4
-        LLM1 --> LLM5
-        LLM1 --> LLM6
+        CFG1 --> CFG2
+        CFG2 --> CFG3
+    end
+
+    %% LLM Provider Factory
+    subgraph Factory["LLM Provider Factory"]
+        FACT1["get_llm_provider()"]
+        FACT2["Reads LLM_BACKEND environment variable"]
+        FACT3["Returns single provider instance"]
+        
+        FACT1 --> FACT2
+        FACT2 --> FACT3
+    end
+
+    %% Active Provider (Single Selection)
+    subgraph ActiveLLM["Active LLM Provider (Runtime)"]
+        ACTIVE1["OpenRouterProvider"]
+        ACTIVE2["Model: google/gemini-2.5-pro"]
+        ACTIVE3["400K context, German support"]
+        ACTIVE4["No failover - single provider only"]
+        
+        ACTIVE1 --> ACTIVE2
+        ACTIVE2 --> ACTIVE3
+        ACTIVE3 --> ACTIVE4
+    end
+
+    %% Available Providers (Configuration Options)
+    subgraph AvailableProviders["Available Provider Options"]
+        PROV1["openrouter: OpenRouter API"]
+        PROV2["ollama: Local Ollama server"]
+        PROV3["vllm: High-performance vLLM"]
+        PROV4["openai: Direct OpenAI API"]
+        PROV5["gemini: Direct Gemini API"]
     end
 
     %% File Storage
@@ -81,8 +106,13 @@ flowchart TD
     G --> H1
     G --> H2
     
-    K1 --> LLM1
-    K2 --> LLM1
+    %% LLM Configuration Flow
+    CFG1 --> FACT1
+    FACT3 --> ACTIVE1
+    
+    %% Extraction to LLM Provider
+    K1 --> ACTIVE1
+    K2 --> ACTIVE1
     
     %% File Storage Connections (dotted lines)
     D -.-> N
@@ -96,12 +126,18 @@ flowchart TD
     classDef shared fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     classDef enhanced fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
     classDef operations fill:#fff3e0,stroke:#ff6f00,stroke-width:2px
-    classDef llm fill:#ffccbc,stroke:#f57c00,stroke-width:2px
+    classDef config fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef factory fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef activeLLM fill:#ffccbc,stroke:#f57c00,stroke-width:3px
+    classDef availableProviders fill:#f3e5f5,stroke:#9c27b0,stroke-width:1px,stroke-dasharray: 5 5
     classDef storage fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
 
     class A,B,C,D,E upload
     class F,G shared
     class H1,I1,J1,K1,L1,M1 enhanced
     class H2,I2,J2,K2,L2,M2 operations
-    class LLM1,LLM2,LLM3,LLM4,LLM5,LLM6 llm
+    class CFG1,CFG2,CFG3 config
+    class FACT1,FACT2,FACT3 factory
+    class ACTIVE1,ACTIVE2,ACTIVE3,ACTIVE4 activeLLM
+    class PROV1,PROV2,PROV3,PROV4,PROV5 availableProviders
     class N,O,P storage
