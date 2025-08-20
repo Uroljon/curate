@@ -14,3 +14,7 @@ unstructured[pdf]
 spacy
 openai>=1.0.0
 python-dotenv>=1.0.0
+
+# JSON Analyzer dependencies
+networkx>=3.0.0
+rapidfuzz>=3.0.0

@@ -1,0 +1,372 @@
+"""
+Integrity metrics calculation for JSON quality analysis.
+
+Validates schema compliance, ID formats, dangling references,
+field completeness, and duplicate detection.
+"""
+
+import re
+from collections import defaultdict, Counter
+from difflib import SequenceMatcher
+from typing import Any, Dict, List, Set, Tuple
+
+from ..models import IntegrityStats
+from ..config import IntegrityThresholds, ID_PREFIXES
+
+
+class IntegrityMetrics:
+    """Calculator for data integrity and schema validation metrics."""
+
+    def __init__(self, thresholds: IntegrityThresholds):
+        self.thresholds = thresholds
+
+    def calculate(self, data: Dict[str, Any]) -> IntegrityStats:
+        """
+        Calculate comprehensive data integrity statistics.
+        
+        Args:
+            data: Original JSON data
+            
+        Returns:
+            IntegrityStats object with all metrics
+        """
+        # ID validation
+        id_validity = self._validate_ids(data)
+        
+        # Dangling reference detection
+        dangling_refs = self._find_dangling_references(data)
+        
+        # Field completeness analysis
+        field_completeness = self._analyze_field_completeness(data)
+        
+        # Type compatibility validation  
+        type_violations = self._check_type_compatibility(data)
+        
+        # Duplicate detection
+        duplicate_nodes, duplicate_rate = self._detect_duplicates(data)
+        
+        return IntegrityStats(
+            id_validity=id_validity,
+            dangling_refs=dangling_refs,
+            field_completeness=field_completeness,
+            type_compatibility_violations=type_violations,
+            duplicate_nodes=duplicate_nodes,
+            duplicate_rate=duplicate_rate
+        )
+
+    def _validate_ids(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate ID format, uniqueness, and prefixes."""
+        all_ids = set()
+        duplicates = []
+        invalid_prefixes = []
+        format_errors = []
+        
+        entity_types = ["action_fields", "projects", "measures", "indicators"]
+        
+        for entity_type in entity_types:
+            expected_prefixes = ID_PREFIXES.get(entity_type, [])
+            
+            for entity in data.get(entity_type, []):
+                entity_id = entity.get("id", "")
+                
+                if not entity_id:
+                    format_errors.append({
+                        "type": entity_type,
+                        "error": "missing_id",
+                        "entity": str(entity.get("content", {}))[:50]
+                    })
+                    continue
+                
+                # Check for duplicates
+                if entity_id in all_ids:
+                    duplicates.append({
+                        "id": entity_id,
+                        "type": entity_type
+                    })
+                else:
+                    all_ids.add(entity_id)
+                
+                # Check ID format (should be alphanumeric with underscores)
+                if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', entity_id):
+                    format_errors.append({
+                        "type": entity_type,
+                        "id": entity_id,
+                        "error": "invalid_format"
+                    })
+                
+                # Check prefix
+                if expected_prefixes:
+                    if not any(entity_id.startswith(prefix) for prefix in expected_prefixes):
+                        invalid_prefixes.append({
+                            "type": entity_type,
+                            "id": entity_id,
+                            "expected": expected_prefixes
+                        })
+        
+        return {
+            "total_ids": len(all_ids),
+            "duplicates": duplicates,
+            "duplicate_count": len(duplicates),
+            "invalid_prefixes": invalid_prefixes,
+            "format_errors": format_errors,
+            "unique_rate": 1.0 - (len(duplicates) / len(all_ids)) if all_ids else 1.0
+        }
+
+    def _find_dangling_references(self, data: Dict[str, Any]) -> List[Dict[str, str]]:
+        """Find connections that reference non-existent entities."""
+        # Collect all valid IDs
+        all_ids = set()
+        entity_types = ["action_fields", "projects", "measures", "indicators"]
+        
+        for entity_type in entity_types:
+            for entity in data.get(entity_type, []):
+                entity_id = entity.get("id", "")
+                if entity_id:
+                    all_ids.add(entity_id)
+        
+        # Find dangling references
+        dangling_refs = []
+        
+        for entity_type in entity_types:
+            for entity in data.get(entity_type, []):
+                entity_id = entity.get("id", "")
+                
+                for connection in entity.get("connections", []):
+                    target_id = connection.get("target_id", "")
+                    
+                    if target_id and target_id not in all_ids:
+                        dangling_refs.append({
+                            "source_id": entity_id,
+                            "source_type": entity_type,
+                            "target_id": target_id,
+                            "confidence": connection.get("confidence_score", 0.0)
+                        })
+        
+        return dangling_refs
+
+    def _analyze_field_completeness(self, data: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
+        """Analyze completeness of required and optional fields."""
+        completeness = {}
+        entity_types = ["action_fields", "projects", "measures", "indicators"]
+        
+        for entity_type in entity_types:
+            entities = data.get(entity_type, [])
+            if not entities:
+                completeness[entity_type] = {}
+                continue
+            
+            required_fields = self.thresholds.required_fields.get(entity_type, [])
+            field_counts = defaultdict(int)
+            total_entities = len(entities)
+            
+            # Count field presence
+            for entity in entities:
+                content = entity.get("content", {})
+                
+                # Check all possible fields
+                all_fields = set(content.keys()) | set(required_fields)
+                
+                for field in all_fields:
+                    value = content.get(field)
+                    if value and str(value).strip():  # Non-empty value
+                        field_counts[field] += 1
+            
+            # Calculate percentages
+            field_completeness = {}
+            for field, count in field_counts.items():
+                field_completeness[field] = count / total_entities
+            
+            # Add missing required fields as 0%
+            for required_field in required_fields:
+                if required_field not in field_completeness:
+                    field_completeness[required_field] = 0.0
+            
+            completeness[entity_type] = field_completeness
+        
+        return completeness
+
+    def _check_type_compatibility(self, data: Dict[str, Any]) -> List[Dict[str, str]]:
+        """Check for invalid connection types between entities."""
+        violations = []
+        
+        # Define valid connection types
+        valid_connections = {
+            "af": ["proj"],  # Action fields can connect to projects
+            "proj": ["af", "msr", "ind"],  # Projects to action fields, measures, indicators
+            "msr": ["proj", "af", "ind"],  # Measures to projects, action fields, indicators
+            "ind": ["proj", "af", "msr"]   # Indicators to projects, action fields, measures
+        }
+        
+        entity_types = ["action_fields", "projects", "measures", "indicators"]
+        type_mapping = {
+            "action_fields": "af",
+            "projects": "proj",
+            "measures": "msr", 
+            "indicators": "ind"
+        }
+        
+        for entity_type in entity_types:
+            source_type = type_mapping[entity_type]
+            
+            for entity in data.get(entity_type, []):
+                entity_id = entity.get("id", "")
+                
+                for connection in entity.get("connections", []):
+                    target_id = connection.get("target_id", "")
+                    
+                    if target_id:
+                        # Infer target type from ID prefix
+                        target_type = self._infer_type_from_id(target_id)
+                        
+                        # Check if connection is valid
+                        if (target_type not in valid_connections.get(source_type, []) and 
+                            source_type not in valid_connections.get(target_type, [])):
+                            violations.append({
+                                "source_id": entity_id,
+                                "source_type": source_type,
+                                "target_id": target_id,
+                                "target_type": target_type,
+                                "violation": f"Invalid connection: {source_type} -> {target_type}"
+                            })
+        
+        return violations
+
+    def _infer_type_from_id(self, entity_id: str) -> str:
+        """Infer entity type from ID prefix."""
+        if entity_id.startswith("af_"):
+            return "af"
+        elif entity_id.startswith("proj_"):
+            return "proj"
+        elif entity_id.startswith("msr_"):
+            return "msr"
+        elif entity_id.startswith("ind_"):
+            return "ind"
+        else:
+            return "unknown"
+
+    def _detect_duplicates(self, data: Dict[str, Any]) -> Tuple[Dict[str, List[List[str]]], Dict[str, float]]:
+        """Detect potential duplicate entities using fuzzy string matching."""
+        duplicate_groups = {}
+        duplicate_rates = {}
+        
+        entity_types = ["action_fields", "projects", "measures", "indicators"]
+        
+        for entity_type in entity_types:
+            entities = data.get(entity_type, [])
+            if len(entities) < 2:
+                duplicate_groups[entity_type] = []
+                duplicate_rates[entity_type] = 0.0
+                continue
+            
+            # Extract names/titles for comparison
+            entity_names = []
+            for entity in entities:
+                content = entity.get("content", {})
+                name = content.get("title") or content.get("name", "")
+                if name:
+                    entity_names.append((entity.get("id", ""), name))
+            
+            # Find duplicate groups
+            groups = self._find_duplicate_groups(entity_names)
+            duplicate_groups[entity_type] = groups
+            
+            # Calculate duplicate rate
+            total_duplicates = sum(len(group) - 1 for group in groups if len(group) > 1)
+            duplicate_rates[entity_type] = total_duplicates / len(entities) if entities else 0.0
+        
+        return duplicate_groups, duplicate_rates
+
+    def _find_duplicate_groups(self, entity_names: List[Tuple[str, str]]) -> List[List[str]]:
+        """Find groups of potentially duplicate entities."""
+        if len(entity_names) < 2:
+            return []
+        
+        groups = []
+        processed = set()
+        
+        for i, (id1, name1) in enumerate(entity_names):
+            if id1 in processed:
+                continue
+            
+            group = [id1]
+            processed.add(id1)
+            
+            # Find similar names
+            for j, (id2, name2) in enumerate(entity_names):
+                if j <= i or id2 in processed:
+                    continue
+                
+                # Calculate similarity
+                similarity = self._calculate_similarity(name1, name2)
+                
+                if similarity >= self.thresholds.similarity_threshold:
+                    group.append(id2)
+                    processed.add(id2)
+            
+            groups.append(group)
+        
+        return groups
+
+    def _calculate_similarity(self, text1: str, text2: str) -> float:
+        """Calculate similarity between two text strings."""
+        if not text1 or not text2:
+            return 0.0
+        
+        # Normalize texts
+        norm1 = text1.lower().strip()
+        norm2 = text2.lower().strip()
+        
+        if norm1 == norm2:
+            return 1.0
+        
+        # Check for substring relationship
+        if norm1 in norm2 or norm2 in norm1:
+            return 0.9
+        
+        # Use sequence matcher for fuzzy matching
+        return SequenceMatcher(None, norm1, norm2).ratio()
+
+    def get_id_statistics(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get detailed ID statistics."""
+        all_ids = []
+        by_type = defaultdict(list)
+        
+        entity_types = ["action_fields", "projects", "measures", "indicators"]
+        
+        for entity_type in entity_types:
+            for entity in data.get(entity_type, []):
+                entity_id = entity.get("id", "")
+                if entity_id:
+                    all_ids.append(entity_id)
+                    by_type[entity_type].append(entity_id)
+        
+        return {
+            "total_ids": len(all_ids),
+            "by_type": dict(by_type),
+            "id_length_stats": self._get_length_stats([len(id_) for id_ in all_ids]),
+            "prefix_distribution": self._get_prefix_distribution(all_ids)
+        }
+
+    def _get_length_stats(self, lengths: List[int]) -> Dict[str, float]:
+        """Get statistics about ID lengths."""
+        if not lengths:
+            return {"mean": 0.0, "min": 0, "max": 0, "median": 0.0}
+        
+        from statistics import mean, median
+        return {
+            "mean": mean(lengths),
+            "min": min(lengths),
+            "max": max(lengths),
+            "median": median(lengths)
+        }
+
+    def _get_prefix_distribution(self, ids: List[str]) -> Dict[str, int]:
+        """Get distribution of ID prefixes."""
+        prefix_counts = Counter()
+        
+        for id_ in ids:
+            if '_' in id_:
+                prefix = id_.split('_')[0] + '_'
+                prefix_counts[prefix] += 1
+        
+        return dict(prefix_counts)
