@@ -49,6 +49,99 @@ class TerminalVisualizer:
         }
         return color_map.get(grade, "white")
 
+    def _get_score_color(self, score: float) -> str:
+        """Get color for quality score using standard thresholds."""
+        if score >= 80:
+            return "green"
+        elif score >= 60:
+            return "yellow"
+        else:
+            return "red"
+
+    def _get_coverage_color(self, coverage: float) -> str:
+        """Get color for coverage metrics using standard thresholds."""
+        if coverage > 0.9:
+            return "green"
+        elif coverage > 0.7:
+            return "yellow"
+        else:
+            return "red"
+
+    def _safe_percentage(self, numerator: int, denominator: int) -> float:
+        """Calculate percentage safely, returning 0 if denominator is 0."""
+        return (numerator / denominator * 100) if denominator > 0 else 0.0
+
+    def _display_section_header(self, title: str, emoji: str = "") -> None:
+        """Display a standardized section header."""
+        header = f"{emoji} {title}" if emoji else title
+        print(self._colorize(header, "bold"))
+
+    def _display_metric_list(self, items: list, color: str, max_items: int = 5, indent: str = "  ") -> None:
+        """Display a list of items with consistent formatting."""
+        shown_items = items[:max_items]
+        for item in shown_items:
+            print(f"{indent}{self._colorize(item, color)}")
+        
+        if len(items) > max_items:
+            remaining = len(items) - max_items
+            print(f"{indent}... and {remaining} more")
+
+    def _display_issue_examples(self, items: list, title: str, color: str, max_items: int = 3, 
+                               item_formatter=None) -> None:
+        """Display issue examples with consistent formatting."""
+        if not items:
+            return
+            
+        print(f"  {self._colorize(title, color)}")
+        shown_items = items[:max_items]
+        
+        for i, item in enumerate(shown_items):
+            if item_formatter:
+                formatted_item = item_formatter(item, i)
+            else:
+                formatted_item = f"{i+1}. {truncate_text(str(item), 60)}"
+            print(f"    {formatted_item}")
+            
+        if len(items) > max_items:
+            remaining = len(items) - max_items
+            print(f"    ... and {remaining} more")
+
+    def _categorize_issues(self, result: AnalysisResult, verbose: bool = False) -> tuple[list, list]:
+        """Categorize issues into critical and minor lists."""
+        critical_issues = []
+        minor_issues = []
+
+        # Count issues by criticality (based on new weights)
+        dangling_refs = len(result.integrity_stats.dangling_refs)
+        duplicate_text = len(result.content_stats.duplicate_text)
+        repetition_rate = result.content_stats.repetition_rate
+        isolated_nodes = result.graph_stats.isolated_nodes
+        components = result.graph_stats.components
+        missing_sources = len(result.source_stats.missing_sources)
+        ambiguous_nodes = len(result.confidence_stats.ambiguous_nodes)
+
+        # Critical issues (high weight categories)
+        if dangling_refs > 0:
+            critical_issues.append(f"{dangling_refs} dangling references")
+        if duplicate_text > 50:
+            critical_issues.append(f"{duplicate_text} duplicate texts")
+        elif duplicate_text > 0:
+            minor_issues.append(f"{duplicate_text} duplicate texts")
+        if repetition_rate > 0.5:
+            critical_issues.append(f"{repetition_rate:.1%} text repetition")
+        if components > 5:
+            critical_issues.append(f"{components-1} disconnected graph islands")
+
+        # Minor issues (lower weight categories)
+        if missing_sources > 0 and verbose:
+            minor_issues.append(f"{missing_sources} missing sources")
+        if ambiguous_nodes > 0:
+            minor_issues.append(f"{ambiguous_nodes} ambiguous nodes")
+        if isolated_nodes > 0 and verbose:
+            minor_issues.append(f"{isolated_nodes} isolated nodes")
+
+        return critical_issues, minor_issues
+
     def display_analysis(self, result: AnalysisResult, verbose: bool = False):
         """Display analysis result in terminal."""
         print(self._colorize("\n📊 JSON Quality Analysis Report", "bold"))
@@ -81,12 +174,7 @@ class TerminalVisualizer:
             for category, score in result.quality_score.category_scores.items():
                 weight = result.quality_score.weights.get(category, 0.0)
                 contribution = score * weight
-                if score >= 80:
-                    color = "green"
-                elif score >= 60:
-                    color = "yellow"
-                else:
-                    color = "red"
+                color = self._get_score_color(score)
                 print(
                     f"  {category.title()}: {self._colorize(f'{score:.1f}', color)} "
                     f"(weight: {weight:.1%}, contribution: {contribution:.1f})"
@@ -106,12 +194,7 @@ class TerminalVisualizer:
         # Category breakdown
         print(self._colorize("📈 Category Scores", "bold"))
         for category, score in result.quality_score.category_scores.items():
-            if score >= 80:
-                color = "green"
-            elif score >= 60:
-                color = "yellow"
-            else:
-                color = "red"
+            color = self._get_score_color(score)
             print(f"  {category.title()}: {self._colorize(f'{score:.1f}', color)}")
         print()
 
@@ -164,28 +247,24 @@ class TerminalVisualizer:
         print(f"  Nodes: {total_nodes}, Edges: {total_edges}")
 
         if stats.nodes_by_type:
+            print("  Node types breakdown:" if verbose else "  Node types:", end=" " if not verbose else "\n")
+            
             if verbose:
-                print("  Node types breakdown:")
                 for node_type, count in stats.nodes_by_type.items():
-                    percentage = (count / total_nodes * 100) if total_nodes > 0 else 0
+                    percentage = self._safe_percentage(count, total_nodes)
                     print(f"    {node_type}: {count} ({percentage:.1f}%)")
             else:
-                print("  Node types:", end=" ")
-                type_strs = []
-                for node_type, count in stats.nodes_by_type.items():
-                    type_strs.append(f"{node_type}: {count}")
+                type_strs = [f"{node_type}: {count}" for node_type, count in stats.nodes_by_type.items()]
                 print(", ".join(type_strs))
 
         if verbose and stats.edges_by_relation:
             print("  Edge types breakdown:")
             for edge_type, count in stats.edges_by_relation.items():
-                percentage = (count / total_edges * 100) if total_edges > 0 else 0
+                percentage = self._safe_percentage(count, total_edges)
                 print(f"    {edge_type}: {count} ({percentage:.1f}%)")
 
         if stats.isolated_nodes > 0:
-            isolation_rate = (
-                (stats.isolated_nodes / total_nodes * 100) if total_nodes > 0 else 0
-            )
+            isolation_rate = self._safe_percentage(stats.isolated_nodes, total_nodes)
             warning = f"⚠️  Isolated nodes: {stats.isolated_nodes}"
             if verbose:
                 warning += f" ({isolation_rate:.1f}% of all nodes)"
@@ -194,9 +273,7 @@ class TerminalVisualizer:
         if stats.components > 1:
             isolated_islands = stats.components - 1
             main_component_size = stats.largest_component_size
-            component_rate = (
-                (main_component_size / total_nodes * 100) if total_nodes > 0 else 0
-            )
+            component_rate = self._safe_percentage(main_component_size, total_nodes)
 
             print(f"  Main graph: {main_component_size} nodes ({component_rate:.1f}%)")
             print(
@@ -204,9 +281,7 @@ class TerminalVisualizer:
             )
 
             if verbose:
-                fragmentation_rate = (
-                    isolated_islands / total_nodes * 100 if total_nodes > 0 else 0
-                )
+                fragmentation_rate = self._safe_percentage(isolated_islands, total_nodes)
                 print(
                     f"  Graph fragmentation: {fragmentation_rate:.1f}% of nodes disconnected"
                 )
@@ -217,40 +292,9 @@ class TerminalVisualizer:
 
     def _display_issues_summary(self, result: AnalysisResult, verbose=False):
         """Display summary of issues found."""
-        critical_issues = []
-        minor_issues = []
+        critical_issues, minor_issues = self._categorize_issues(result, verbose)
 
-        # Count issues by criticality (based on new weights)
-        dangling_refs = len(result.integrity_stats.dangling_refs)
-        duplicate_text = len(result.content_stats.duplicate_text)
-        repetition_rate = result.content_stats.repetition_rate
-        isolated_nodes = result.graph_stats.isolated_nodes
-        components = result.graph_stats.components
-
-        # Critical issues (high weight categories)
-        if dangling_refs > 0:
-            critical_issues.append(f"{dangling_refs} dangling references")
-        if duplicate_text > 50:
-            critical_issues.append(f"{duplicate_text} duplicate texts")
-        elif duplicate_text > 0:
-            minor_issues.append(f"{duplicate_text} duplicate texts")
-        if repetition_rate > 0.5:
-            critical_issues.append(f"{repetition_rate:.1%} text repetition")
-        if components > 5:
-            critical_issues.append(f"{components-1} disconnected graph islands")
-
-        # Minor issues (lower weight categories)
-        missing_sources = len(result.source_stats.missing_sources)
-        ambiguous_nodes = len(result.confidence_stats.ambiguous_nodes)
-
-        if missing_sources > 0 and verbose:
-            minor_issues.append(f"{missing_sources} missing sources")
-        if ambiguous_nodes > 0:
-            minor_issues.append(f"{ambiguous_nodes} ambiguous nodes")
-        if isolated_nodes > 0 and verbose:
-            minor_issues.append(f"{isolated_nodes} isolated nodes")
-
-        print(self._colorize("⚠️  Issues Summary", "bold"))
+        self._display_section_header("⚠️  Issues Summary")
 
         if critical_issues:
             print(f"  {self._colorize('🚨 Critical Issues:', 'red')}")
@@ -270,14 +314,11 @@ class TerminalVisualizer:
 
     def _display_integrity_issues(self, stats, verbose=False):
         """Display data integrity issues."""
-        print(self._colorize("🔍 Data Integrity Issues", "bold"))
+        self._display_section_header("🔍 Data Integrity Issues")
 
         if stats.dangling_refs:
-            print(f"  {self._colorize('Dangling References:', 'red')}")
-            for ref in stats.dangling_refs[:5]:  # Show first 5
-                print(f"    {ref['source_id']} → {ref['target_id']}")
-            if len(stats.dangling_refs) > 5:
-                print(f"    ... and {len(stats.dangling_refs) - 5} more")
+            refs = [f"{ref['source_id']} → {ref['target_id']}" for ref in stats.dangling_refs]
+            self._display_issue_examples(refs, "Dangling References:", "red", max_items=5)
 
         if any(stats.duplicate_rate.values()):
             print(f"  {self._colorize('Duplicate Rates:', 'yellow')}")
@@ -289,23 +330,13 @@ class TerminalVisualizer:
 
     def _display_connectivity_info(self, stats, verbose=False):
         """Display connectivity information."""
-        print(self._colorize("🔗 Connectivity Analysis", "bold"))
+        self._display_section_header("🔗 Connectivity Analysis")
 
         af_coverage = stats.action_field_coverage
         proj_coverage = stats.project_coverage
 
-        if af_coverage > 0.9:
-            color_af = "green"
-        elif af_coverage > 0.7:
-            color_af = "yellow"
-        else:
-            color_af = "red"
-        if proj_coverage > 0.9:
-            color_proj = "green"
-        elif proj_coverage > 0.7:
-            color_proj = "yellow"
-        else:
-            color_proj = "red"
+        color_af = self._get_coverage_color(af_coverage)
+        color_proj = self._get_coverage_color(proj_coverage)
 
         print(
             f"  Action field coverage: {self._colorize(f'{af_coverage:.1%}', color_af)}"
@@ -322,21 +353,21 @@ class TerminalVisualizer:
 
     def _display_confidence_issues(self, stats, verbose=False):
         """Display confidence-related issues."""
-        print(self._colorize("🎯 Confidence Issues", "bold"))
+        self._display_section_header("🎯 Confidence Issues")
 
         if stats.ambiguous_nodes:
-            print(f"  {self._colorize('Ambiguous Nodes:', 'yellow')}")
-            for node in stats.ambiguous_nodes[:3]:  # Show first 3
+            def format_ambiguous_node(node, i):
                 reasons = ", ".join(node["reasons"])
-                print(f"    {node['id']}: {truncate_text(reasons, 60)}")
-            if len(stats.ambiguous_nodes) > 3:
-                print(f"    ... and {len(stats.ambiguous_nodes) - 3} more")
+                return f"{node['id']}: {truncate_text(reasons, 60)}"
+            
+            self._display_issue_examples(stats.ambiguous_nodes, "Ambiguous Nodes:", "yellow", 
+                                       max_items=3, item_formatter=format_ambiguous_node)
 
         print()
 
     def _display_source_issues(self, stats, verbose=False):
         """Display source validation issues."""
-        print(self._colorize("📚 Source Issues", "bold"))
+        self._display_section_header("📚 Source Issues")
 
         if stats.invalid_quotes:
             print(
@@ -366,12 +397,7 @@ class TerminalVisualizer:
                         )
 
         quote_match_rate = stats.quote_match_rate
-        if quote_match_rate > 0.9:
-            color = "green"
-        elif quote_match_rate > 0.8:
-            color = "yellow"
-        else:
-            color = "red"
+        color = self._get_coverage_color(quote_match_rate)
         print(f"  Quote match rate: {self._colorize(f'{quote_match_rate:.1%}', color)}")
 
         if verbose:
@@ -381,12 +407,7 @@ class TerminalVisualizer:
                 valid_refs = stats.page_validity.get("valid_page_refs", 0)
                 if total_refs > 0:
                     validity_rate = valid_refs / total_refs
-                    if validity_rate > 0.95:
-                        color = "green"
-                    elif validity_rate > 0.8:
-                        color = "yellow"
-                    else:
-                        color = "red"
+                    color = self._get_coverage_color(validity_rate)
                     print(
                         f"  Page reference validity: {self._colorize(f'{validity_rate:.1%}', color)} "
                         f"({valid_refs}/{total_refs})"
@@ -404,7 +425,7 @@ class TerminalVisualizer:
 
     def _display_content_issues(self, stats, verbose=False):
         """Display content quality issues."""
-        print(self._colorize("📝 Content Issues", "bold"))
+        self._display_section_header("📝 Content Issues")
 
         if stats.duplicate_text:
             dup_color = "red" if len(stats.duplicate_text) > 100 else "yellow"
@@ -455,14 +476,9 @@ class TerminalVisualizer:
             )
 
         if stats.normalization_issues:
-            if not verbose and len(stats.normalization_issues) > 5:
-                print(
-                    f"  {self._colorize(f'Normalization issues: {len(stats.normalization_issues)}', 'yellow')}"
-                )
-            elif verbose:
-                print(
-                    f"  {self._colorize(f'Normalization issues: {len(stats.normalization_issues)}', 'yellow')}"
-                )
+            print(f"  {self._colorize(f'Normalization issues: {len(stats.normalization_issues)}', 'yellow')}")
+            
+            if verbose:
                 print("  Examples (first 3):")
                 for i, issue in enumerate(stats.normalization_issues[:3]):
                     print(f"    {i+1}. {truncate_text(str(issue), 60)}")
@@ -509,12 +525,7 @@ class TerminalVisualizer:
         if result.source_stats.source_coverage:
             print("  Source coverage by entity type:")
             for entity_type, coverage in result.source_stats.source_coverage.items():
-                if coverage > 0.8:
-                    color = "green"
-                elif coverage > 0.5:
-                    color = "yellow"
-                else:
-                    color = "red"
+                color = self._get_coverage_color(coverage)
                 print(f"    {entity_type}: {self._colorize(f'{coverage:.1%}', color)}")
 
         if result.source_stats.evidence_density:
@@ -651,6 +662,34 @@ class TerminalVisualizer:
 class HTMLReportGenerator:
     """Generate HTML reports for analysis results."""
 
+    def _get_grade_class(self, grade: str) -> str:
+        """Get CSS class for quality grade."""
+        return f"grade-{grade}"
+
+    def _generate_metric_card(self, value: str, label: str) -> str:
+        """Generate HTML for a metric card."""
+        return f"""
+            <div class="metric-card">
+                <div class="metric-value">{value}</div>
+                <div>{label}</div>
+            </div>
+            """
+
+    def _generate_table(self, headers: list, rows: list) -> str:
+        """Generate HTML table with headers and rows."""
+        header_html = "".join(f"<th>{header}</th>" for header in headers)
+        row_html = ""
+        for row in rows:
+            cells = "".join(f"<td>{cell}</td>" for cell in row)
+            row_html += f"<tr>{cells}</tr>"
+        
+        return f"""
+        <table>
+            <tr>{header_html}</tr>
+            {row_html}
+        </table>
+        """
+
     HTML_TEMPLATE = """<!DOCTYPE html>
 <html>
 <head>
@@ -722,6 +761,7 @@ class HTMLReportGenerator:
         quality_score = result.quality_score.overall_score
         grade_class = f"grade-{result.quality_score.grade}"
 
+        # Header and quality score
         content = f"""
         <div class="header">
             <h1>📊 JSON Quality Analysis Report</h1>
@@ -735,35 +775,29 @@ class HTMLReportGenerator:
         </div>
 
         <div class="metric-grid">
-            <div class="metric-card">
-                <div class="metric-value">{result.graph_stats.total_nodes}</div>
-                <div>Total Entities</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-value">{result.graph_stats.total_edges}</div>
-                <div>Connections</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-value">{len(result.integrity_stats.dangling_refs) + len(result.source_stats.invalid_quotes)}</div>
-                <div>Critical Issues</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-value">{result.connectivity_stats.action_field_coverage:.1%}</div>
-                <div>AF Coverage</div>
-            </div>
+        """
+
+        # Main metrics
+        main_metrics = [
+            (str(result.graph_stats.total_nodes), "Total Entities"),
+            (str(result.graph_stats.total_edges), "Connections"),
+            (str(len(result.integrity_stats.dangling_refs) + len(result.source_stats.invalid_quotes)), "Critical Issues"),
+            (f"{result.connectivity_stats.action_field_coverage:.1%}", "AF Coverage")
+        ]
+
+        for value, label in main_metrics:
+            content += self._generate_metric_card(value, label)
+
+        content += """
         </div>
 
         <h2>📈 Category Scores</h2>
         <div class="metric-grid">
         """
 
+        # Category scores
         for category, score in result.quality_score.category_scores.items():
-            content += f"""
-            <div class="metric-card">
-                <div class="metric-value">{score:.1f}</div>
-                <div>{category.title()}</div>
-            </div>
-            """
+            content += self._generate_metric_card(f"{score:.1f}", category.title())
 
         content += "</div>"
 
@@ -830,40 +864,38 @@ class HTMLReportGenerator:
 
         <h2>🎯 Quality Score Changes</h2>
         <div class="metric-grid">
-            <div class="metric-card">
-                <div class="metric-value grade-{result.before.quality_score.grade}">{before_score:.1f}</div>
-                <div>Before (Grade {result.before.quality_score.grade})</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-value grade-{result.after.quality_score.grade}">{after_score:.1f}</div>
-                <div>After (Grade {result.after.quality_score.grade})</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-value {diff_class}">{score_diff:+.1f}</div>
-                <div>Change</div>
-            </div>
-        </div>
-
-        <h2>🌊 Stability Analysis</h2>
         """
 
+        # Score comparison metrics
+        score_metrics = [
+            (f'<span class="{self._get_grade_class(result.before.quality_score.grade)}">{before_score:.1f}</span>', 
+             f"Before (Grade {result.before.quality_score.grade})"),
+            (f'<span class="{self._get_grade_class(result.after.quality_score.grade)}">{after_score:.1f}</span>', 
+             f"After (Grade {result.after.quality_score.grade})"),
+            (f'<span class="{diff_class}">{score_diff:+.1f}</span>', "Change")
+        ]
+
+        for value, label in score_metrics:
+            content += self._generate_metric_card(value, label)
+
+        content += "</div>"
+
+        content += "<h2>🌊 Stability Analysis</h2>"
+
         if result.drift_stats:
-            content += f"""
-            <div class="metric-grid">
-                <div class="metric-card">
-                    <div class="metric-value">{result.drift_stats.stability_score:.1f}</div>
-                    <div>Stability Score</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value">{result.drift_stats.churn_rate:.1%}</div>
-                    <div>Churn Rate</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value">{result.drift_stats.structural_similarity:.1%}</div>
-                    <div>Structural Similarity</div>
-                </div>
-            </div>
-            """
+            content += '<div class="metric-grid">'
+            
+            # Stability metrics
+            stability_metrics = [
+                (f"{result.drift_stats.stability_score:.1f}", "Stability Score"),
+                (f"{result.drift_stats.churn_rate:.1%}", "Churn Rate"),
+                (f"{result.drift_stats.structural_similarity:.1%}", "Structural Similarity")
+            ]
+            
+            for value, label in stability_metrics:
+                content += self._generate_metric_card(value, label)
+                
+            content += "</div>"
 
         # Changes summary
         if result.improvements or result.regressions:
@@ -888,33 +920,22 @@ class HTMLReportGenerator:
         content = ""
 
         # Graph structure
-        content += """
-        <h2>🌐 Graph Structure</h2>
-        <table>
-            <tr><th>Metric</th><th>Value</th></tr>
-        """
-
-        content += (
-            f"<tr><td>Total Nodes</td><td>{result.graph_stats.total_nodes}</td></tr>"
-        )
-        content += (
-            f"<tr><td>Total Edges</td><td>{result.graph_stats.total_edges}</td></tr>"
-        )
-        content += f"<tr><td>Average Degree</td><td>{result.graph_stats.avg_degree:.2f}</td></tr>"
-        content += f"<tr><td>Connected Components</td><td>{result.graph_stats.components}</td></tr>"
-        content += f"<tr><td>Isolated Nodes</td><td>{result.graph_stats.isolated_nodes}</td></tr>"
-
-        content += "</table>"
+        content += "<h2>🌐 Graph Structure</h2>"
+        
+        graph_rows = [
+            ["Total Nodes", str(result.graph_stats.total_nodes)],
+            ["Total Edges", str(result.graph_stats.total_edges)],
+            ["Average Degree", f"{result.graph_stats.avg_degree:.2f}"],
+            ["Connected Components", str(result.graph_stats.components)],
+            ["Isolated Nodes", str(result.graph_stats.isolated_nodes)]
+        ]
+        
+        content += self._generate_table(["Metric", "Value"], graph_rows)
 
         # Node type distribution
         if result.graph_stats.nodes_by_type:
-            content += """
-            <h3>Node Type Distribution</h3>
-            <table>
-                <tr><th>Type</th><th>Count</th></tr>
-            """
-            for node_type, count in result.graph_stats.nodes_by_type.items():
-                content += f"<tr><td>{node_type}</td><td>{count}</td></tr>"
-            content += "</table>"
+            content += "<h3>Node Type Distribution</h3>"
+            node_type_rows = [[node_type, str(count)] for node_type, count in result.graph_stats.nodes_by_type.items()]
+            content += self._generate_table(["Type", "Count"], node_type_rows)
 
         return content

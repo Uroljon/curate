@@ -20,6 +20,301 @@ from src.extraction.structure_extractor import (
     extract_structures_with_retry,
 )
 
+# ============================================================================
+# CONSTANTS AND TEMPLATES
+# ============================================================================
+
+# System message templates
+DEDUPLICATION_SYSTEM_MESSAGE = """Sie sind ein Experte für die KONSERVATIVE Deduplizierung von Handlungsfeldern aus deutschen kommunalen Strategiedokumenten.
+Ihre Hauptaufgabe ist es, DUPLIKATE zu entfernen und die GRANULARITÄT zu erhalten.
+Konsolidieren Sie NUR offensichtliche Duplikate oder fast identische Felder.
+Behalten Sie die meisten Handlungsfelder bei - Reduzierung um maximal 30-40%.
+Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der vorgegebenen Struktur entspricht.
+KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
+
+EXTRACTION_SYSTEM_MESSAGE = """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten und Indikatoren aus deutschen kommunalen Strategiedokumenten.
+
+HIERARCHISCHE STRUKTUR - KRITISCH WICHTIG:
+- Handlungsfelder (action_fields): BREITE STRATEGISCHE BEREICHE (max. 8-15 Stück)
+  → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
+    → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
+      → Indikatoren: Messbare Kennzahlen
+
+KONSISTENZ-REGEL (KRITISCH WICHTIG):
+- Falls Sie Konzepte finden, die zu bereits bekannten Handlungsfeldern gehören, verwenden Sie die EXAKTEN Namen der bekannten Handlungsfelder
+- Erstellen Sie NUR neue Handlungsfelder, wenn sie wirklich einzigartig sind
+- Bei ähnlichen Begriffen verwenden Sie die bereits bekannte Variante
+
+Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das dem vorgegebenen Schema entspricht. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
+
+OPERATIONS_SYSTEM_MESSAGE = """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten, Maßnahmen und Indikatoren aus deutschen kommunalen Strategiedokumenten.
+
+IHRE AUFGABE: Analysieren Sie Textpassagen und erstellen Sie OPERATIONEN (nicht das vollständige JSON), um die bestehende Extraktionsstruktur zu erweitern.
+
+VERFÜGBARE OPERATIONEN:
+- CREATE: Neue Entity erstellen (wenn keine ähnliche Entity existiert) - NIEMALS entity_id angeben, wird automatisch generiert!
+- UPDATE: Bestehende Entity anreichern (neue Felder hinzufügen, Texte erweitern, Listen ergänzen) - entity_id erforderlich
+- CONNECT: Verbindungen zwischen Entities erstellen (auch bestehende Entities können neue Verbindungen erhalten) - connections erforderlich
+
+HIERARCHISCHE STRUKTUR:
+- Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE
+  → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
+    → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
+      → Indikatoren: Messbare Kennzahlen für Projekte/Maßnahmen
+
+KRITISCHE VERBINDUNGSREGELN:
+- CONNECT-Operationen zu bestehenden UND neu erstellten Entities sind ERWÜNSCHT!
+- Verwenden Sie exakte Entity-IDs aus AKTUELLER EXTRAKTIONSSTAND
+- Neue Verbindungen zu bereits vorhandenen Entities sind ein ZIEL - nutzen Sie diese aktiv!
+- CONNECT-Operationen erfordern Konfidenz ≥ 0.7 und klaren thematischen Zusammenhang
+
+ENTSCHEIDUNGSLOGIK (in dieser Reihenfolge):
+1. Prüfen Sie AKTUELLER EXTRAKTIONSSTAND: Existiert ähnliche Entity? → UPDATE verwenden
+2. Falls keine Ähnlichkeit: CREATE mit kanonischem Titel
+3. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
+4. Bevorzugen Sie UPDATE über CREATE bei semantischer Überlappung
+
+QUALITÄTSPRINZIPIEN:
+- Verwenden Sie exakte Entity-IDs aus dem gegebenen Kontext
+- Fügen Sie immer Quellenangaben (source_pages, source_quote) hinzu
+- Seien Sie konservativ bei neuen Handlungsfeldern
+- Bei Unsicherheit: UPDATE verwenden statt CREATE
+- Erstellen Sie CONNECT-Operationen wann immer thematische Zusammenhänge erkennbar sind
+
+Antworten Sie AUSSCHLIESSLICH mit der Operations-Liste im JSON-Format."""
+
+# Common exclusion rules for action fields
+NOT_CONSOLIDATE_EXAMPLES = """DIESE FÄLLE NICHT konsolidieren:
+❌ "Klimaschutz" und "Energie" → Bleiben getrennt (verschiedene Schwerpunkte)
+❌ "Umwelt" und "Nachhaltigkeit" → Bleiben getrennt (unterschiedliche Aspekte)
+❌ "Mobilität" und "ÖPNV" → Bleiben getrennt (allgemein vs. spezifisch)
+❌ "Verkehr" und "Radverkehr" → Bleiben getrennt (allgemein vs. spezifisch)
+❌ "Wirtschaft" und "Innovation" → Bleiben getrennt (verschiedene Bereiche)
+❌ "Kultur" und "Bildung" → Bleiben getrennt (verschiedene Ressorts)
+❌ "Wohnen" und "Stadtentwicklung" → Bleiben getrennt (verschiedene Planungsebenen)
+❌ "Soziales" und "Gesundheit" → Bleiben getrennt (verschiedene Zuständigkeiten)
+❌ "Integration" und "Teilhabe" → Bleiben getrennt (verschiedene Konzepte)"""
+
+CONSOLIDATE_EXAMPLES = """NUR DIESE FÄLLE konsolidieren:
+✅ "Mobilität" + "Mobilität" → "Mobilität" (exaktes Duplikat)
+✅ "Verkehr und Mobilität" + "Mobilität und Verkehr" → "Mobilität und Verkehr" (fast identisch)
+✅ "Klimaschutz" + "Klimaschutz und Energie" → "Klimaschutz und Energie" (eines ist Teilmenge)"""
+
+# ============================================================================
+# SHARED UTILITY FUNCTIONS
+# ============================================================================
+
+def prepare_chunks_for_extraction(
+    page_aware_text: list[tuple[str, int]], 
+    source_id: str,
+    max_chars: int,
+    min_chars: int,
+    max_chunks: int
+) -> list[tuple[str, list[int]]]:
+    """Prepare chunks for extraction with shared logic."""
+    from src.processing.chunker import chunk_for_llm_with_pages
+    from src.core.config import ENHANCED_CHUNK_OVERLAP
+    
+    if not page_aware_text:
+        raise ValueError("No page-aware text provided")
+    
+    print(f"📝 Chunking with settings: {min_chars}-{max_chars} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap")
+    
+    chunks_with_pages = chunk_for_llm_with_pages(
+        page_aware_text=page_aware_text,
+        max_chars=max_chars,
+        min_chars=min_chars,
+        doc_title=f"Strategiedokument {source_id}",
+        add_overlap=True,
+    )
+    
+    if not chunks_with_pages:
+        raise ValueError("No chunks created from text")
+    
+    # Apply chunk limit for performance
+    if len(chunks_with_pages) > max_chunks:
+        print(f"⚡ Using first {max_chunks} chunks (performance mode)")
+        chunks_with_pages = chunks_with_pages[:max_chunks]
+    
+    print(f"📄 Processing {len(chunks_with_pages)} chunks")
+    return chunks_with_pages
+
+def execute_llm_extraction(
+    llm_provider,
+    prompt: str,
+    response_model,
+    system_message: str,
+    log_file_path: str | None,
+    log_context: str,
+    chunk_index: int,
+    override_num_predict: int | None = None
+):
+    """Execute LLM extraction with shared error handling."""
+    try:
+        result = llm_provider.query_structured(
+            prompt=prompt,
+            response_model=response_model,
+            system_message=system_message,
+            log_file_path=log_file_path,
+            log_context=log_context,
+            override_num_predict=override_num_predict,
+        )
+        return result
+    except Exception as e:
+        print(f"❌ Error processing chunk {chunk_index + 1}: {e}")
+        return None
+
+def create_unique_entity_id(prefix: str, title: str, used_ids: set, id_counters: dict) -> str:
+    """Generate guaranteed unique ID with shared logic."""
+    # Try sequential numbering
+    for i in range(1, 10000):  # Reasonable upper limit
+        candidate_id = f"{prefix}_{i}"
+        if candidate_id not in used_ids:
+            used_ids.add(candidate_id)
+            id_counters[prefix] = max(id_counters[prefix], i)
+            return candidate_id
+
+    # Fallback with title hash if sequential fails
+    import hashlib
+    hash_suffix = hashlib.md5(title.encode()).hexdigest()[:4]
+    candidate_id = f"{prefix}_{hash_suffix}"
+
+    # Ensure even hash-based IDs are unique
+    counter = 1
+    while candidate_id in used_ids:
+        candidate_id = f"{prefix}_{hash_suffix}_{counter}"
+        counter += 1
+
+    used_ids.add(candidate_id)
+    return candidate_id
+
+def format_context_json(context_data) -> str:
+    """Format context data as JSON string for prompts."""
+    if not context_data:
+        return "Noch keine Strukturen extrahiert - dies ist der erste Chunk."
+    
+    import json
+    context_json_str = json.dumps(
+        context_data.model_dump() if hasattr(context_data, "model_dump") else context_data,
+        indent=2,
+        ensure_ascii=False,
+    )
+    return f"""AKTUELLER EXTRAKTIONSSTAND (bisher gefundene Strukturen):
+{context_json_str}
+
+WICHTIG: Erweitern Sie diese bestehende Struktur. Verwenden Sie exakte IDs und Namen aus dem obigen JSON. Erstellen Sie Verbindungen zu bestehenden Entities."""
+
+def create_extraction_prompt(template_type: str, chunk_text: str, context_data=None, page_numbers: list[int] = None) -> str:
+    """Create extraction prompts using templates."""
+    if template_type == "simplified":
+        context_text = format_context_json(context_data)
+        return f"""Extrahieren Sie aus diesem Textabschnitt die HIERARCHISCH KORREKTEN Strukturen.
+
+{context_text}
+
+KONSISTENZ-ANWEISUNGEN:
+- Falls Sie Konzepte finden, die zu den bereits bekannten Handlungsfeldern gehören, verwenden Sie die EXAKTEN Namen der bekannten Handlungsfelder
+- Erstellen Sie NUR neue Handlungsfelder, wenn sie wirklich einzigartig sind und nicht den bekannten zugeordnet werden können
+- Bei ähnlichen Begriffen (z.B. "Wirtschaft & Wissenschaft" vs "Wirtschaft und Wissenschaft") verwenden Sie die bereits bekannte Variante
+
+KRITISCH: Handlungsfelder sind NUR breite strategische Bereiche (max. 8-15 total), NICHT spezifische Projekte!
+
+TEXT:
+{chunk_text}
+
+Erstellen Sie die 4-Bucket-Struktur mit KORREKTER HIERARCHIE und unter Verwendung der bereits bekannten Handlungsfelder, wo zutreffend."""
+    
+    elif template_type == "operations":
+        context_text = format_context_json(context_data) if context_data else "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
+        page_list = ", ".join(map(str, sorted(page_numbers))) if page_numbers else "N/A"
+        
+        return f"""Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.
+
+{context_text}
+
+VERPFLICHTENDE PRÜFUNG vor jeder CREATE-Operation:
+1. Scannen Sie AKTUELLER EXTRAKTIONSSTAND vollständig nach ähnlichen Entities
+2. Bei semantischer Überlappung: UPDATE verwenden statt CREATE
+3. Nur CREATE wenn wirklich einzigartig und keine UPDATE-Möglichkeit besteht
+
+VERBINDUNGSREGELN (KRITISCH):
+- CONNECT-Operationen sind das ZIEL - erstellen Sie sie aktiv!
+- Verbindungen zu bestehenden UND neuen Entities sind gewünscht
+- Suchen Sie aktiv nach thematischen Zusammenhängen für Verbindungen
+
+TEXTABSCHNITT (Seiten {page_list}):
+{chunk_text}
+
+QUALITÄTSKONTROLLE:
+- Verwenden Sie NUR exakte Entity-IDs aus AKTUELLER EXTRAKTIONSSTAND
+- Fügen Sie IMMER source_pages und source_quote hinzu (außer bei CONNECT)
+- Konfidenz ≥ 0.7 für CONNECT, ≥ 0.8 für CREATE
+- Bevorzugen Sie UPDATE über CREATE bei jeder semantischen Überlappung
+- Kanonische Titel verwenden für bessere spätere Verknüpfung
+
+Antworten Sie NUR mit der Operations-Liste im JSON-Format:
+{{"operations": [...]}}"""
+    
+    else:
+        raise ValueError(f"Unknown template type: {template_type}")
+
+def add_page_attribution_to_enhanced_result(result, page_numbers: list[int]) -> None:
+    """Add page attribution to all entities in enhanced result."""
+    page_str = f"Seiten {', '.join(map(str, sorted(page_numbers)))}"
+
+    # Add page attribution to all entity types
+    for entity_list in [
+        result.action_fields,
+        result.projects,
+        result.measures,
+        result.indicators,
+    ]:
+        for entity in entity_list:
+            if "page_source" not in entity.content:
+                entity.content["page_source"] = page_str
+
+def merge_enhanced_results(results: list) -> dict | None:
+    """Merge multiple enhanced results with simple concatenation."""
+    if not results:
+        return None
+
+    if len(results) == 1:
+        return results[0]
+
+    # Import here to avoid circular imports
+    from src.core.schemas import EnrichedReviewJSON
+
+    # Simple merge - concatenate all lists
+    merged = EnrichedReviewJSON(
+        action_fields=[], projects=[], measures=[], indicators=[]
+    )
+
+    entity_counter = {"af": 0, "proj": 0, "msr": 0, "ind": 0}
+
+    for result in results:
+        # Reassign IDs to avoid conflicts
+        for af in result.action_fields:
+            entity_counter["af"] += 1
+            af.id = f"af_{entity_counter['af']}"
+            merged.action_fields.append(af)
+
+        for proj in result.projects:
+            entity_counter["proj"] += 1
+            proj.id = f"proj_{entity_counter['proj']}"
+            merged.projects.append(proj)
+
+        for msr in result.measures:
+            entity_counter["msr"] += 1
+            msr.id = f"msr_{entity_counter['msr']}"
+            merged.measures.append(msr)
+
+        for ind in result.indicators:
+            entity_counter["ind"] += 1
+            ind.id = f"ind_{entity_counter['ind']}"
+            merged.indicators.append(ind)
+
+    return merged
+
 
 def chunked_aggregation(
     all_chunk_results: list[dict[str, Any]],
@@ -130,12 +425,7 @@ def perform_single_aggregation(
     from src.core.llm_providers import get_llm_provider
     from src.core.schemas import ExtractionResult
 
-    system_message = """Sie sind ein Experte für die KONSERVATIVE Deduplizierung von Handlungsfeldern aus deutschen kommunalen Strategiedokumenten.
-Ihre Hauptaufgabe ist es, DUPLIKATE zu entfernen und die GRANULARITÄT zu erhalten.
-Konsolidieren Sie NUR offensichtliche Duplikate oder fast identische Felder.
-Behalten Sie die meisten Handlungsfelder bei - Reduzierung um maximal 30-40%.
-Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der vorgegebenen Struktur entspricht.
-KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
+    system_message = DEDUPLICATION_SYSTEM_MESSAGE
 
     # Count the actual action fields
     action_field_count = chunk_data.count('"action_field"')
@@ -158,33 +448,9 @@ STRENGE VORGABE:
 - Output: MINDESTENS {min_target} Felder (besser {max_target})
 - Wenn Sie weniger als {min_target} Felder zurückgeben, ist die Aufgabe NICHT erfüllt!
 
-BEISPIELE was NICHT konsolidiert werden darf:
-❌ "Klimaschutz" und "Energie" → MÜSSEN getrennt bleiben
-❌ "Mobilität" und "Verkehr" → MÜSSEN getrennt bleiben
-❌ "Umwelt" und "Nachhaltigkeit" → MÜSSEN getrennt bleiben
-❌ "Stadtentwicklung" und "Wohnen" → MÜSSEN getrennt bleiben
+{NOT_CONSOLIDATE_EXAMPLES}
 
-NUR diese Fälle dürfen konsolidiert werden:
-✅ "Mobilität" + "Mobilität" → "Mobilität" (identisch)
-✅ "Klimaschutz und Energie" + "Energie und Klimaschutz" → "Klimaschutz und Energie" (gleicher Inhalt)
-
-Beachten Sie folgende KONSERVATIVE Konsolidierungsregeln:
-
-NUR DIESE FÄLLE konsolidieren:
-✅ "Mobilität" + "Mobilität" → "Mobilität" (exaktes Duplikat)
-✅ "Verkehr und Mobilität" + "Mobilität und Verkehr" → "Mobilität und Verkehr" (fast identisch)
-✅ "Klimaschutz" + "Klimaschutz und Energie" → "Klimaschutz und Energie" (eines ist Teilmenge)
-
-DIESE FÄLLE NICHT konsolidieren:
-❌ "Klimaschutz" und "Energie" → Bleiben getrennt (verschiedene Schwerpunkte)
-❌ "Umwelt" und "Nachhaltigkeit" → Bleiben getrennt (unterschiedliche Aspekte)
-❌ "Mobilität" und "ÖPNV" → Bleiben getrennt (allgemein vs. spezifisch)
-❌ "Verkehr" und "Radverkehr" → Bleiben getrennt (allgemein vs. spezifisch)
-❌ "Wirtschaft" und "Innovation" → Bleiben getrennt (verschiedene Bereiche)
-❌ "Kultur" und "Bildung" → Bleiben getrennt (verschiedene Ressorts)
-❌ "Wohnen" und "Stadtentwicklung" → Bleiben getrennt (verschiedene Planungsebenen)
-❌ "Soziales" und "Gesundheit" → Bleiben getrennt (verschiedene Zuständigkeiten)
-❌ "Integration" und "Teilhabe" → Bleiben getrennt (verschiedene Konzepte)
+{CONSOLIDATE_EXAMPLES}
 
 Hier sind die Handlungsfelder zur Konsolidierung:
 {chunk_data}
@@ -1306,3 +1572,143 @@ def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
     except Exception as e:
         print(f"⚠️ Entity resolution failed, returning unresolved: {e}")
         return result
+
+
+# ============================================================================
+# COMMON ROUTE HELPERS FOR REDUCING ROUTES.PY LINE COUNT
+# ============================================================================
+
+import os
+import aiofiles
+from datetime import datetime, timezone
+from contextlib import contextmanager
+from typing import Any, Optional
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
+
+
+def create_error_response(
+    endpoint: str,
+    error_type: str,
+    status_code: int,
+    source_id: str,
+    exception: Exception,
+    start_time: float,
+    monitor: Any,
+    stage: str,
+    suggestion: Optional[str] = None,
+) -> JSONResponse:
+    """Create standardized error response with logging and monitoring."""
+    from src.utils import log_api_response
+    
+    monitor.log_error(stage, exception)
+    response_time = time.time() - start_time
+    log_api_response(endpoint, status_code, response_time)
+    
+    content = {
+        "error": error_type,
+        "detail": str(exception),
+        "source_id": source_id,
+    }
+    if suggestion:
+        content["suggestion"] = suggestion
+    
+    return JSONResponse(content=content, status_code=status_code)
+
+
+async def save_json_file(
+    data: Any,
+    filename: str,
+    upload_folder: str,
+) -> str:
+    """Save JSON data to file and return the full path."""
+    file_path = os.path.join(upload_folder, filename)
+    async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
+        await f.write(json.dumps(data, ensure_ascii=False, indent=2))
+    return file_path
+
+
+@contextmanager
+def monitor_stage(monitor: Any, stage_name: str, **kwargs):
+    """Context manager for monitoring stages."""
+    monitor.start_stage(stage_name, **kwargs)
+    try:
+        yield
+    finally:
+        monitor.end_stage(stage_name, **kwargs)
+
+
+def _load_pages_from_file(source_id: str) -> list[tuple[str, int]]:
+    """Load page-aware text from the saved pages file."""
+    import re
+    from src.core import UPLOAD_FOLDER
+    
+    pages_filename = os.path.splitext(source_id)[0] + "_pages.txt"
+    pages_path = os.path.join(UPLOAD_FOLDER, pages_filename)
+
+    if not os.path.exists(pages_path):
+        error_msg = f"Pages file not found: {pages_filename}"
+        raise FileNotFoundError(error_msg)
+
+    page_aware_text = []
+    with open(pages_path, encoding="utf-8") as f:
+        content = f.read()
+
+    # Parse pages using regex
+    page_pattern = re.compile(
+        r"\[Page (\d+)\]\n(.*?)(?=\n\n\[Page|\Z)",
+        re.DOTALL,
+    )
+    matches = page_pattern.findall(content)
+
+    for page_num_str, page_text in matches:
+        try:
+            page_num = int(page_num_str)
+            page_text = page_text.strip()
+            if page_text:  # Only add non-empty pages
+                page_aware_text.append((page_text, page_num))
+        except ValueError:
+            print(f"⚠️ Skipping invalid page number: {page_num_str}")
+
+    return page_aware_text
+
+
+async def load_and_validate_pages(source_id: str, monitor: Any) -> list[tuple[str, int]]:
+    """Load and validate page-aware text, with monitoring."""
+    with monitor_stage(monitor, "file_loading", source_id=source_id):
+        page_aware_text = _load_pages_from_file(source_id)
+        
+        if not page_aware_text:
+            pages_filename = os.path.splitext(source_id)[0] + "_pages.txt"
+            raise ValueError(f"No valid page content found in {pages_filename}")
+        
+        print(f"📄 Loaded {len(page_aware_text)} pages from page-aware text file")
+        return page_aware_text
+
+
+def create_success_response(
+    endpoint: str,
+    source_id: str,
+    extraction_result: dict,
+    start_time: float,
+    additional_fields: Optional[dict] = None,
+) -> JSONResponse:
+    """Create standardized success response with logging."""
+    from src.utils import log_api_response
+    
+    response_time = time.time() - start_time
+    log_api_response(endpoint, 200, response_time)
+    
+    response_data = {
+        "source_id": source_id,
+        "extraction_result": extraction_result,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    if additional_fields:
+        response_data.update(additional_fields)
+    
+    return JSONResponse(
+        content=jsonable_encoder(response_data),
+        status_code=200,
+        headers={"Content-Type": "application/json; charset=utf-8"},
+    )

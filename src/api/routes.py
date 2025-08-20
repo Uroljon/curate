@@ -26,38 +26,14 @@ from src.utils import (
     log_api_request,
     log_api_response,
 )
+from src.api.extraction_helpers import (
+    create_error_response,
+    create_success_response,
+    load_and_validate_pages,
+    monitor_stage,
+    save_json_file,
+)
 
-
-def load_pages_from_file(source_id: str) -> list[tuple[str, int]]:
-    """Load page-aware text from the saved pages file."""
-    pages_filename = os.path.splitext(source_id)[0] + "_pages.txt"
-    pages_path = os.path.join(UPLOAD_FOLDER, pages_filename)
-
-    if not os.path.exists(pages_path):
-        error_msg = f"Pages file not found: {pages_filename}"
-        raise FileNotFoundError(error_msg)
-
-    page_aware_text = []
-    with open(pages_path, encoding="utf-8") as f:
-        content = f.read()
-
-    # Parse pages using regex
-    page_pattern = re.compile(
-        r"\[Page (\d+)\]\n(.*?)(?=\n\n\[Page|\Z)",
-        re.DOTALL,
-    )
-    matches = page_pattern.findall(content)
-
-    for page_num_str, page_text in matches:
-        try:
-            page_num = int(page_num_str)
-            page_text = page_text.strip()
-            if page_text:  # Only add non-empty pages
-                page_aware_text.append((page_text, page_num))
-        except ValueError:
-            print(f"⚠️ Skipping invalid page number: {page_num_str}")
-
-    return page_aware_text
 
 
 async def upload_pdf(request: Request, file: UploadFile):
@@ -72,43 +48,30 @@ async def upload_pdf(request: Request, file: UploadFile):
 
     try:
         # Stage 1: File upload
-        monitor.start_stage("file_upload", filename=file.filename, size=file.size)
+        with monitor_stage(monitor, "file_upload", filename=file.filename, size=file.size):
+            # Generate unique filename to prevent race conditions
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            unique_id = str(uuid.uuid4())[:8]
+            safe_filename = f"{timestamp}_{unique_id}_{file.filename}"
+            file_path = os.path.join(UPLOAD_FOLDER, safe_filename)
 
-        # Generate unique filename to prevent race conditions
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        unique_id = str(uuid.uuid4())[:8]
-        safe_filename = f"{timestamp}_{unique_id}_{file.filename}"
-        file_path = os.path.join(UPLOAD_FOLDER, safe_filename)
-
-        content = await file.read()
-        async with aiofiles.open(file_path, "wb") as f:
-            await f.write(content)
-        monitor.end_stage("file_upload", file_size=len(content))
+            content = await file.read()
+            async with aiofiles.open(file_path, "wb") as f:
+                await f.write(content)
 
         # Stage 2: Page-aware text extraction
-        monitor.start_stage("text_extraction")
-        page_aware_text, extraction_metadata = extract_text_with_ocr_fallback(file_path)
+        with monitor_stage(monitor, "text_extraction"):
+            page_aware_text, extraction_metadata = extract_text_with_ocr_fallback(file_path)
 
-        # Save page-aware text as .txt file (for debugging) with safe filename
-        txt_filename = os.path.splitext(safe_filename)[0] + "_pages.txt"
-        txt_path = os.path.join(UPLOAD_FOLDER, txt_filename)
-        async with aiofiles.open(txt_path, "w", encoding="utf-8") as txt_file:
-            for text, page_num in page_aware_text:
-                await txt_file.write(f"\n\n[Page {page_num}]\n\n")
-                await txt_file.write(text)
+            # Save page-aware text as .txt file (for debugging) with safe filename
+            txt_filename = os.path.splitext(safe_filename)[0] + "_pages.txt"
+            txt_path = os.path.join(UPLOAD_FOLDER, txt_filename)
+            async with aiofiles.open(txt_path, "w", encoding="utf-8") as txt_file:
+                for text, page_num in page_aware_text:
+                    await txt_file.write(f"\n\n[Page {page_num}]\n\n")
+                    await txt_file.write(text)
 
-        total_text_length = sum(len(text) for text, _ in page_aware_text)
-        monitor.end_stage(
-            "text_extraction",
-            text_length=total_text_length,
-            total_pages=extraction_metadata["total_pages"],
-            pages_with_content=extraction_metadata["pages_with_content"],
-            ocr_pages=extraction_metadata["ocr_pages"],
-            native_pages=extraction_metadata["native_pages"],
-            ocr_percentage=extraction_metadata["extraction_method_ratio"][
-                "ocr_percentage"
-            ],
-        )
+            total_text_length = sum(len(text) for text, _ in page_aware_text)
 
         # No more semantic chunking - pages are already saved to file for later retrieval
 
@@ -130,26 +93,20 @@ async def upload_pdf(request: Request, file: UploadFile):
 
         return JSONResponse(content=response_data)
 
-    except FileNotFoundError as e:
+    except (FileNotFoundError, PermissionError, OSError, Exception) as e:
+        # Log error and re-raise for FastAPI to handle
         monitor.log_error("upload", e)
         response_time = time.time() - start_time
-        log_api_response("/upload", 404, response_time)
-        raise
-    except PermissionError as e:
-        monitor.log_error("upload", e)
-        response_time = time.time() - start_time
-        log_api_response("/upload", 403, response_time)
-        raise
-    except OSError as e:
-        monitor.log_error("upload", e)
-        response_time = time.time() - start_time
-        log_api_response("/upload", 500, response_time)
-        raise
-    except Exception as e:
-        # Final fallback for unexpected errors
-        monitor.log_error("upload", e)
-        response_time = time.time() - start_time
-        log_api_response("/upload", 500, response_time)
+        
+        # Determine status code based on exception type
+        if isinstance(e, FileNotFoundError):
+            status_code = 404
+        elif isinstance(e, PermissionError):
+            status_code = 403
+        else:
+            status_code = 500
+            
+        log_api_response("/upload", status_code, response_time)
         raise
 
 
@@ -194,146 +151,75 @@ async def extract_enhanced(
 
     try:
         # Stage 1: Load page-aware text file
-        monitor.start_stage("file_loading", source_id=source_id)
-
-        # Use existing helper function to load pages
-        page_aware_text = load_pages_from_file(source_id)
-
-        if not page_aware_text:
-            pages_filename = os.path.splitext(source_id)[0] + "_pages.txt"
-            error_msg = f"No valid page content found in {pages_filename}"
-            raise ValueError(error_msg)
-
-        print(f"📄 Loaded {len(page_aware_text)} pages from page-aware text file")
-        monitor.end_stage("file_loading")
+        page_aware_text = await load_and_validate_pages(source_id, monitor)
 
         # Stage 2: Enhanced direct extraction
-        monitor.start_stage("enhanced_extraction", source_id=source_id)
+        with monitor_stage(monitor, "enhanced_extraction", source_id=source_id):
+            # Import the extraction function
+            from src.api.extraction_helpers import extract_direct_to_enhanced
 
-        # Import the extraction function
-        from src.api.extraction_helpers import extract_direct_to_enhanced
+            # Create log file path
+            log_file_path = os.path.join(
+                UPLOAD_FOLDER, f"{source_id}_enhanced_extraction.jsonl"
+            )
 
-        # Create log file path
-        log_file_path = os.path.join(
-            UPLOAD_FOLDER, f"{source_id}_enhanced_extraction.jsonl"
-        )
+            # Perform direct enhanced extraction
+            extraction_result = extract_direct_to_enhanced(
+                page_aware_text=page_aware_text,
+                source_id=source_id,
+                log_file_path=log_file_path,
+            )
 
-        # Perform direct enhanced extraction
-        extraction_result = extract_direct_to_enhanced(
-            page_aware_text=page_aware_text,
-            source_id=source_id,
-            log_file_path=log_file_path,
-        )
-
-        if not extraction_result:
-            error_msg = "Enhanced extraction failed - no results returned"
-            raise RuntimeError(error_msg)
-
-        monitor.end_stage("enhanced_extraction")
+            if not extraction_result:
+                error_msg = "Enhanced extraction failed - no results returned"
+                raise RuntimeError(error_msg)
 
         # Stage 3: Save enhanced structure to file
-        monitor.start_stage("file_saving", source_id=source_id)
-
-        # Save the enhanced structure JSON file for visualization tool (same format as /enhance_structure)
-        enhanced_filename = f"{source_id}_enhanced_structure.json"
-        enhanced_path = os.path.join(UPLOAD_FOLDER, enhanced_filename)
-
-        # Save the same format as /enhance_structure endpoint for compatibility
-        enhanced_data = extraction_result["extraction_result"]
-        async with aiofiles.open(enhanced_path, "w", encoding="utf-8") as f:
-            await f.write(json.dumps(enhanced_data, ensure_ascii=False, indent=2))
-
-        print(f"💾 Saved enhanced structure to: {enhanced_filename}")
-        monitor.end_stage(
-            "file_saving", enhanced_file_size=os.path.getsize(enhanced_path)
-        )
+        with monitor_stage(monitor, "file_saving", source_id=source_id):
+            # Save the enhanced structure JSON file for visualization tool
+            enhanced_filename = f"{source_id}_enhanced_structure.json"
+            enhanced_data = extraction_result["extraction_result"]
+            enhanced_path = await save_json_file(enhanced_data, enhanced_filename, UPLOAD_FOLDER)
+            print(f"💾 Saved enhanced structure to: {enhanced_filename}")
 
         # Stage 4: Prepare response
-        monitor.start_stage("response_preparation", source_id=source_id)
+        with monitor_stage(monitor, "response_preparation", source_id=source_id):
+            additional_fields = {
+                "enhanced_file": enhanced_filename,  # Add filename for reference
+                "metadata": extraction_result["metadata"],
+                "processing_stages": [
+                    "file_loading",
+                    "enhanced_extraction", 
+                    "file_saving",
+                    "response_preparation",
+                ],
+            }
 
-        response_data = {
-            "source_id": source_id,
-            "extraction_result": extraction_result["extraction_result"],
-            "enhanced_file": enhanced_filename,  # Add filename for reference
-            "metadata": extraction_result["metadata"],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "processing_stages": [
-                "file_loading",
-                "enhanced_extraction",
-                "file_saving",
-                "response_preparation",
-            ],
-        }
-
-        monitor.end_stage("response_preparation")
-
-        # Log successful response
-        response_time = time.time() - start_time
-        log_api_response("/extract_enhanced", 200, response_time)
-
-        print(f"✅ Enhanced extraction completed in {response_time:.1f}s")
-
-        return JSONResponse(
-            content=jsonable_encoder(response_data),
-            status_code=200,
-            headers={"Content-Type": "application/json; charset=utf-8"},
+        print(f"✅ Enhanced extraction completed in {time.time() - start_time:.1f}s")
+        return create_success_response(
+            "/extract_enhanced",
+            source_id,
+            extraction_result["extraction_result"],
+            start_time,
+            additional_fields,
         )
 
     except FileNotFoundError as e:
-        # File not found errors
-        monitor.log_error("file_loading", e)
-        response_time = time.time() - start_time
-        log_api_response("/extract_enhanced", 404, response_time)
-
-        return JSONResponse(
-            content={
-                "error": "File not found",
-                "detail": str(e),
-                "source_id": source_id,
-                "suggestion": "Make sure to upload the PDF first using /upload endpoint",
-            },
-            status_code=404,
+        return create_error_response(
+            "/extract_enhanced", "File not found", 404, source_id, e, start_time, monitor, "file_loading",
+            "Make sure to upload the PDF first using /upload endpoint"
         )
-
     except ValueError as e:
-        # Invalid data errors
-        monitor.log_error("file_loading", e)
-        response_time = time.time() - start_time
-        log_api_response("/extract_enhanced", 400, response_time)
-
-        return JSONResponse(
-            content={"error": "Invalid data", "detail": str(e), "source_id": source_id},
-            status_code=400,
+        return create_error_response(
+            "/extract_enhanced", "Invalid data", 400, source_id, e, start_time, monitor, "file_loading"
         )
-
     except RuntimeError as e:
-        # Extraction errors
-        monitor.log_error("enhanced_extraction", e)
-        response_time = time.time() - start_time
-        log_api_response("/extract_enhanced", 500, response_time)
-
-        return JSONResponse(
-            content={
-                "error": "Extraction failed",
-                "detail": str(e),
-                "source_id": source_id,
-            },
-            status_code=500,
+        return create_error_response(
+            "/extract_enhanced", "Extraction failed", 500, source_id, e, start_time, monitor, "enhanced_extraction"
         )
-
     except Exception as e:
-        # Final fallback for unexpected errors
-        monitor.log_error("enhanced_extraction", e)
-        response_time = time.time() - start_time
-        log_api_response("/extract_enhanced", 500, response_time)
-
-        return JSONResponse(
-            content={
-                "error": "Internal server error",
-                "detail": str(e),
-                "source_id": source_id,
-            },
-            status_code=500,
+        return create_error_response(
+            "/extract_enhanced", "Internal server error", 500, source_id, e, start_time, monitor, "enhanced_extraction"
         )
 
 
@@ -379,111 +265,58 @@ async def extract_enhanced_operations(
 
     try:
         # Stage 1: Load page-aware text file
-        monitor.start_stage("file_loading", source_id=source_id)
-
-        # Use existing helper function to load pages
-        page_aware_text = load_pages_from_file(source_id)
-
-        if not page_aware_text:
-            pages_filename = os.path.splitext(source_id)[0] + "_pages.txt"
-            error_msg = f"No valid page content found in {pages_filename}"
-            raise ValueError(error_msg)
-
-        print(f"📄 Loaded {len(page_aware_text)} pages from page-aware text file")
-
-        monitor.end_stage("file_loading", success=True)
+        page_aware_text = await load_and_validate_pages(source_id, monitor)
 
         # Stage 2: Operations-based extraction
-        monitor.start_stage("operations_extraction", source_id=source_id)
-
-        # Build log file path (consistent with extract_enhanced)
-        log_file_path = os.path.join(
-            UPLOAD_FOLDER, f"{source_id}_operations_extraction.jsonl"
-        )
-
-        # Import and run operations-based extraction
-        from src.api.extraction_helpers import (
-            extract_direct_to_enhanced_with_operations,
-        )
-
-        extraction_result = extract_direct_to_enhanced_with_operations(
-            page_aware_text=page_aware_text,
-            source_id=source_id,
-            log_file_path=log_file_path,
-        )
-
-        if not extraction_result:
-            monitor.end_stage("operations_extraction", success=False)
-            response_time = time.time() - start_time
-            log_api_response("/extract_enhanced_operations", 404, response_time)
-
-            return JSONResponse(
-                content={
-                    "error": "No content extracted",
-                    "detail": "Operations-based extraction returned no results",
-                    "source_id": source_id,
-                },
-                status_code=404,
+        with monitor_stage(monitor, "operations_extraction", source_id=source_id):
+            # Build log file path (consistent with extract_enhanced)
+            log_file_path = os.path.join(
+                UPLOAD_FOLDER, f"{source_id}_operations_extraction.jsonl"
             )
 
-        monitor.end_stage("operations_extraction", success=True)
+            # Import and run operations-based extraction
+            from src.api.extraction_helpers import (
+                extract_direct_to_enhanced_with_operations,
+            )
+
+            extraction_result = extract_direct_to_enhanced_with_operations(
+                page_aware_text=page_aware_text,
+                source_id=source_id,
+                log_file_path=log_file_path,
+            )
+
+            if not extraction_result:
+                raise ValueError("Operations-based extraction returned no results")
 
         # Save result to file
         try:
             upload_dir = PROJECT_ROOT / "data" / "uploads"
             upload_dir.mkdir(exist_ok=True)
-
             result_filename = f"{source_id}_operations_result.json"
-            result_path = upload_dir / result_filename
-
-            async with aiofiles.open(result_path, "w", encoding="utf-8") as f:
-                await f.write(
-                    json.dumps(extraction_result, indent=2, ensure_ascii=False)
-                )
-
+            await save_json_file(extraction_result, result_filename, str(upload_dir))
             print(f"💾 Operations result saved to {result_filename}")
-
         except Exception as save_error:
             print(f"⚠️ Failed to save operations result: {save_error}")
             # Continue despite save failure
 
-        response_time = time.time() - start_time
-        log_api_response("/extract_enhanced_operations", 200, response_time)
-
-        return JSONResponse(content=extraction_result)
+        return create_success_response(
+            "/extract_enhanced_operations",
+            source_id,
+            extraction_result,
+            start_time,
+        )
 
     except json.JSONDecodeError as e:
-        monitor.log_error("operations_extraction", e)
-        response_time = time.time() - start_time
-        log_api_response("/extract_enhanced_operations", 400, response_time)
-
-        return JSONResponse(
-            content={
-                "error": "Invalid JSON in extraction",
-                "detail": str(e),
-                "source_id": source_id,
-            },
-            status_code=400,
+        return create_error_response(
+            "/extract_enhanced_operations", "Invalid JSON in extraction", 400, source_id, e, start_time, monitor, "operations_extraction"
         )
-
     except ValueError as e:
-        monitor.log_error("operations_extraction", e)
-        response_time = time.time() - start_time
-        log_api_response("/extract_enhanced_operations", 404, response_time)
-
-        return JSONResponse(
-            content={
-                "error": "File not found",
-                "detail": str(e),
-                "source_id": source_id,
-            },
-            status_code=404,
+        return create_error_response(
+            "/extract_enhanced_operations", "File not found", 404, source_id, e, start_time, monitor, "operations_extraction"
         )
-
     except Exception as e:
         # Log the exception for debugging
         import traceback
-
         error_details = {
             "error_type": type(e).__name__,
             "error_message": str(e),
@@ -491,16 +324,6 @@ async def extract_enhanced_operations(
         }
         print(f"❌ Operations extraction error: {json.dumps(error_details, indent=2)}")
 
-        # Final fallback for unexpected errors
-        monitor.log_error("operations_extraction", e)
-        response_time = time.time() - start_time
-        log_api_response("/extract_enhanced_operations", 500, response_time)
-
-        return JSONResponse(
-            content={
-                "error": "Internal server error",
-                "detail": str(e),
-                "source_id": source_id,
-            },
-            status_code=500,
+        return create_error_response(
+            "/extract_enhanced_operations", "Internal server error", 500, source_id, e, start_time, monitor, "operations_extraction"
         )
