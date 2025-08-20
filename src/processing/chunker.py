@@ -17,12 +17,6 @@ from src.utils.text import is_heading
 # Optional imports for structure-aware chunking removed - not used in current implementation
 
 
-
-
-
-
-
-
 def add_overlap_to_page_chunks(
     chunks: list[tuple[str, list[int]]], overlap_percent: float = 0.15
 ) -> list[tuple[str, list[int]]]:
@@ -85,10 +79,6 @@ def add_overlap_to_page_chunks(
         overlapped_chunks.append((current_chunk, chunk_pages))
 
     return overlapped_chunks
-
-
-
-
 
 
 def chunk_for_llm_with_pages(

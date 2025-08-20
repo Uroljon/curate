@@ -2217,7 +2217,9 @@ def extract_direct_to_enhanced_with_operations(
                                 f"✅ Chunk {i+1}: {operation_log.successful_operations}/{operation_log.total_operations} operations applied"
                             )
                             print(
-                                f"📊 Current state: {len(current_state.action_fields)} action fields, {len(current_state.projects)} projects, {len(current_state.measures)} measures, {len(current_state.indicators)} indicators"
+                                f"📊 Current state: {len(current_state.action_fields)} action fields, "
+                                f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
+                                f"{len(current_state.indicators)} indicators"
                             )
                         else:
                             print(

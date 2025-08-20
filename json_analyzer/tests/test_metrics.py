@@ -28,17 +28,17 @@ from ..metrics import (
 
 def create_test_graph():
     """Create a simple test graph."""
-    G = nx.Graph()
-    G.add_node("af_1", type="action_field", name="Action Field 1")
-    G.add_node("proj_1", type="project", name="Project 1")
-    G.add_node("msr_1", type="measure", name="Measure 1")
-    G.add_node("ind_1", type="indicator", name="Indicator 1")
+    g = nx.Graph()
+    g.add_node("af_1", type="action_field", name="Action Field 1")
+    g.add_node("proj_1", type="project", name="Project 1")
+    g.add_node("msr_1", type="measure", name="Measure 1")
+    g.add_node("ind_1", type="indicator", name="Indicator 1")
 
-    G.add_edge("af_1", "proj_1", relation="af_to_proj")
-    G.add_edge("proj_1", "msr_1", relation="proj_to_msr")
-    G.add_edge("proj_1", "ind_1", relation="proj_to_ind")
+    g.add_edge("af_1", "proj_1", relation="af_to_proj")
+    g.add_edge("proj_1", "msr_1", relation="proj_to_msr")
+    g.add_edge("proj_1", "ind_1", relation="proj_to_ind")
 
-    return G
+    return g
 
 
 def create_test_data():

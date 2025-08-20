@@ -317,7 +317,9 @@ def test_fix_4_full_workflow_simulation():
                     all_logs.append(op_log)
                     print(f"      ✅ Applied {op_log.successful_operations} operations")
                     print(
-                        f"      📊 State: {len(current_state.action_fields)} AFs, {len(current_state.projects)} projects, {len(current_state.measures)} measures, {len(current_state.indicators)} indicators"
+                        f"      📊 State: {len(current_state.action_fields)} AFs, "
+                        f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
+                        f"{len(current_state.indicators)} indicators"
                     )
                 else:
                     print("      ⚠️  No operations succeeded")
@@ -334,7 +336,9 @@ def test_fix_4_full_workflow_simulation():
     print(f"      Successful operations: {successful_operations}")
     print(f"      Success rate: {success_rate:.1%}")
     print(
-        f"      Final entities: {len(current_state.action_fields)} AFs, {len(current_state.projects)} projects, {len(current_state.measures)} measures, {len(current_state.indicators)} indicators"
+        f"      Final entities: {len(current_state.action_fields)} AFs, "
+        f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
+        f"{len(current_state.indicators)} indicators"
     )
 
     # Verify we didn't lose data due to validation failures (Fix #2)

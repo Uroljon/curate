@@ -82,7 +82,7 @@ class JSONAnalyzer:
                 data = json.load(f)
         except Exception as e:
             msg = f"Failed to load JSON file: {e}"
-            raise ValueError(msg)
+            raise ValueError(msg) from e
 
         # Detect format
         format_detected = self._detect_format(data)

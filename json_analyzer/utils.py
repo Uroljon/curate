@@ -32,10 +32,10 @@ def load_json_file(file_path: str | Path) -> dict[str, Any]:
             return json.load(f)
     except json.JSONDecodeError as e:
         msg = f"Invalid JSON in {file_path}: {e}"
-        raise ValueError(msg)
+        raise ValueError(msg) from e
     except Exception as e:
         msg = f"Failed to load {file_path}: {e}"
-        raise ValueError(msg)
+        raise ValueError(msg) from e
 
 
 def save_json_file(

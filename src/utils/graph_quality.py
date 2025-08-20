@@ -541,9 +541,9 @@ class GraphQualityAnalyzer:
 
     def _get_timestamp(self) -> str:
         """Get current timestamp."""
-        from datetime import datetime
+        from datetime import datetime, timezone
 
-        return datetime.now().isoformat()
+        return datetime.now(timezone.utc).isoformat()
 
 
 def analyze_graph_quality(

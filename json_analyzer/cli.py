@@ -173,7 +173,7 @@ def load_config_file(config_path: str) -> AnalyzerConfig:
         return AnalyzerConfig(**config_data)
     except Exception as e:
         msg = f"Failed to load configuration from {config_path}: {e}"
-        raise ValueError(msg)
+        raise ValueError(msg) from e
 
 
 def cmd_analyze(args, config: AnalyzerConfig):

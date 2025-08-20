@@ -28,8 +28,6 @@ class ExtractionConsistencyValidator:
     def __init__(self):
         """Initialize the consistency validator."""
 
-
-
     def validate_extraction_consistency(
         self, structures: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:

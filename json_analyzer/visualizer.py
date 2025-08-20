@@ -5,9 +5,9 @@ Provides terminal output and HTML report generation capabilities.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 
 from .models import AnalysisResult, ComparisonResult
 from .utils import format_duration, format_file_size, truncate_text
@@ -17,7 +17,7 @@ class TerminalVisualizer:
     """Terminal-based visualization for analysis results."""
 
     # ANSI color codes
-    COLORS = {
+    COLORS: ClassVar[dict[str, str]] = {
         "red": "\033[91m",
         "green": "\033[92m",
         "yellow": "\033[93m",
@@ -636,7 +636,8 @@ class HTMLReportGenerator:
         body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f5f5f5; }}
         .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
         h1, h2, h3 {{ color: #333; }}
-        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; margin: -20px -20px 20px -20px; border-radius: 8px 8px 0 0; }}
+        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;
+                  padding: 20px; margin: -20px -20px 20px -20px; border-radius: 8px 8px 0 0; }}
         .metric-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin: 20px 0; }}
         .metric-card {{ background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #007bff; }}
         .metric-value {{ font-size: 24px; font-weight: bold; color: #007bff; }}
@@ -673,7 +674,8 @@ class HTMLReportGenerator:
         content = self._generate_analysis_content(result)
 
         html = self.HTML_TEMPLATE.format(
-            content=content, timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            content=content,
+            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         )
 
         with open(output_path, "w", encoding="utf-8") as f:
@@ -684,7 +686,8 @@ class HTMLReportGenerator:
         content = self._generate_comparison_content(result)
 
         html = self.HTML_TEMPLATE.format(
-            content=content, timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            content=content,
+            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         )
 
         with open(output_path, "w", encoding="utf-8") as f:
@@ -699,7 +702,8 @@ class HTMLReportGenerator:
         <div class="header">
             <h1>📊 JSON Quality Analysis Report</h1>
             <p class="timestamp">File: {result.metadata.file_path}</p>
-            <p class="timestamp">Format: {result.metadata.format_detected} | Size: {format_file_size(result.metadata.file_size)} | Analysis time: {format_duration(result.metadata.analysis_duration_ms)}</p>
+            <p class="timestamp">Format: {result.metadata.format_detected} | Size: {format_file_size(result.metadata.file_size)} |
+                                  Analysis time: {format_duration(result.metadata.analysis_duration_ms)}</p>
         </div>
 
         <div class="quality-score {grade_class}">
