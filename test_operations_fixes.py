@@ -19,64 +19,105 @@ from src.core.schemas import EnrichedReviewJSON
 from src.extraction.operations_executor import OperationExecutor, validate_operations
 
 
+# Helper Functions
+def create_op(op_type: OperationType, entity_type: str, entity_id: str = None, **content) -> EntityOperation:
+    """Factory for creating EntityOperation objects with minimal boilerplate."""
+    return EntityOperation(
+        operation=op_type,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        content=content if content else {}
+    )
+
+
+def empty_state() -> EnrichedReviewJSON:
+    """Create empty EnrichedReviewJSON state."""
+    return EnrichedReviewJSON(
+        action_fields=[], projects=[], measures=[], indicators=[]
+    )
+
+
+def filter_valid_operations(operations: list[EntityOperation], state: EnrichedReviewJSON) -> list[EntityOperation]:
+    """Filter out invalid operations, return only valid ones."""
+    valid_operations = []
+    for op in operations:
+        single_errors = validate_operations([op], state)
+        if not single_errors:
+            valid_operations.append(op)
+    return valid_operations
+
+
+def get_state_summary(state: EnrichedReviewJSON) -> str:
+    """Return formatted state summary string."""
+    return (f"{len(state.action_fields)} AFs, "
+            f"{len(state.projects)} projects, "
+            f"{len(state.measures)} measures, "
+            f"{len(state.indicators)} indicators")
+
+
+def assert_entity_ids(entities: list, expected_ids: list[str], entity_type: str) -> None:
+    """Assert entity IDs match expected values."""
+    actual_ids = [e.id for e in entities]
+    assert actual_ids == expected_ids, (
+        f"{entity_type} IDs mismatch: expected {expected_ids}, got {actual_ids}"
+    )
+
+
+# Test Data Factories
+def get_chunk1_operations() -> list[EntityOperation]:
+    """Standard chunk 1 test data."""
+    return [
+        create_op(OperationType.CREATE, "action_field", title="Mobilität"),
+        create_op(OperationType.CREATE, "project", title="Stadtbahn")
+    ]
+
+
+def get_chunk2_operations() -> list[EntityOperation]:
+    """Standard chunk 2 test data."""
+    return [
+        create_op(OperationType.CREATE, "action_field", title="Energie"),
+        create_op(OperationType.CREATE, "project", title="Solarpark")
+    ]
+
+
+def get_mixed_valid_invalid_operations() -> list[EntityOperation]:
+    """Mix of valid and invalid operations for testing validation."""
+    return [
+        create_op(OperationType.CREATE, "action_field", title="Valid AF"),
+        EntityOperation(  # Invalid UPDATE (no entity_id)
+            operation=OperationType.UPDATE,
+            entity_type="project",
+            content={"description": "Updated desc"}
+        ),
+        create_op(OperationType.CREATE, "measure", title="Valid Measure"),
+        EntityOperation(  # Invalid CONNECT (no connections)
+            operation=OperationType.CONNECT,
+            entity_type="project"
+        )
+    ]
+
+
 def test_fix_1_entity_counter_persistence():
     """Test Fix #1: Entity counter persistence across multiple operations"""
     print("🧪 Testing Fix #1: Entity counter persistence")
 
-    # Create single executor (simulates real workflow)
     executor = OperationExecutor()
-
-    # Simulate chunk 1: Create entities
-    chunk1_operations = [
-        EntityOperation(
-            operation=OperationType.CREATE,
-            entity_type="action_field",
-            content={"title": "Mobilität"},
-        ),
-        EntityOperation(
-            operation=OperationType.CREATE,
-            entity_type="project",
-            content={"title": "Stadtbahn"},
-        ),
-    ]
-
-    # Simulate chunk 2: Create more entities (should continue counting)
-    chunk2_operations = [
-        EntityOperation(
-            operation=OperationType.CREATE,
-            entity_type="action_field",
-            content={"title": "Energie"},
-        ),
-        EntityOperation(
-            operation=OperationType.CREATE,
-            entity_type="project",
-            content={"title": "Solarpark"},
-        ),
-    ]
-
+    state = empty_state()
+    
     # Apply chunk 1
-    state = EnrichedReviewJSON(
-        action_fields=[], projects=[], measures=[], indicators=[]
-    )
-    state1, log1 = executor.apply_operations(state, chunk1_operations, 0)
+    chunk1_operations = get_chunk1_operations()
+    state1, _ = executor.apply_operations(state, chunk1_operations, 0)
 
     # Apply chunk 2 with SAME executor (key test)
-    state2, log2 = executor.apply_operations(state1, chunk2_operations, 1)
+    chunk2_operations = get_chunk2_operations()
+    state2, _ = executor.apply_operations(state1, chunk2_operations, 1)
 
     # Verify IDs are sequential (not reset)
-    af_ids = [af.id for af in state2.action_fields]
-    proj_ids = [proj.id for proj in state2.projects]
+    assert_entity_ids(state2.action_fields, ["af_1", "af_2"], "Action field")
+    assert_entity_ids(state2.projects, ["proj_1", "proj_2"], "Project")
 
-    expected_af_ids = ["af_1", "af_2"]
-    expected_proj_ids = ["proj_1", "proj_2"]
-
-    assert af_ids == expected_af_ids, f"Expected {expected_af_ids}, got {af_ids}"
-    assert (
-        proj_ids == expected_proj_ids
-    ), f"Expected {expected_proj_ids}, got {proj_ids}"
-
-    print(f"   ✅ Action field IDs: {af_ids}")
-    print(f"   ✅ Project IDs: {proj_ids}")
+    print(f"   ✅ Action field IDs: {[af.id for af in state2.action_fields]}")
+    print(f"   ✅ Project IDs: {[proj.id for proj in state2.projects]}")
     print("   ✅ Counter persistence working correctly")
 
 
@@ -84,70 +125,28 @@ def test_fix_2_per_operation_validation():
     """Test Fix #2: Per-operation validation filtering"""
     print("\n🧪 Testing Fix #2: Per-operation validation filtering")
 
-    # Create mix of valid and invalid operations
-    mixed_operations = [
-        # Valid CREATE
-        EntityOperation(
-            operation=OperationType.CREATE,
-            entity_type="action_field",
-            content={"title": "Valid AF"},
-        ),
-        # Invalid UPDATE (no entity_id)
-        EntityOperation(
-            operation=OperationType.UPDATE,
-            entity_type="project",
-            content={"description": "Updated desc"},
-            # Missing entity_id - should be invalid
-        ),
-        # Valid CREATE
-        EntityOperation(
-            operation=OperationType.CREATE,
-            entity_type="measure",
-            content={"title": "Valid Measure"},
-        ),
-        # Invalid CONNECT (no connections)
-        EntityOperation(
-            operation=OperationType.CONNECT,
-            entity_type="project",
-            # Missing connections - should be invalid
-        ),
-    ]
-
+    state = empty_state()
+    mixed_operations = get_mixed_valid_invalid_operations()
+    
     # Test validation on all operations
-    state = EnrichedReviewJSON(
-        action_fields=[], projects=[], measures=[], indicators=[]
-    )
     validation_errors = validate_operations(mixed_operations, state)
-
     print(f"   📋 Total operations: {len(mixed_operations)}")
     print(f"   ⚠️  Total validation errors: {len(validation_errors)}")
     for error in validation_errors:
         print(f"      - {error}")
 
-    # Simulate the new filtering logic (from extraction_helpers.py)
-    valid_operations = []
-    for op in mixed_operations:
-        single_op_errors = validate_operations([op], state)
-        if not single_op_errors:
-            valid_operations.append(op)
-
+    # Apply filtering logic
+    valid_operations = filter_valid_operations(mixed_operations, state)
     print(f"   ✅ Valid operations after filtering: {len(valid_operations)}")
-
-    # Should have 2 valid operations (2 CREATEs)
-    assert (
-        len(valid_operations) == 2
-    ), f"Expected 2 valid operations, got {len(valid_operations)}"
+    
+    assert len(valid_operations) == 2, f"Expected 2 valid operations, got {len(valid_operations)}"
 
     # Apply only valid operations
     executor = OperationExecutor()
     final_state, log = executor.apply_operations(state, valid_operations, 0)
 
-    print(
-        f"   ✅ Successfully applied: {log.successful_operations}/{log.total_operations} operations"
-    )
-    print(
-        f"   ✅ Final state: {len(final_state.action_fields)} AFs, {len(final_state.measures)} measures"
-    )
+    print(f"   ✅ Successfully applied: {log.successful_operations}/{log.total_operations} operations")
+    print(f"   ✅ Final state: {get_state_summary(final_state)}")
 
     assert log.successful_operations == 2
     assert len(final_state.action_fields) == 1
@@ -159,43 +158,21 @@ def test_fix_3_cross_chunk_consolidation():
     print("\n🧪 Testing Fix #3: Cross-chunk entity consolidation")
 
     executor = OperationExecutor()
+    state = empty_state()
 
     # Chunk 1: Create initial entities
     chunk1_ops = [
-        EntityOperation(
-            operation=OperationType.CREATE,
-            entity_type="project",
-            content={"title": "Stadtbahn", "status": "planned"},
-        ),
-        EntityOperation(
-            operation=OperationType.CREATE,
-            entity_type="measure",
-            content={"title": "Gleisbau", "budget": "10M"},
-        ),
+        create_op(OperationType.CREATE, "project", title="Stadtbahn", status="planned"),
+        create_op(OperationType.CREATE, "measure", title="Gleisbau", budget="10M")
     ]
-
-    state = EnrichedReviewJSON(
-        action_fields=[], projects=[], measures=[], indicators=[]
-    )
     state1, _ = executor.apply_operations(state, chunk1_ops, 0)
 
     # Chunk 2: Update existing entities (tests cross-chunk consolidation)
     chunk2_ops = [
-        EntityOperation(
-            operation=OperationType.UPDATE,
-            entity_type="project",
-            entity_id="proj_1",  # Reference entity from chunk 1
-            content={"description": "Neue Stadtbahn für Regensburg"},
-        ),
-        EntityOperation(
-            operation=OperationType.UPDATE,
-            entity_type="measure",
-            entity_id="msr_1",  # Update entity from chunk 1 (now uses UPDATE instead of MERGE)
-            content={"timeline": "2024-2026", "department": "Tiefbau"},
-        ),
+        create_op(OperationType.UPDATE, "project", "proj_1", description="Neue Stadtbahn für Regensburg"),
+        create_op(OperationType.UPDATE, "measure", "msr_1", timeline="2024-2026", department="Tiefbau")
     ]
-
-    state2, log2 = executor.apply_operations(state1, chunk2_ops, 1)
+    state2, _ = executor.apply_operations(state1, chunk2_ops, 1)
 
     # Verify consolidation worked
     project = state2.projects[0]
@@ -224,60 +201,24 @@ def test_fix_4_full_workflow_simulation():
 
     # Simulate the exact workflow from extract_direct_to_enhanced_with_operations()
     executor = OperationExecutor()  # Single instance (Fix #1)
-    current_state = EnrichedReviewJSON(
-        action_fields=[], projects=[], measures=[], indicators=[]
-    )
+    current_state = empty_state()
     all_logs = []
 
     # Simulate 3 chunks with mixed valid/invalid operations
     chunk_operations = [
         # Chunk 1: Initial entities
-        [
-            EntityOperation(
-                operation=OperationType.CREATE,
-                entity_type="action_field",
-                content={"title": "Mobilität"},
-            ),
-            EntityOperation(
-                operation=OperationType.CREATE,
-                entity_type="project",
-                content={"title": "Stadtbahn"},
-            ),
-        ],
+        get_chunk1_operations(),
         # Chunk 2: Has invalid operation + valid updates
         [
-            EntityOperation(
-                operation=OperationType.UPDATE,
-                entity_type="project",
-                entity_id="proj_1",
-                content={"status": "active"},
-            ),
-            EntityOperation(
-                operation=OperationType.UPDATE,
-                entity_type="project",
-                entity_id="nonexistent",
-                content={"invalid": "update"},
-            ),  # Invalid
-            EntityOperation(
-                operation=OperationType.CREATE,
-                entity_type="measure",
-                content={"title": "Gleisbau"},
-            ),
+            create_op(OperationType.UPDATE, "project", "proj_1", status="active"),
+            create_op(OperationType.UPDATE, "project", "nonexistent", invalid="update"),  # Invalid
+            create_op(OperationType.CREATE, "measure", title="Gleisbau")
         ],
         # Chunk 3: More consolidation
         [
-            EntityOperation(
-                operation=OperationType.UPDATE,
-                entity_id="msr_1",
-                entity_type="measure",
-                content={"budget": "10M"},
-            ),
-            EntityOperation(
-                operation=OperationType.CREATE,
-                entity_type="indicator",
-                content={"title": "CO2 Reduktion"},
-            ),
-        ],
+            create_op(OperationType.UPDATE, "measure", "msr_1", budget="10M"),
+            create_op(OperationType.CREATE, "indicator", title="CO2 Reduktion")
+        ]
     ]
 
     # Process each chunk (mimics real API loop)
@@ -289,21 +230,12 @@ def test_fix_4_full_workflow_simulation():
 
         if mock_result and mock_result.operations:
             # Apply Fix #2: Filter invalid operations
-            validation_errors = validate_operations(
-                mock_result.operations, current_state
-            )
+            validation_errors = validate_operations(mock_result.operations, current_state)
 
             if validation_errors:
                 print(f"      ⚠️  {len(validation_errors)} validation errors found")
-                # Filter out invalid operations
-                valid_operations = []
-                for op in mock_result.operations:
-                    single_errors = validate_operations([op], current_state)
-                    if not single_errors:
-                        valid_operations.append(op)
-                print(
-                    f"      ✅ Filtered to {len(valid_operations)}/{len(mock_result.operations)} valid operations"
-                )
+                valid_operations = filter_valid_operations(mock_result.operations, current_state)
+                print(f"      ✅ Filtered to {len(valid_operations)}/{len(mock_result.operations)} valid operations")
                 mock_result.operations = valid_operations
 
             if mock_result.operations:
@@ -316,11 +248,7 @@ def test_fix_4_full_workflow_simulation():
                     current_state = new_state
                     all_logs.append(op_log)
                     print(f"      ✅ Applied {op_log.successful_operations} operations")
-                    print(
-                        f"      📊 State: {len(current_state.action_fields)} AFs, "
-                        f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
-                        f"{len(current_state.indicators)} indicators"
-                    )
+                    print(f"      📊 State: {get_state_summary(current_state)}")
                 else:
                     print("      ⚠️  No operations succeeded")
 
@@ -335,11 +263,7 @@ def test_fix_4_full_workflow_simulation():
     print(f"      Total operations attempted: {total_operations}")
     print(f"      Successful operations: {successful_operations}")
     print(f"      Success rate: {success_rate:.1%}")
-    print(
-        f"      Final entities: {len(current_state.action_fields)} AFs, "
-        f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
-        f"{len(current_state.indicators)} indicators"
-    )
+    print(f"      Final entities: {get_state_summary(current_state)}")
 
     # Verify we didn't lose data due to validation failures (Fix #2)
     assert len(current_state.action_fields) == 1
