@@ -10,7 +10,7 @@ import re
 from collections import defaultdict
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from ..config import SourceThresholds
 from ..models import SourceStats

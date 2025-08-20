@@ -3,7 +3,7 @@ Pydantic models for JSON quality analysis results.
 """
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -142,4 +142,3 @@ class ComparisonResult(BaseModel):
 
 
 # Utility types for internal use
-NodeType = str | int

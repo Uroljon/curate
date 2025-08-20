@@ -8,7 +8,7 @@ for analyzing JSON extraction results.
 import json
 import time
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 from .config import (
     DEFAULT_CONFIG,
@@ -122,6 +122,8 @@ class JSONAnalyzer:
         """
         Analyze JSON data directly (without loading from file).
 
+        This method creates a temporary file to reuse analyze_file logic.
+
         Args:
             data: JSON data dictionary
             file_path: Optional file path for context
@@ -129,41 +131,22 @@ class JSONAnalyzer:
         Returns:
             AnalysisResult with all metrics
         """
-        start_time = time.time()
+        import tempfile
 
-        # Detect format
-        format_detected = self._detect_format(data)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as tmp_file:
+            json.dump(data, tmp_file, ensure_ascii=False, indent=2)
+            tmp_path = tmp_file.name
 
-        # Create metadata
-        metadata = AnalysisMetadata(
-            file_path=file_path,
-            file_size=len(json.dumps(data, ensure_ascii=False)),
-            format_detected=format_detected,
-            thresholds_used=self.config.model_dump(),
-        )
-
-        # Build graph
-        graph = self.graph_metrics.build_graph_from_data(data)
-
-        # Calculate all metrics
-        result = AnalysisResult(
-            metadata=metadata,
-            graph_stats=self.graph_metrics.calculate(graph, data),
-            integrity_stats=self.integrity_metrics.calculate(data),
-            connectivity_stats=self.connectivity_metrics.calculate(graph, data),
-            confidence_stats=self.confidence_metrics.calculate(graph, data),
-            source_stats=self.source_metrics.calculate(data, file_path),
-            content_stats=self.content_metrics.calculate(data),
-        )
-
-        # Calculate composite quality score
-        result.quality_score = self._calculate_quality_score(result)
-
-        # Update timing
-        end_time = time.time()
-        result.metadata.analysis_duration_ms = (end_time - start_time) * 1000
-
-        return result
+        try:
+            result = self.analyze_file(tmp_path)
+            # Update file path in metadata to the original path if provided
+            if file_path:
+                result.metadata.file_path = file_path
+            return result
+        finally:
+            Path(tmp_path).unlink()
 
     def compare_files(
         self, before_path: str | Path, after_path: str | Path

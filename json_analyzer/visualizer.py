@@ -7,7 +7,7 @@ Provides terminal output and HTML report generation capabilities.
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar
 
 from .models import AnalysisResult, ComparisonResult
 from .utils import format_duration, format_file_size, truncate_text

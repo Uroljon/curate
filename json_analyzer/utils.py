@@ -5,7 +5,7 @@ Utility functions for JSON quality analysis.
 import json
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 def find_json_files(directory: str | Path, pattern: str = "*.json") -> list[Path]:
