@@ -8,7 +8,7 @@ field completeness, and duplicate detection.
 import re
 from collections import Counter, defaultdict
 from difflib import SequenceMatcher
-from typing import Any
+from typing import Any, ClassVar
 
 from ..config import ID_PREFIXES, IntegrityThresholds
 from ..models import IntegrityStats
@@ -17,8 +17,48 @@ from ..models import IntegrityStats
 class IntegrityMetrics:
     """Calculator for data integrity and schema validation metrics."""
 
+    # Class constants to reduce repetition
+    ENTITY_TYPES: ClassVar[list[str]] = ["action_fields", "projects", "measures", "indicators"]
+    TYPE_MAPPING: ClassVar[dict[str, str]] = {
+        "action_fields": "af",
+        "projects": "proj",
+        "measures": "msr",
+        "indicators": "ind",
+    }
+    VALID_CONNECTIONS: ClassVar[dict[str, list[str]]] = {
+        "af": ["proj"],  # Action fields can connect to projects
+        "proj": ["af", "msr", "ind"],  # Projects to action fields, measures, indicators
+        "msr": ["proj", "af", "ind"],  # Measures to projects, action fields, indicators
+        "ind": ["proj", "af", "msr"],  # Indicators to projects, action fields, measures
+    }
+
     def __init__(self, thresholds: IntegrityThresholds):
         self.thresholds = thresholds
+
+    def _collect_all_ids(self, data: dict[str, Any]) -> set[str]:
+        """Collect all entity IDs from the data."""
+        all_ids = set()
+        for entity_type in self.ENTITY_TYPES:
+            for entity in data.get(entity_type, []):
+                entity_id = entity.get("id", "")
+                if entity_id:
+                    all_ids.add(entity_id)
+        return all_ids
+
+    def _iter_entities(self, data: dict[str, Any]):
+        """Generator that yields (entity_type, entity) pairs."""
+        for entity_type in self.ENTITY_TYPES:
+            for entity in data.get(entity_type, []):
+                yield entity_type, entity
+
+    def _get_entity_content(self, entity: dict[str, Any]) -> dict[str, Any]:
+        """Safely extract entity content."""
+        return entity.get("content", {})
+
+    def _get_entity_name(self, entity: dict[str, Any]) -> str:
+        """Extract name/title from entity content."""
+        content = self._get_entity_content(entity)
+        return content.get("title") or content.get("name", "")
 
     def calculate(self, data: dict[str, Any]) -> IntegrityStats:
         """
@@ -61,51 +101,47 @@ class IntegrityMetrics:
         invalid_prefixes = []
         format_errors = []
 
-        entity_types = ["action_fields", "projects", "measures", "indicators"]
-
-        for entity_type in entity_types:
+        for entity_type, entity in self._iter_entities(data):
             expected_prefixes = ID_PREFIXES.get(entity_type, [])
+            entity_id = entity.get("id", "")
 
-            for entity in data.get(entity_type, []):
-                entity_id = entity.get("id", "")
+            if not entity_id:
+                format_errors.append(
+                    {
+                        "type": entity_type,
+                        "error": "missing_id",
+                        "entity": str(self._get_entity_content(entity))[:50],
+                    }
+                )
+                continue
 
-                if not entity_id:
-                    format_errors.append(
-                        {
-                            "type": entity_type,
-                            "error": "missing_id",
-                            "entity": str(entity.get("content", {}))[:50],
-                        }
-                    )
-                    continue
+            # Check for duplicates
+            if entity_id in all_ids:
+                duplicates.append({"id": entity_id, "type": entity_type})
+            else:
+                all_ids.add(entity_id)
 
-                # Check for duplicates
-                if entity_id in all_ids:
-                    duplicates.append({"id": entity_id, "type": entity_type})
-                else:
-                    all_ids.add(entity_id)
+            # Check ID format (should be alphanumeric with underscores)
+            if not re.match(r"^[a-zA-Z]\w*$", entity_id):
+                format_errors.append(
+                    {
+                        "type": entity_type,
+                        "id": entity_id,
+                        "error": "invalid_format",
+                    }
+                )
 
-                # Check ID format (should be alphanumeric with underscores)
-                if not re.match(r"^[a-zA-Z]\w*$", entity_id):
-                    format_errors.append(
-                        {
-                            "type": entity_type,
-                            "id": entity_id,
-                            "error": "invalid_format",
-                        }
-                    )
-
-                # Check prefix
-                if expected_prefixes and not any(
-                    entity_id.startswith(prefix) for prefix in expected_prefixes
-                ):
-                    invalid_prefixes.append(
-                        {
-                            "type": entity_type,
-                            "id": entity_id,
-                            "expected": expected_prefixes,
-                        }
-                    )
+            # Check prefix
+            if expected_prefixes and not any(
+                entity_id.startswith(prefix) for prefix in expected_prefixes
+            ):
+                invalid_prefixes.append(
+                    {
+                        "type": entity_type,
+                        "id": entity_id,
+                        "expected": expected_prefixes,
+                    }
+                )
 
         return {
             "total_ids": len(all_ids),
@@ -118,35 +154,22 @@ class IntegrityMetrics:
 
     def _find_dangling_references(self, data: dict[str, Any]) -> list[dict[str, str]]:
         """Find connections that reference non-existent entities."""
-        # Collect all valid IDs
-        all_ids = set()
-        entity_types = ["action_fields", "projects", "measures", "indicators"]
-
-        for entity_type in entity_types:
-            for entity in data.get(entity_type, []):
-                entity_id = entity.get("id", "")
-                if entity_id:
-                    all_ids.add(entity_id)
-
-        # Find dangling references
+        all_ids = self._collect_all_ids(data)
         dangling_refs = []
 
-        for entity_type in entity_types:
-            for entity in data.get(entity_type, []):
-                entity_id = entity.get("id", "")
-
-                for connection in entity.get("connections", []):
-                    target_id = connection.get("target_id", "")
-
-                    if target_id and target_id not in all_ids:
-                        dangling_refs.append(
-                            {
-                                "source_id": entity_id,
-                                "source_type": entity_type,
-                                "target_id": target_id,
-                                "confidence": connection.get("confidence_score", 0.0),
-                            }
-                        )
+        for entity_type, entity in self._iter_entities(data):
+            entity_id = entity.get("id", "")
+            for connection in entity.get("connections", []):
+                target_id = connection.get("target_id", "")
+                if target_id and target_id not in all_ids:
+                    dangling_refs.append(
+                        {
+                            "source_id": entity_id,
+                            "source_type": entity_type,
+                            "target_id": target_id,
+                            "confidence": str(connection.get("confidence_score", 0.0)),
+                        }
+                    )
 
         return dangling_refs
 
@@ -155,9 +178,8 @@ class IntegrityMetrics:
     ) -> dict[str, dict[str, float]]:
         """Analyze completeness of required and optional fields."""
         completeness = {}
-        entity_types = ["action_fields", "projects", "measures", "indicators"]
 
-        for entity_type in entity_types:
+        for entity_type in self.ENTITY_TYPES:
             entities = data.get(entity_type, [])
             if not entities:
                 completeness[entity_type] = {}
@@ -197,7 +219,7 @@ class IntegrityMetrics:
         field_counts = defaultdict(int)
 
         for entity in entities:
-            content = entity.get("content", {})
+            content = self._get_entity_content(entity)
             all_fields = set(content.keys()) | set(required_fields)
 
             for field in all_fields:
@@ -211,75 +233,38 @@ class IntegrityMetrics:
         """Check for invalid connection types between entities."""
         violations = []
 
-        # Define valid connection types
-        valid_connections = {
-            "af": ["proj"],  # Action fields can connect to projects
-            "proj": [
-                "af",
-                "msr",
-                "ind",
-            ],  # Projects to action fields, measures, indicators
-            "msr": [
-                "proj",
-                "af",
-                "ind",
-            ],  # Measures to projects, action fields, indicators
-            "ind": [
-                "proj",
-                "af",
-                "msr",
-            ],  # Indicators to projects, action fields, measures
-        }
+        for entity_type, entity in self._iter_entities(data):
+            source_type = self.TYPE_MAPPING[entity_type]
+            entity_id = entity.get("id", "")
 
-        entity_types = ["action_fields", "projects", "measures", "indicators"]
-        type_mapping = {
-            "action_fields": "af",
-            "projects": "proj",
-            "measures": "msr",
-            "indicators": "ind",
-        }
+            for connection in entity.get("connections", []):
+                target_id = connection.get("target_id", "")
 
-        for entity_type in entity_types:
-            source_type = type_mapping[entity_type]
+                if target_id:
+                    target_type = self._infer_type_from_id(target_id)
 
-            for entity in data.get(entity_type, []):
-                entity_id = entity.get("id", "")
-
-                for connection in entity.get("connections", []):
-                    target_id = connection.get("target_id", "")
-
-                    if target_id:
-                        # Infer target type from ID prefix
-                        target_type = self._infer_type_from_id(target_id)
-
-                        # Check if connection is valid
-                        if target_type not in valid_connections.get(
-                            source_type, []
-                        ) and source_type not in valid_connections.get(target_type, []):
-                            violations.append(
-                                {
-                                    "source_id": entity_id,
-                                    "source_type": source_type,
-                                    "target_id": target_id,
-                                    "target_type": target_type,
-                                    "violation": f"Invalid connection: {source_type} -> {target_type}",
-                                }
-                            )
+                    # Check if connection is valid
+                    if target_type not in self.VALID_CONNECTIONS.get(
+                        source_type, []
+                    ) and source_type not in self.VALID_CONNECTIONS.get(target_type, []):
+                        violations.append(
+                            {
+                                "source_id": entity_id,
+                                "source_type": source_type,
+                                "target_id": target_id,
+                                "target_type": target_type,
+                                "violation": f"Invalid connection: {source_type} -> {target_type}",
+                            }
+                        )
 
         return violations
 
     def _infer_type_from_id(self, entity_id: str) -> str:
         """Infer entity type from ID prefix."""
-        if entity_id.startswith("af_"):
-            return "af"
-        elif entity_id.startswith("proj_"):
-            return "proj"
-        elif entity_id.startswith("msr_"):
-            return "msr"
-        elif entity_id.startswith("ind_"):
-            return "ind"
-        else:
-            return "unknown"
+        for _entity_type, prefix in self.TYPE_MAPPING.items():
+            if entity_id.startswith(f"{prefix}_"):
+                return prefix
+        return "unknown"
 
     def _detect_duplicates(
         self, data: dict[str, Any]
@@ -288,9 +273,7 @@ class IntegrityMetrics:
         duplicate_groups = {}
         duplicate_rates = {}
 
-        entity_types = ["action_fields", "projects", "measures", "indicators"]
-
-        for entity_type in entity_types:
+        for entity_type in self.ENTITY_TYPES:
             entities = data.get(entity_type, [])
             if len(entities) < 2:
                 duplicate_groups[entity_type] = []
@@ -300,8 +283,7 @@ class IntegrityMetrics:
             # Extract names/titles for comparison
             entity_names = []
             for entity in entities:
-                content = entity.get("content", {})
-                name = content.get("title") or content.get("name", "")
+                name = self._get_entity_name(entity)
                 if name:
                     entity_names.append((entity.get("id", ""), name))
 

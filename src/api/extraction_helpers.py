@@ -105,21 +105,21 @@ CONSOLIDATE_EXAMPLES = """NUR DIESE FÄLLE konsolidieren:
 # ============================================================================
 
 def prepare_chunks_for_extraction(
-    page_aware_text: list[tuple[str, int]], 
+    page_aware_text: list[tuple[str, int]],
     source_id: str,
     max_chars: int,
     min_chars: int,
     max_chunks: int
 ) -> list[tuple[str, list[int]]]:
     """Prepare chunks for extraction with shared logic."""
-    from src.processing.chunker import chunk_for_llm_with_pages
     from src.core.config import ENHANCED_CHUNK_OVERLAP
-    
+    from src.processing.chunker import chunk_for_llm_with_pages
+
     if not page_aware_text:
         raise ValueError("No page-aware text provided")
-    
+
     print(f"📝 Chunking with settings: {min_chars}-{max_chars} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap")
-    
+
     chunks_with_pages = chunk_for_llm_with_pages(
         page_aware_text=page_aware_text,
         max_chars=max_chars,
@@ -127,15 +127,15 @@ def prepare_chunks_for_extraction(
         doc_title=f"Strategiedokument {source_id}",
         add_overlap=True,
     )
-    
+
     if not chunks_with_pages:
         raise ValueError("No chunks created from text")
-    
+
     # Apply chunk limit for performance
     if len(chunks_with_pages) > max_chunks:
         print(f"⚡ Using first {max_chunks} chunks (performance mode)")
         chunks_with_pages = chunks_with_pages[:max_chunks]
-    
+
     print(f"📄 Processing {len(chunks_with_pages)} chunks")
     return chunks_with_pages
 
@@ -192,7 +192,7 @@ def format_context_json(context_data) -> str:
     """Format context data as JSON string for prompts."""
     if not context_data:
         return "Noch keine Strukturen extrahiert - dies ist der erste Chunk."
-    
+
     import json
     context_json_str = json.dumps(
         context_data.model_dump() if hasattr(context_data, "model_dump") else context_data,
@@ -223,11 +223,11 @@ TEXT:
 {chunk_text}
 
 Erstellen Sie die 4-Bucket-Struktur mit KORREKTER HIERARCHIE und unter Verwendung der bereits bekannten Handlungsfelder, wo zutreffend."""
-    
+
     elif template_type == "operations":
         context_text = format_context_json(context_data) if context_data else "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
         page_list = ", ".join(map(str, sorted(page_numbers))) if page_numbers else "N/A"
-        
+
         return f"""Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.
 
 {context_text}
@@ -254,7 +254,7 @@ QUALITÄTSKONTROLLE:
 
 Antworten Sie NUR mit der Operations-Liste im JSON-Format:
 {{"operations": [...]}}"""
-    
+
     else:
         raise ValueError(f"Unknown template type: {template_type}")
 
@@ -611,29 +611,8 @@ def rebuild_enhanced_structure_from_resolved(
     id_counters = {"af": 0, "proj": 0, "msr": 0, "ind": 0}
 
     def get_unique_id(prefix: str, title: str) -> str:
-        """Generate guaranteed unique ID"""
-        # Try sequential numbering
-        for i in range(1, 10000):  # Reasonable upper limit
-            candidate_id = f"{prefix}_{i}"
-            if candidate_id not in used_ids:
-                used_ids.add(candidate_id)
-                id_counters[prefix] = max(id_counters[prefix], i)
-                return candidate_id
-
-        # Fallback with title hash if sequential fails
-        import hashlib
-
-        hash_suffix = hashlib.md5(title.encode()).hexdigest()[:4]
-        candidate_id = f"{prefix}_{hash_suffix}"
-
-        # Ensure even hash-based IDs are unique
-        counter = 1
-        while candidate_id in used_ids:
-            candidate_id = f"{prefix}_{hash_suffix}_{counter}"
-            counter += 1
-
-        used_ids.add(candidate_id)
-        return candidate_id
+        """Generate guaranteed unique ID using shared utility"""
+        return create_unique_entity_id(prefix, title, used_ids, id_counters)
 
     # Build new enhanced structure
     new_action_fields = []
@@ -920,28 +899,10 @@ def extract_direct_to_enhanced(
         return None
 
     # Step 1: Create smaller chunks optimized for focused extraction
-    print(
-        f"📝 Chunking with enhanced settings: {ENHANCED_CHUNK_MIN_CHARS}-{ENHANCED_CHUNK_MAX_CHARS} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap"
+    chunks_with_pages = prepare_chunks_for_extraction(
+        page_aware_text, source_id, ENHANCED_CHUNK_MAX_CHARS,
+        ENHANCED_CHUNK_MIN_CHARS, FAST_EXTRACTION_MAX_CHUNKS
     )
-
-    chunks_with_pages = chunk_for_llm_with_pages(
-        page_aware_text=page_aware_text,
-        max_chars=ENHANCED_CHUNK_MAX_CHARS,
-        min_chars=ENHANCED_CHUNK_MIN_CHARS,
-        doc_title=f"Strategiedokument {source_id}",
-        add_overlap=True,  # Use minimal overlap
-    )
-
-    if not chunks_with_pages:
-        print("⚠️ No chunks created from text")
-        return None
-
-    # Apply chunk limit for performance
-    if len(chunks_with_pages) > FAST_EXTRACTION_MAX_CHUNKS:
-        print(f"⚡ Using first {FAST_EXTRACTION_MAX_CHUNKS} chunks (performance mode)")
-        chunks_with_pages = chunks_with_pages[:FAST_EXTRACTION_MAX_CHUNKS]
-
-    print(f"📄 Processing {len(chunks_with_pages)} chunks")
 
     # Step 2: Extract from each chunk using simplified prompts
     # Initialize Global Entity Registry for consistency across chunks
@@ -961,48 +922,38 @@ def extract_direct_to_enhanced(
         accumulated_json = merge_enhanced_results(all_results) if all_results else None
 
         # Create context-aware extraction prompt with full JSON structure
-        system_message = create_simplified_system_message_with_context()
-        main_prompt = create_simplified_extraction_prompt_with_context(
-            chunk_text, accumulated_json
-        )
+        system_message = EXTRACTION_SYSTEM_MESSAGE
+        main_prompt = create_extraction_prompt("simplified", chunk_text, accumulated_json)
 
         # Enhanced log context
         enhanced_log_context = f"direct_enhanced_{source_id}_chunk_{i+1}"
 
-        try:
-            result = llm_provider.query_structured(
-                prompt=main_prompt,
-                response_model=EnrichedReviewJSON,
-                system_message=system_message,
-                log_file_path=log_file_path,
-                log_context=enhanced_log_context,
+        result = execute_llm_extraction(
+            llm_provider, main_prompt, EnrichedReviewJSON, system_message,
+            log_file_path, enhanced_log_context, i
+        )
+
+        if result:
+            # Register action field entities in the global registry
+            for action_field in result.action_fields:
+                # Handle both 'name' and 'title' fields (LLM outputs to 'title')
+                original_name = action_field.content.get(
+                    "name"
+                ) or action_field.content.get("title", "")
+                if original_name:
+                    canonical_name = global_registry.register_entity(original_name)
+                    # Write back to BOTH fields for compatibility
+                    action_field.content["name"] = canonical_name
+                    action_field.content["title"] = canonical_name
+
+            # Add page attribution to all entities
+            add_page_attribution_to_enhanced_result(result, page_numbers)
+            all_results.append(result)
+            print(
+                f"✅ Chunk {i+1}: {len(result.action_fields)} action fields, {len(result.projects)} projects, {len(result.indicators)} indicators"
             )
-
-            if result:
-                # Register action field entities in the global registry
-                for action_field in result.action_fields:
-                    # Handle both 'name' and 'title' fields (LLM outputs to 'title')
-                    original_name = action_field.content.get(
-                        "name"
-                    ) or action_field.content.get("title", "")
-                    if original_name:
-                        canonical_name = global_registry.register_entity(original_name)
-                        # Write back to BOTH fields for compatibility
-                        action_field.content["name"] = canonical_name
-                        action_field.content["title"] = canonical_name
-
-                # Add page attribution to all entities
-                add_page_attribution_to_enhanced_result(result, page_numbers)
-                all_results.append(result)
-                print(
-                    f"✅ Chunk {i+1}: {len(result.action_fields)} action fields, {len(result.projects)} projects, {len(result.indicators)} indicators"
-                )
-            else:
-                print(f"⚠️ No result from chunk {i+1}")
-
-        except Exception as e:
-            print(f"❌ Error processing chunk {i+1}: {e}")
-            continue
+        else:
+            print(f"⚠️ No result from chunk {i+1}")
 
     if not all_results:
         print("❌ No successful extractions")
@@ -1098,28 +1049,10 @@ def extract_direct_to_enhanced_with_operations(
         return None
 
     # Step 1: Create smaller chunks optimized for focused extraction
-    print(
-        f"📝 Chunking with enhanced settings: {ENHANCED_CHUNK_MIN_CHARS}-{ENHANCED_CHUNK_MAX_CHARS} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap"
+    chunks_with_pages = prepare_chunks_for_extraction(
+        page_aware_text, source_id, ENHANCED_CHUNK_MAX_CHARS,
+        ENHANCED_CHUNK_MIN_CHARS, FAST_EXTRACTION_MAX_CHUNKS
     )
-
-    chunks_with_pages = chunk_for_llm_with_pages(
-        page_aware_text=page_aware_text,
-        max_chars=ENHANCED_CHUNK_MAX_CHARS,
-        min_chars=ENHANCED_CHUNK_MIN_CHARS,
-        doc_title=f"Strategiedokument {source_id}",
-        add_overlap=True,
-    )
-
-    if not chunks_with_pages:
-        print("⚠️ No chunks created from text")
-        return None
-
-    # Apply chunk limit for performance
-    if len(chunks_with_pages) > FAST_EXTRACTION_MAX_CHUNKS:
-        print(f"⚡ Using first {FAST_EXTRACTION_MAX_CHUNKS} chunks (performance mode)")
-        chunks_with_pages = chunks_with_pages[:FAST_EXTRACTION_MAX_CHUNKS]
-
-    print(f"📄 Processing {len(chunks_with_pages)} chunks")
 
     # Step 2: Initialize empty extraction state and operations executor
     current_state = EnrichedReviewJSON(
@@ -1137,94 +1070,83 @@ def extract_direct_to_enhanced_with_operations(
         )
 
         # Create operations-focused prompt
-        system_message = create_operations_system_message()
-        main_prompt = create_operations_extraction_prompt(
-            chunk_text, current_state, page_numbers
-        )
+        system_message = OPERATIONS_SYSTEM_MESSAGE
+        main_prompt = create_extraction_prompt("operations", chunk_text, current_state, page_numbers)
 
         # Enhanced log context
         enhanced_log_context = f"operations_{source_id}_chunk_{i+1}"
 
-        try:
-            # Get operations from LLM
-            operations_result = llm_provider.query_structured(
-                prompt=main_prompt,
-                response_model=ExtractionOperations,
-                system_message=system_message,
-                log_file_path=log_file_path,
-                log_context=enhanced_log_context,
+        operations_result = execute_llm_extraction(
+            llm_provider, main_prompt, ExtractionOperations, system_message,
+            log_file_path, enhanced_log_context, i
+        )
+
+        if operations_result and operations_result.operations:
+            # Filter out invalid operations instead of skipping entire chunk
+            from src.extraction.operations_executor import validate_operations
+
+            validation_errors = validate_operations(
+                operations_result.operations, current_state
             )
 
-            if operations_result and operations_result.operations:
-                # Filter out invalid operations instead of skipping entire chunk
-                from src.extraction.operations_executor import validate_operations
-
-                validation_errors = validate_operations(
-                    operations_result.operations, current_state
+            if validation_errors:
+                print(
+                    f"⚠️ Chunk {i+1}: {len(validation_errors)} operation validation errors:"
                 )
+                for error in validation_errors[:3]:  # Show first 3 errors
+                    print(f"   - {error}")
+                if len(validation_errors) > 3:
+                    print(f"   - ... and {len(validation_errors) - 3} more errors")
 
-                if validation_errors:
-                    print(
-                        f"⚠️ Chunk {i+1}: {len(validation_errors)} operation validation errors:"
+                # Filter out invalid operations - validate each operation individually
+                valid_operations = []
+                for op in operations_result.operations:
+                    single_op_errors = validate_operations([op], current_state)
+                    if not single_op_errors:
+                        valid_operations.append(op)
+
+                print(
+                    f"   Proceeding with {len(valid_operations)}/{len(operations_result.operations)} valid operations"
+                )
+                operations_result.operations = valid_operations
+
+            if (
+                operations_result.operations
+            ):  # Only proceed if we have valid operations
+                # Apply validated operations to current state
+                try:
+                    new_state, operation_log = executor.apply_operations(
+                        current_state, operations_result.operations, chunk_index=i
                     )
-                    for error in validation_errors[:3]:  # Show first 3 errors
-                        print(f"   - {error}")
-                    if len(validation_errors) > 3:
-                        print(f"   - ... and {len(validation_errors) - 3} more errors")
 
-                    # Filter out invalid operations - validate each operation individually
-                    valid_operations = []
-                    for op in operations_result.operations:
-                        single_op_errors = validate_operations([op], current_state)
-                        if not single_op_errors:
-                            valid_operations.append(op)
+                    # Only update current_state if operations were successfully applied
+                    if operation_log.successful_operations > 0:
+                        current_state = new_state
+                        all_operation_logs.append(operation_log)
 
-                    print(
-                        f"   Proceeding with {len(valid_operations)}/{len(operations_result.operations)} valid operations"
-                    )
-                    operations_result.operations = valid_operations
-
-                if (
-                    operations_result.operations
-                ):  # Only proceed if we have valid operations
-                    # Apply validated operations to current state
-                    try:
-                        new_state, operation_log = executor.apply_operations(
-                            current_state, operations_result.operations, chunk_index=i
+                        print(
+                            f"✅ Chunk {i+1}: {operation_log.successful_operations}/{operation_log.total_operations} operations applied"
                         )
+                        print(
+                            f"📊 Current state: {len(current_state.action_fields)} action fields, "
+                            f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
+                            f"{len(current_state.indicators)} indicators"
+                        )
+                    else:
+                        print(
+                            f"⚠️ Chunk {i+1}: No operations succeeded, keeping previous state"
+                        )
+                        all_operation_logs.append(operation_log)
 
-                        # Only update current_state if operations were successfully applied
-                        if operation_log.successful_operations > 0:
-                            current_state = new_state
-                            all_operation_logs.append(operation_log)
-
-                            print(
-                                f"✅ Chunk {i+1}: {operation_log.successful_operations}/{operation_log.total_operations} operations applied"
-                            )
-                            print(
-                                f"📊 Current state: {len(current_state.action_fields)} action fields, "
-                                f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
-                                f"{len(current_state.indicators)} indicators"
-                            )
-                        else:
-                            print(
-                                f"⚠️ Chunk {i+1}: No operations succeeded, keeping previous state"
-                            )
-                            all_operation_logs.append(operation_log)
-
-                    except Exception as op_error:
-                        print(f"❌ Chunk {i+1}: Error applying operations: {op_error}")
-                        print("   Keeping previous state to preserve integrity")
-                        continue
-                else:
-                    print(f"⚠️ Chunk {i+1}: All operations filtered out, skipping")
-
+                except Exception as op_error:
+                    print(f"❌ Chunk {i+1}: Error applying operations: {op_error}")
+                    print("   Keeping previous state to preserve integrity")
+                    continue
             else:
-                print(f"⚠️ No operations from chunk {i+1}")
+                print(f"⚠️ Chunk {i+1}: All operations filtered out, skipping")
 
-        except Exception as e:
-            print(f"❌ Error processing chunk {i+1}: {e}")
-            continue
+        else:
+            print(f"⚠️ No operations from chunk {i+1}")
 
     # Step 4: Final statistics and return
     extraction_time = time.time() - start_time
@@ -1244,264 +1166,6 @@ def extract_direct_to_enhanced_with_operations(
 
     # Return in same format as other endpoints for visualization tool compatibility
     return current_state.model_dump()
-
-
-def create_simplified_system_message_with_context() -> str:
-    """Create context-aware system message that emphasizes consistency with existing entities."""
-    return """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten und Indikatoren aus deutschen kommunalen Strategiedokumenten.
-
-HIERARCHISCHE STRUKTUR - KRITISCH WICHTIG:
-- Handlungsfelder (action_fields): BREITE STRATEGISCHE BEREICHE (max. 8-15 Stück)
-  → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
-    → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
-      → Indikatoren: Messbare Kennzahlen
-
-KONSISTENZ-REGEL (KRITISCH WICHTIG):
-- Falls Sie Konzepte finden, die zu bereits bekannten Handlungsfeldern gehören, verwenden Sie die EXAKTEN Namen der bekannten Handlungsfelder
-- Erstellen Sie NUR neue Handlungsfelder, wenn sie wirklich einzigartig sind
-- Bei ähnlichen Begriffen verwenden Sie die bereits bekannte Variante
-
-Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das dem vorgegebenen Schema entspricht. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
-
-
-def create_simplified_extraction_prompt_with_context(
-    chunk_text: str, accumulated_json
-) -> str:
-    """Create context-aware extraction prompt that includes full accumulated extraction state."""
-
-    if accumulated_json:
-        # Format the full JSON structure for the LLM
-        import json
-
-        accumulated_json_str = json.dumps(
-            (
-                accumulated_json.model_dump()
-                if hasattr(accumulated_json, "model_dump")
-                else accumulated_json
-            ),
-            indent=2,
-            ensure_ascii=False,
-        )
-        context_text = f"""AKTUELLER EXTRAKTIONSSTAND (bisher gefundene Strukturen):
-{accumulated_json_str}
-
-WICHTIG: Erweitern Sie diese bestehende Struktur. Verwenden Sie exakte IDs und Namen aus dem obigen JSON. Erstellen Sie Verbindungen zu bestehenden Entities."""
-    else:
-        context_text = "Noch keine Strukturen extrahiert - dies ist der erste Chunk."
-
-    return f"""Extrahieren Sie aus diesem Textabschnitt die HIERARCHISCH KORREKTEN Strukturen.
-
-{context_text}
-
-KONSISTENZ-ANWEISUNGEN:
-- Falls Sie Konzepte finden, die zu den bereits bekannten Handlungsfeldern gehören, verwenden Sie die EXAKTEN Namen der bekannten Handlungsfelder
-- Erstellen Sie NUR neue Handlungsfelder, wenn sie wirklich einzigartig sind und nicht den bekannten zugeordnet werden können
-- Bei ähnlichen Begriffen (z.B. "Wirtschaft & Wissenschaft" vs "Wirtschaft und Wissenschaft") verwenden Sie die bereits bekannte Variante
-
-KRITISCH: Handlungsfelder sind NUR breite strategische Bereiche (max. 8-15 total), NICHT spezifische Projekte!
-
-TEXT:
-{chunk_text}
-
-Erstellen Sie die 4-Bucket-Struktur mit KORREKTER HIERARCHIE und unter Verwendung der bereits bekannten Handlungsfelder, wo zutreffend."""
-
-
-def create_operations_system_message() -> str:
-    """Create system message for operations-based extraction."""
-    return """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten, Maßnahmen und Indikatoren aus deutschen kommunalen Strategiedokumenten.
-
-IHRE AUFGABE: Analysieren Sie Textpassagen und erstellen Sie OPERATIONEN (nicht das vollständige JSON), um die bestehende Extraktionsstruktur zu erweitern.
-
-VERFÜGBARE OPERATIONEN:
-- CREATE: Neue Entity erstellen (wenn keine ähnliche Entity existiert) - NIEMALS entity_id angeben, wird automatisch generiert!
-- UPDATE: Bestehende Entity anreichern (neue Felder hinzufügen, Texte erweitern, Listen ergänzen) - entity_id erforderlich
-- CONNECT: Verbindungen zwischen Entities erstellen (auch bestehende Entities können neue Verbindungen erhalten) - connections erforderlich
-
-HIERARCHISCHE STRUKTUR:
-- Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE
-  → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
-    → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
-      → Indikatoren: Messbare Kennzahlen für Projekte/Maßnahmen
-
-KRITISCHE VERBINDUNGSREGELN:
-- CONNECT-Operationen zu bestehenden UND neu erstellten Entities sind ERWÜNSCHT!
-- Verwenden Sie exakte Entity-IDs aus AKTUELLER EXTRAKTIONSSTAND
-- Neue Verbindungen zu bereits vorhandenen Entities sind ein ZIEL - nutzen Sie diese aktiv!
-- CONNECT-Operationen erfordern Konfidenz ≥ 0.7 und klaren thematischen Zusammenhang
-
-ENTSCHEIDUNGSLOGIK (in dieser Reihenfolge):
-1. Prüfen Sie AKTUELLER EXTRAKTIONSSTAND: Existiert ähnliche Entity? → UPDATE verwenden
-2. Falls keine Ähnlichkeit: CREATE mit kanonischem Titel
-3. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
-4. Bevorzugen Sie UPDATE über CREATE bei semantischer Überlappung
-
-QUALITÄTSPRINZIPIEN:
-- Verwenden Sie exakte Entity-IDs aus dem gegebenen Kontext
-- Fügen Sie immer Quellenangaben (source_pages, source_quote) hinzu
-- Seien Sie konservativ bei neuen Handlungsfeldern
-- Bei Unsicherheit: UPDATE verwenden statt CREATE
-- Erstellen Sie CONNECT-Operationen wann immer thematische Zusammenhänge erkennbar sind
-
-Antworten Sie AUSSCHLIESSLICH mit der Operations-Liste im JSON-Format."""
-
-
-def create_operations_extraction_prompt(
-    chunk_text: str, current_state: dict, page_numbers: list[int]
-) -> str:
-    """Create operations-focused extraction prompt."""
-
-    import json
-
-    # Format current state for display
-    if hasattr(current_state, "action_fields") and (
-        current_state.action_fields
-        or current_state.projects
-        or current_state.measures
-        or current_state.indicators
-    ):
-
-        current_json_str = json.dumps(
-            (
-                current_state.model_dump()
-                if hasattr(current_state, "model_dump")
-                else current_state
-            ),
-            indent=2,
-            ensure_ascii=False,
-        )
-        context_text = f"""AKTUELLER EXTRAKTIONSSTAND:
-{current_json_str}
-
-ANWEISUNG: Analysieren Sie den Text und erstellen Sie Operationen zur Erweiterung dieser Struktur."""
-    else:
-        context_text = "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
-
-    page_list = ", ".join(map(str, sorted(page_numbers)))
-
-    return f"""Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.
-
-{context_text}
-
-VERPFLICHTENDE PRÜFUNG vor jeder CREATE-Operation:
-1. Scannen Sie AKTUELLER EXTRAKTIONSSTAND vollständig nach ähnlichen Entities
-2. Bei semantischer Überlappung: UPDATE verwenden statt CREATE
-3. Nur CREATE wenn wirklich einzigartig und keine UPDATE-Möglichkeit besteht
-
-VERBINDUNGSREGELN (KRITISCH):
-- CONNECT-Operationen sind das ZIEL - erstellen Sie sie aktiv!
-- Verbindungen zu bestehenden UND neuen Entities sind gewünscht
-- Suchen Sie aktiv nach thematischen Zusammenhängen für Verbindungen
-
-TEXTABSCHNITT (Seiten {page_list}):
-{chunk_text}
-
-OPERATIONEN-BEISPIELE:
-
-CREATE mit Verbindungsabsicht (falls keine ähnliche Entity existiert):
-{{
-  "operation": "CREATE",
-  "entity_type": "project",
-  "content": {{"title": "Radverkehrsnetz Ausbau", "description": "Ausbau des städtischen Radwegenetzes"}},
-  "source_pages": [{page_list}],
-  "source_quote": "Kurzer relevanter Textauszug (max. 50 Wörter)",
-  "confidence": 0.9,
-  "reason": "Soll später mit Handlungsfeld 'Mobilität' (af_2) verbunden werden"
-}}
-
-UPDATE bevorzugt bei semantischer Ähnlichkeit:
-{{
-  "operation": "UPDATE",
-  "entity_type": "project",
-  "entity_id": "proj_1",
-  "content": {{"description": "Erweiterte Beschreibung mit neuen Details", "budget": "2.5M EUR"}},
-  "source_pages": [{page_list}],
-  "source_quote": "Zusätzlicher Textauszug (max. 50 Wörter)",
-  "confidence": 0.8,
-  "reason": "Anreicherung mit Budgetinformation aus neuem Textabschnitt"
-}}
-
-CONNECT nur zwischen bestehenden Entities (beide IDs im aktuellen Stand):
-{{
-  "operation": "CONNECT",
-  "entity_type": "project",
-  "connections": [
-    {{"from_id": "proj_2", "to_id": "af_1", "confidence": 0.85}},
-    {{"from_id": "proj_2", "to_id": "ind_3", "confidence": 0.9}}
-  ],
-  "confidence": 0.8,
-  "reason": "Klare thematische Zugehörigkeit aus Textkontext ersichtlich"
-}}
-
-QUALITÄTSKONTROLLE:
-- Verwenden Sie NUR exakte Entity-IDs aus AKTUELLER EXTRAKTIONSSTAND
-- Fügen Sie IMMER source_pages und source_quote hinzu (außer bei CONNECT)
-- Konfidenz ≥ 0.7 für CONNECT, ≥ 0.8 für CREATE
-- Bevorzugen Sie UPDATE über CREATE bei jeder semantischen Überlappung
-- Kanonische Titel verwenden für bessere spätere Verknüpfung
-
-Antworten Sie NUR mit der Operations-Liste im JSON-Format:
-{{"operations": [...]}}"""
-
-
-def add_page_attribution_to_enhanced_result(
-    result, page_numbers: list[int]  # EnrichedReviewJSON
-) -> None:
-    """Add page attribution to all entities in enhanced result."""
-    page_str = f"Seiten {', '.join(map(str, sorted(page_numbers)))}"
-
-    # Add page attribution to all entity types
-    for entity_list in [
-        result.action_fields,
-        result.projects,
-        result.measures,
-        result.indicators,
-    ]:
-        for entity in entity_list:
-            if "page_source" not in entity.content:
-                entity.content["page_source"] = page_str
-
-
-def merge_enhanced_results(results: list) -> dict | None:  # EnrichedReviewJSON type
-    """Merge multiple enhanced results with simple concatenation."""
-    if not results:
-        return None
-
-    if len(results) == 1:
-        return results[0]
-
-    # Import here to avoid circular imports
-    from src.core.schemas import EnrichedReviewJSON
-
-    # Simple merge - concatenate all lists
-    merged = EnrichedReviewJSON(
-        action_fields=[], projects=[], measures=[], indicators=[]
-    )
-
-    entity_counter = {"af": 0, "proj": 0, "msr": 0, "ind": 0}
-
-    for result in results:
-        # Reassign IDs to avoid conflicts
-        for af in result.action_fields:
-            entity_counter["af"] += 1
-            af.id = f"af_{entity_counter['af']}"
-            merged.action_fields.append(af)
-
-        for proj in result.projects:
-            entity_counter["proj"] += 1
-            proj.id = f"proj_{entity_counter['proj']}"
-            merged.projects.append(proj)
-
-        for msr in result.measures:
-            entity_counter["msr"] += 1
-            msr.id = f"msr_{entity_counter['msr']}"
-            merged.measures.append(msr)
-
-        for ind in result.indicators:
-            entity_counter["ind"] += 1
-            ind.id = f"ind_{entity_counter['ind']}"
-            merged.indicators.append(ind)
-
-    return merged
 
 
 def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
@@ -1579,12 +1243,13 @@ def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
 # ============================================================================
 
 import os
-import aiofiles
-from datetime import datetime, timezone
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Any, Optional
-from fastapi.responses import JSONResponse
+
+import aiofiles
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
 
 def create_error_response(
@@ -1596,15 +1261,15 @@ def create_error_response(
     start_time: float,
     monitor: Any,
     stage: str,
-    suggestion: Optional[str] = None,
+    suggestion: str | None = None,
 ) -> JSONResponse:
     """Create standardized error response with logging and monitoring."""
     from src.utils import log_api_response
-    
+
     monitor.log_error(stage, exception)
     response_time = time.time() - start_time
     log_api_response(endpoint, status_code, response_time)
-    
+
     content = {
         "error": error_type,
         "detail": str(exception),
@@ -1612,7 +1277,7 @@ def create_error_response(
     }
     if suggestion:
         content["suggestion"] = suggestion
-    
+
     return JSONResponse(content=content, status_code=status_code)
 
 
@@ -1641,8 +1306,9 @@ def monitor_stage(monitor: Any, stage_name: str, **kwargs):
 def _load_pages_from_file(source_id: str) -> list[tuple[str, int]]:
     """Load page-aware text from the saved pages file."""
     import re
+
     from src.core import UPLOAD_FOLDER
-    
+
     pages_filename = os.path.splitext(source_id)[0] + "_pages.txt"
     pages_path = os.path.join(UPLOAD_FOLDER, pages_filename)
 
@@ -1677,11 +1343,11 @@ async def load_and_validate_pages(source_id: str, monitor: Any) -> list[tuple[st
     """Load and validate page-aware text, with monitoring."""
     with monitor_stage(monitor, "file_loading", source_id=source_id):
         page_aware_text = _load_pages_from_file(source_id)
-        
+
         if not page_aware_text:
             pages_filename = os.path.splitext(source_id)[0] + "_pages.txt"
             raise ValueError(f"No valid page content found in {pages_filename}")
-        
+
         print(f"📄 Loaded {len(page_aware_text)} pages from page-aware text file")
         return page_aware_text
 
@@ -1691,14 +1357,14 @@ def create_success_response(
     source_id: str,
     extraction_result: dict,
     start_time: float,
-    additional_fields: Optional[dict] = None,
+    additional_fields: dict | None = None,
 ) -> JSONResponse:
     """Create standardized success response with logging."""
     from src.utils import log_api_response
-    
+
     response_time = time.time() - start_time
     log_api_response(endpoint, 200, response_time)
-    
+
     response_data = {
         "source_id": source_id,
         "extraction_result": extraction_result,
@@ -1706,7 +1372,7 @@ def create_success_response(
     }
     if additional_fields:
         response_data.update(additional_fields)
-    
+
     return JSONResponse(
         content=jsonable_encoder(response_data),
         status_code=200,
