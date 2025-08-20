@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Key Documentation
+
+**Operations-Based Extraction Guide**: See `OPERATIONS_BASED_EXTRACTION.md` for comprehensive implementation guide on context-aware operations extraction - the critical missing piece for entity consistency across chunks.
+
+**LLM Graph Generation Research**: See `LLM_GRAPH_GENERATION_RESEARCH.md` for state-of-the-art research analysis on LLM-based knowledge graph generation, validation techniques, and best practices.
+
 ## Project Overview
 
 CURATE is a PDF Strategy Extractor that processes German municipal strategy documents using advanced LLMs via OpenRouter (default) or local providers. It extracts structured data (action fields, projects, measures, indicators) from PDFs through a multi-stage extraction pipeline. The system uses intelligent text extraction with OCR fallback, structure-aware chunking, and progressive LLM-based extraction with Pydantic schemas.
