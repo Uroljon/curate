@@ -10,7 +10,7 @@ With optional structure-aware chunking when PDF path is available.
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from src.core.constants import ACTION_FIELD_PATTERNS, INDICATOR_PATTERNS
 from src.utils.text import is_heading
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from unstructured.partition.pdf import partition_pdf
 else:
     try:
-        from unstructured.documents.elements import Element, NarrativeText, Title
+        from unstructured.documents.elements import Element, Title
         from unstructured.partition.pdf import partition_pdf
 
         UNSTRUCTURED_AVAILABLE = True

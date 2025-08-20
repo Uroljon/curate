@@ -14,7 +14,6 @@ from typing import Any
 from src.core.config import (
     AGGREGATION_CHUNK_SIZE,
     CONFIDENCE_THRESHOLD,
-    MIN_QUOTE_LENGTH,
     QUOTE_MATCH_THRESHOLD,
     USE_CHAIN_OF_THOUGHT,
 )
@@ -25,74 +24,6 @@ from src.extraction.structure_extractor import (
     extract_projects_for_field,
     extract_structures_with_retry,
 )
-
-
-def extract_all_action_fields(
-    chunks: list[str],
-    log_file_path: str | None = None,
-    log_context_prefix: str | None = None,
-) -> list[str]:
-    """
-    Stage 1: Extract action fields from chunks.
-
-    Args:
-        chunks: List of text chunks
-
-    Returns:
-        List of action field names
-    """
-    print("=" * 60)
-    print("STAGE 1: DISCOVERING ACTION FIELDS")
-    print("=" * 60)
-
-    action_fields = extract_action_fields_only(
-        chunks, log_file_path, log_context_prefix
-    )
-
-    if not action_fields:
-        print("⚠️ No action fields found in Stage 1")
-
-    return action_fields
-
-
-def extract_projects_and_details(
-    chunks: list[str],
-    action_fields: list[str],
-    log_file_path: str | None = None,
-    log_context_prefix: str | None = None,
-) -> list[dict[str, Any]]:
-    """
-    Stage 2 & 3: Extract projects and their details for each action field.
-
-    Args:
-        chunks: List of text chunks
-        action_fields: List of action field names
-
-    Returns:
-        List of action field data with projects and details
-    """
-    all_extracted_data = []
-
-    for field_idx, action_field in enumerate(action_fields):
-        print(f"\n{'=' * 60}")
-        print(
-            f"STAGE 2: EXTRACTING PROJECTS FOR '{action_field}' ({field_idx + 1}/{len(action_fields)})"
-        )
-        print("=" * 60)
-
-        projects = extract_projects_for_field(chunks, action_field)
-
-        if not projects:
-            print(f"   ⚠️ No projects found for {action_field}")
-            continue
-
-        # Stage 3: Extract details for each project
-        action_field_data = extract_project_details_for_field(
-            chunks, action_field, projects
-        )
-        all_extracted_data.append(action_field_data)
-
-    return all_extracted_data
 
 
 def extract_project_details_for_field(
@@ -380,7 +311,6 @@ def perform_single_aggregation(
     """
     Perform a single aggregation pass on JSON data.
     """
-    from src.core.config import MODEL_TEMPERATURE
     from src.core.llm_providers import get_llm_provider
     from src.core.schemas import ExtractionResult
 
@@ -561,227 +491,10 @@ def merge_project_details(existing_projects: list[dict], new_project: dict) -> N
             break
 
 
-def print_extraction_summary(
-    all_extracted_data: list[dict[str, Any]], chunk_count: int
-) -> None:
-    """
-    Print summary of extraction results.
-
-    Args:
-        all_extracted_data: List of extracted action field data
-        chunk_count: Number of chunks processed
-    """
-    total_projects = sum(len(af["projects"]) for af in all_extracted_data)
-    projects_with_indicators = sum(
-        1 for af in all_extracted_data for p in af["projects"] if p.get("indicators")
-    )
-
-    print(f"\n{'=' * 60}")
-    print("EXTRACTION SUMMARY")
-    print("=" * 60)
-    print(f"📊 Action fields: {len(all_extracted_data)}")
-    print(f"📁 Total projects: {total_projects}")
-    print(f"📍 Projects with indicators: {projects_with_indicators}")
-    print(f"📄 Chunks processed: {chunk_count}")
-    print("=" * 60)
 
 
-def process_chunks_for_fast_extraction(
-    chunks: list[str], max_chunks: int | None = None
-) -> tuple[list[dict[str, Any]], int]:
-    """
-    Process chunks for fast extraction with optional limiting.
-
-    Args:
-        chunks: List of text chunks
-        max_chunks: Optional limit on number of chunks to process
-
-    Returns:
-        Tuple of (all_extracted_data, actual_chunks_processed)
-    """
-    all_extracted_data = []
-
-    # Apply chunk limit if configured
-    chunks_to_process = chunks
-    if max_chunks and max_chunks > 0:
-        chunks_to_process = chunks[:max_chunks]
-        print(
-            f"⚡ Fast extraction: Processing first {len(chunks_to_process)} of {len(chunks)} chunks"
-        )
-
-    # Process chunks
-    for i, chunk in enumerate(chunks_to_process):
-        print(f"\n📄 Processing chunk {i + 1}/{len(chunks_to_process)}...")
-        chunk_data = extract_structures_with_retry(chunk)
-
-        if chunk_data:
-            all_extracted_data.extend(chunk_data)
-            print(f"   ✓ Extracted {len(chunk_data)} action fields from chunk {i + 1}")
-        else:
-            print(f"   ✗ No structures extracted from chunk {i + 1}")
-
-    return all_extracted_data, len(chunks_to_process)
 
 
-def merge_extraction_results(
-    all_extracted_data: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """
-    Merge extraction results by action field name.
-
-    Args:
-        all_extracted_data: List of extraction results from all chunks
-
-    Returns:
-        Dictionary mapping action field names to merged data
-    """
-    merged_structures: dict[str, Any] = {}
-
-    for item in all_extracted_data:
-        if not isinstance(item, dict) or "action_field" not in item:
-            continue
-
-        field_name = item["action_field"]
-
-        if field_name in merged_structures:
-            # Merge projects
-            existing_projects = merged_structures[field_name].get("projects", [])
-            new_projects = item.get("projects", [])
-
-            # Deduplicate by title
-            existing_titles = {
-                p.get("title")
-                for p in existing_projects
-                if isinstance(p, dict) and p.get("title")
-            }
-
-            for project in new_projects:
-                if (
-                    isinstance(project, dict)
-                    and project.get("title")
-                    and project["title"] not in existing_titles
-                ):
-                    existing_projects.append(project)
-                    existing_titles.add(project["title"])
-                elif (
-                    isinstance(project, dict)
-                    and project.get("title")
-                    and project["title"] in existing_titles
-                ):
-                    # Merge details for duplicate project
-                    for existing_proj in existing_projects:
-                        if existing_proj.get("title") == project["title"]:
-                            merge_project_details([existing_proj], project)
-                            break
-        else:
-            merged_structures[field_name] = item
-
-    return merged_structures
-
-
-class ExtractionChangeTracker:
-    """Track changes in extraction results across chunks."""
-
-    def __init__(self):
-        self.history = []
-
-    def track_changes(
-        self, old_data: dict[str, Any], new_data: dict[str, Any], chunk_index: int
-    ) -> dict[str, Any]:
-        """
-        Track changes between old and new extraction data.
-
-        Returns a dictionary of changes for logging.
-        """
-        changes: dict[str, Any] = {
-            "chunk": chunk_index + 1,
-            "action_fields": {"added": [], "total": 0},
-            "projects": {"added": 0, "enhanced": 0, "total": 0},
-            "measures": {"added": 0, "total": 0},
-            "indicators": {"added": 0, "total": 0},
-        }
-
-        old_afs = {af["action_field"]: af for af in old_data.get("action_fields", [])}
-        new_afs = {af["action_field"]: af for af in new_data.get("action_fields", [])}
-
-        # Track new action fields
-        for af_name in new_afs:
-            if af_name not in old_afs:
-                changes["action_fields"]["added"].append(af_name)
-
-        changes["action_fields"]["total"] = len(new_afs)
-
-        # Track project changes
-        for af_name, af_data in new_afs.items():
-            old_af = old_afs.get(af_name, {"projects": []})
-            old_projects = {p["title"]: p for p in old_af.get("projects", [])}
-            new_projects = {p["title"]: p for p in af_data.get("projects", [])}
-
-            for proj_name, proj_data in new_projects.items():
-                if proj_name not in old_projects:
-                    changes["projects"]["added"] += 1
-                else:
-                    # Check if enhanced with new measures/indicators
-                    old_proj = old_projects[proj_name]
-                    if len(proj_data.get("measures", [])) > len(
-                        old_proj.get("measures", [])
-                    ) or len(proj_data.get("indicators", [])) > len(
-                        old_proj.get("indicators", [])
-                    ):
-                        changes["projects"]["enhanced"] += 1
-
-                changes["measures"]["total"] += len(proj_data.get("measures", []))
-                changes["indicators"]["total"] += len(proj_data.get("indicators", []))
-
-            changes["projects"]["total"] += len(new_projects)
-
-        # Calculate new additions
-        if chunk_index > 0:  # Not first chunk
-            for af_data in new_afs.values():
-                for proj in af_data.get("projects", []):
-                    old_af = old_afs.get(af_data["action_field"], {"projects": []})
-                    old_proj = next(
-                        (p for p in old_af["projects"] if p["title"] == proj["title"]),
-                        None,
-                    )
-
-                    if old_proj:
-                        old_measures = set(old_proj.get("measures", []))
-                        new_measures = set(proj.get("measures", []))
-                        changes["measures"]["added"] += len(new_measures - old_measures)
-
-                        old_indicators = set(old_proj.get("indicators", []))
-                        new_indicators = set(proj.get("indicators", []))
-                        changes["indicators"]["added"] += len(
-                            new_indicators - old_indicators
-                        )
-                    else:
-                        changes["measures"]["added"] += len(proj.get("measures", []))
-                        changes["indicators"]["added"] += len(
-                            proj.get("indicators", [])
-                        )
-
-        self.history.append(changes)
-        return changes
-
-    def get_summary(self) -> dict[str, Any]:
-        """Get summary of all changes across chunks."""
-        if not self.history:
-            return {}
-
-        return {
-            "total_chunks": len(self.history),
-            "final_counts": self.history[-1] if self.history else {},
-            "progression": [
-                {
-                    "chunk": h["chunk"],
-                    "action_fields": h["action_fields"]["total"],
-                    "projects": h["projects"]["total"],
-                    "indicators": h["indicators"]["total"],
-                }
-                for h in self.history
-            ],
-        }
 
 
 def aggregate_extraction_results(
@@ -977,14 +690,13 @@ def apply_entity_resolution(structures: list[dict[str, Any]]) -> list[dict[str, 
 
 
 def rebuild_enhanced_structure_from_resolved(
-    resolved_structures: list[dict[str, Any]], original_enhanced: Any
+    resolved_structures: list[dict[str, Any]], _: Any
 ) -> Any:
     """
     Rebuild enhanced structure from resolved intermediate structures with unique ID validation.
 
     Args:
         resolved_structures: Entity-resolved structures in intermediate format
-        original_enhanced: Original enhanced structure to use as template
 
     Returns:
         New enhanced structure with resolved entities and guaranteed unique IDs
@@ -1200,10 +912,10 @@ def rebuild_enhanced_structure_from_resolved(
     )
 
     if len(all_ids) != len(set(all_ids)):
-        msg = "❌ CRITICAL: Duplicate IDs found after rebuild - this should never happen!"
-        raise ValueError(
-            msg
+        msg = (
+            "❌ CRITICAL: Duplicate IDs found after rebuild - this should never happen!"
         )
+        raise ValueError(msg)
 
     print(
         f"✅ Rebuilt with unique IDs: {len(new_action_fields)} AF, {len(new_projects)} P, {len(new_measures)} M, {len(new_indicators)} I"
@@ -1313,7 +1025,6 @@ def add_source_attributions(
     Returns:
         Enhanced results with source attribution
     """
-    import re
     from difflib import SequenceMatcher
 
     from src.core.schemas import SourceAttribution
@@ -1643,7 +1354,7 @@ def transform_to_enhanced_structure(
     """
     import json
 
-    from src.core.config import LLM_BACKEND, MODEL_TEMPERATURE
+    from src.core.config import LLM_BACKEND
     from src.core.llm_providers import get_llm_provider
     from src.core.schemas import EnrichedReviewJSON
 
@@ -2257,9 +1968,7 @@ def extract_direct_to_enhanced(
     Returns:
         Enhanced JSON structure or None if extraction fails
     """
-    import os
     import time
-    from pathlib import Path
 
     from src.core.config import (
         ENHANCED_CHUNK_MAX_CHARS,
@@ -2267,7 +1976,6 @@ def extract_direct_to_enhanced(
         ENHANCED_CHUNK_OVERLAP,
         FAST_EXTRACTION_MAX_CHUNKS,
         LLM_BACKEND,
-        PROJECT_ROOT,
     )
     from src.core.llm_providers import get_llm_provider
     from src.core.schemas import EnrichedReviewJSON
@@ -2281,7 +1989,9 @@ def extract_direct_to_enhanced(
         return None
 
     # Step 1: Create smaller chunks optimized for focused extraction
-    print(f"📝 Chunking with enhanced settings: {ENHANCED_CHUNK_MIN_CHARS}-{ENHANCED_CHUNK_MAX_CHARS} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap")
+    print(
+        f"📝 Chunking with enhanced settings: {ENHANCED_CHUNK_MIN_CHARS}-{ENHANCED_CHUNK_MAX_CHARS} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap"
+    )
 
     chunks_with_pages = chunk_for_llm_with_pages(
         page_aware_text=page_aware_text,
@@ -2305,20 +2015,25 @@ def extract_direct_to_enhanced(
     # Step 2: Extract from each chunk using simplified prompts
     # Initialize Global Entity Registry for consistency across chunks
     from src.processing.global_registry import GlobalEntityRegistry
+
     global_registry = GlobalEntityRegistry()
 
     all_results = []
     llm_provider = get_llm_provider()
 
     for i, (chunk_text, page_numbers) in enumerate(chunks_with_pages):
-        print(f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} (pages {page_numbers})")
+        print(
+            f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} (pages {page_numbers})"
+        )
 
         # Get full accumulated extraction state instead of just entity names
         accumulated_json = merge_enhanced_results(all_results) if all_results else None
 
         # Create context-aware extraction prompt with full JSON structure
         system_message = create_simplified_system_message_with_context()
-        main_prompt = create_simplified_extraction_prompt_with_context(chunk_text, source_id, accumulated_json)
+        main_prompt = create_simplified_extraction_prompt_with_context(
+            chunk_text, source_id, accumulated_json
+        )
 
         # Enhanced log context
         enhanced_log_context = f"direct_enhanced_{source_id}_chunk_{i+1}"
@@ -2336,17 +2051,21 @@ def extract_direct_to_enhanced(
                 # Register action field entities in the global registry
                 for action_field in result.action_fields:
                     # Handle both 'name' and 'title' fields (LLM outputs to 'title')
-                    original_name = action_field.content.get('name') or action_field.content.get('title', '')
+                    original_name = action_field.content.get(
+                        "name"
+                    ) or action_field.content.get("title", "")
                     if original_name:
                         canonical_name = global_registry.register_entity(original_name)
                         # Write back to BOTH fields for compatibility
-                        action_field.content['name'] = canonical_name
-                        action_field.content['title'] = canonical_name
+                        action_field.content["name"] = canonical_name
+                        action_field.content["title"] = canonical_name
 
                 # Add page attribution to all entities
                 add_page_attribution_to_enhanced_result(result, page_numbers)
                 all_results.append(result)
-                print(f"✅ Chunk {i+1}: {len(result.action_fields)} action fields, {len(result.projects)} projects, {len(result.indicators)} indicators")
+                print(
+                    f"✅ Chunk {i+1}: {len(result.action_fields)} action fields, {len(result.projects)} projects, {len(result.indicators)} indicators"
+                )
             else:
                 print(f"⚠️ No result from chunk {i+1}")
 
@@ -2400,8 +2119,8 @@ def extract_direct_to_enhanced(
                 "max_chars": ENHANCED_CHUNK_MAX_CHARS,
                 "min_chars": ENHANCED_CHUNK_MIN_CHARS,
                 "overlap": ENHANCED_CHUNK_OVERLAP,
-            }
-        }
+            },
+        },
     }
 
 
@@ -2427,17 +2146,13 @@ def extract_direct_to_enhanced_with_operations(
     Returns:
         Enhanced JSON structure or None if extraction fails
     """
-    import os
     import time
-    from pathlib import Path
 
     from src.core.config import (
         ENHANCED_CHUNK_MAX_CHARS,
         ENHANCED_CHUNK_MIN_CHARS,
         ENHANCED_CHUNK_OVERLAP,
         FAST_EXTRACTION_MAX_CHUNKS,
-        LLM_BACKEND,
-        PROJECT_ROOT,
     )
     from src.core.llm_providers import get_llm_provider
     from src.core.operations_schema import ExtractionOperations
@@ -2453,7 +2168,9 @@ def extract_direct_to_enhanced_with_operations(
         return None
 
     # Step 1: Create smaller chunks optimized for focused extraction
-    print(f"📝 Chunking with enhanced settings: {ENHANCED_CHUNK_MIN_CHARS}-{ENHANCED_CHUNK_MAX_CHARS} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap")
+    print(
+        f"📝 Chunking with enhanced settings: {ENHANCED_CHUNK_MIN_CHARS}-{ENHANCED_CHUNK_MAX_CHARS} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap"
+    )
 
     chunks_with_pages = chunk_for_llm_with_pages(
         page_aware_text=page_aware_text,
@@ -2476,10 +2193,7 @@ def extract_direct_to_enhanced_with_operations(
 
     # Step 2: Initialize empty extraction state and operations executor
     current_state = EnrichedReviewJSON(
-        action_fields=[],
-        projects=[],
-        measures=[],
-        indicators=[]
+        action_fields=[], projects=[], measures=[], indicators=[]
     )
 
     executor = OperationExecutor()
@@ -2488,11 +2202,15 @@ def extract_direct_to_enhanced_with_operations(
 
     # Step 3: Process each chunk with operations
     for i, (chunk_text, page_numbers) in enumerate(chunks_with_pages):
-        print(f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} (pages {page_numbers})")
+        print(
+            f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} (pages {page_numbers})"
+        )
 
         # Create operations-focused prompt
         system_message = create_operations_system_message()
-        main_prompt = create_operations_extraction_prompt(chunk_text, source_id, current_state, page_numbers)
+        main_prompt = create_operations_extraction_prompt(
+            chunk_text, source_id, current_state, page_numbers
+        )
 
         # Enhanced log context
         enhanced_log_context = f"operations_{source_id}_chunk_{i+1}"
@@ -2510,10 +2228,15 @@ def extract_direct_to_enhanced_with_operations(
             if operations_result and operations_result.operations:
                 # Filter out invalid operations instead of skipping entire chunk
                 from src.extraction.operations_executor import validate_operations
-                validation_errors = validate_operations(operations_result.operations, current_state)
+
+                validation_errors = validate_operations(
+                    operations_result.operations, current_state
+                )
 
                 if validation_errors:
-                    print(f"⚠️ Chunk {i+1}: {len(validation_errors)} operation validation errors:")
+                    print(
+                        f"⚠️ Chunk {i+1}: {len(validation_errors)} operation validation errors:"
+                    )
                     for error in validation_errors[:3]:  # Show first 3 errors
                         print(f"   - {error}")
                     if len(validation_errors) > 3:
@@ -2526,16 +2249,18 @@ def extract_direct_to_enhanced_with_operations(
                         if not single_op_errors:
                             valid_operations.append(op)
 
-                    print(f"   Proceeding with {len(valid_operations)}/{len(operations_result.operations)} valid operations")
+                    print(
+                        f"   Proceeding with {len(valid_operations)}/{len(operations_result.operations)} valid operations"
+                    )
                     operations_result.operations = valid_operations
 
-                if operations_result.operations:  # Only proceed if we have valid operations
+                if (
+                    operations_result.operations
+                ):  # Only proceed if we have valid operations
                     # Apply validated operations to current state
                     try:
                         new_state, operation_log = executor.apply_operations(
-                            current_state,
-                            operations_result.operations,
-                            chunk_index=i
+                            current_state, operations_result.operations, chunk_index=i
                         )
 
                         # Only update current_state if operations were successfully applied
@@ -2543,10 +2268,16 @@ def extract_direct_to_enhanced_with_operations(
                             current_state = new_state
                             all_operation_logs.append(operation_log)
 
-                            print(f"✅ Chunk {i+1}: {operation_log.successful_operations}/{operation_log.total_operations} operations applied")
-                            print(f"📊 Current state: {len(current_state.action_fields)} action fields, {len(current_state.projects)} projects, {len(current_state.measures)} measures, {len(current_state.indicators)} indicators")
+                            print(
+                                f"✅ Chunk {i+1}: {operation_log.successful_operations}/{operation_log.total_operations} operations applied"
+                            )
+                            print(
+                                f"📊 Current state: {len(current_state.action_fields)} action fields, {len(current_state.projects)} projects, {len(current_state.measures)} measures, {len(current_state.indicators)} indicators"
+                            )
                         else:
-                            print(f"⚠️ Chunk {i+1}: No operations succeeded, keeping previous state")
+                            print(
+                                f"⚠️ Chunk {i+1}: No operations succeeded, keeping previous state"
+                            )
                             all_operation_logs.append(operation_log)
 
                     except Exception as op_error:
@@ -2724,14 +2455,24 @@ KONSISTENZ-REGEL (KRITISCH WICHTIG):
 Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das dem vorgegebenen Schema entspricht. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
 
 
-def create_simplified_extraction_prompt_with_context(chunk_text: str, source_id: str, accumulated_json) -> str:
+def create_simplified_extraction_prompt_with_context(
+    chunk_text: str, source_id: str, accumulated_json
+) -> str:
     """Create context-aware extraction prompt that includes full accumulated extraction state."""
 
     if accumulated_json:
         # Format the full JSON structure for the LLM
         import json
-        accumulated_json_str = json.dumps(accumulated_json.model_dump() if hasattr(accumulated_json, 'model_dump') else accumulated_json,
-                                        indent=2, ensure_ascii=False)
+
+        accumulated_json_str = json.dumps(
+            (
+                accumulated_json.model_dump()
+                if hasattr(accumulated_json, "model_dump")
+                else accumulated_json
+            ),
+            indent=2,
+            ensure_ascii=False,
+        )
         context_text = f"""AKTUELLER EXTRAKTIONSSTAND (bisher gefundene Strukturen):
 {accumulated_json_str}
 
@@ -2796,24 +2537,28 @@ Antworten Sie AUSSCHLIESSLICH mit der Operations-Liste im JSON-Format."""
 
 
 def create_operations_extraction_prompt(
-    chunk_text: str,
-    source_id: str,
-    current_state: dict,
-    page_numbers: list[int]
+    chunk_text: str, source_id: str, current_state: dict, page_numbers: list[int]
 ) -> str:
     """Create operations-focused extraction prompt."""
 
     import json
 
     # Format current state for display
-    if (hasattr(current_state, 'action_fields') and
-        (current_state.action_fields or current_state.projects or
-         current_state.measures or current_state.indicators)):
+    if hasattr(current_state, "action_fields") and (
+        current_state.action_fields
+        or current_state.projects
+        or current_state.measures
+        or current_state.indicators
+    ):
 
         current_json_str = json.dumps(
-            current_state.model_dump() if hasattr(current_state, 'model_dump') else current_state,
+            (
+                current_state.model_dump()
+                if hasattr(current_state, "model_dump")
+                else current_state
+            ),
             indent=2,
-            ensure_ascii=False
+            ensure_ascii=False,
         )
         context_text = f"""AKTUELLER EXTRAKTIONSSTAND:
 {current_json_str}
@@ -2890,14 +2635,18 @@ Antworten Sie NUR mit der Operations-Liste im JSON-Format:
 
 
 def add_page_attribution_to_enhanced_result(
-    result,  # EnrichedReviewJSON
-    page_numbers: list[int]
+    result, page_numbers: list[int]  # EnrichedReviewJSON
 ) -> None:
     """Add page attribution to all entities in enhanced result."""
     page_str = f"Seiten {', '.join(map(str, sorted(page_numbers)))}"
 
     # Add page attribution to all entity types
-    for entity_list in [result.action_fields, result.projects, result.measures, result.indicators]:
+    for entity_list in [
+        result.action_fields,
+        result.projects,
+        result.measures,
+        result.indicators,
+    ]:
         for entity in entity_list:
             if "page_source" not in entity.content:
                 entity.content["page_source"] = page_str
@@ -2916,10 +2665,7 @@ def merge_enhanced_results(results: list) -> dict | None:  # EnrichedReviewJSON 
 
     # Simple merge - concatenate all lists
     merged = EnrichedReviewJSON(
-        action_fields=[],
-        projects=[],
-        measures=[],
-        indicators=[]
+        action_fields=[], projects=[], measures=[], indicators=[]
     )
 
     entity_counter = {"af": 0, "proj": 0, "msr": 0, "ind": 0}
@@ -2958,47 +2704,55 @@ def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
         for af in result.action_fields:
             af_dict = {
                 "action_field": af.content.get("title", af.content.get("name", "")),
-                "projects": []
+                "projects": [],
             }
 
             # Find connected projects (using parent→child connections)
             for proj in result.projects:
                 # Check if this project is connected from the action field
                 if proj.id in [conn.target_id for conn in af.connections]:
-                        proj_dict = {
-                            "title": proj.content.get("title", ""),
-                            "measures": [],
-                            "indicators": []
-                        }
+                    proj_dict = {
+                        "title": proj.content.get("title", ""),
+                        "measures": [],
+                        "indicators": [],
+                    }
 
-                        # Find connected measures and indicators (using parent→child connections)
-                        for msr in result.measures:
-                            # Check if this measure is connected from the project
-                            if msr.id in [conn.target_id for conn in proj.connections]:
-                                    proj_dict["measures"].append({
-                                        "title": msr.content.get("title", ""),
-                                        "description": msr.content.get("description", "")
-                                    })
+                    # Find connected measures and indicators (using parent→child connections)
+                    for msr in result.measures:
+                        # Check if this measure is connected from the project
+                        if msr.id in [conn.target_id for conn in proj.connections]:
+                            proj_dict["measures"].append(
+                                {
+                                    "title": msr.content.get("title", ""),
+                                    "description": msr.content.get("description", ""),
+                                }
+                            )
 
-                        for ind in result.indicators:
-                            # Check if this indicator is connected from the project
-                            if ind.id in [conn.target_id for conn in proj.connections]:
-                                    proj_dict["indicators"].append({
-                                        "title": ind.content.get("title", ""),
-                                        "description": ind.content.get("description", "")
-                                    })
+                    for ind in result.indicators:
+                        # Check if this indicator is connected from the project
+                        if ind.id in [conn.target_id for conn in proj.connections]:
+                            proj_dict["indicators"].append(
+                                {
+                                    "title": ind.content.get("title", ""),
+                                    "description": ind.content.get("description", ""),
+                                }
+                            )
 
-                        af_dict["projects"].append(proj_dict)
+                    af_dict["projects"].append(proj_dict)
 
             structures.append(af_dict)
 
         # Check if structures have meaningful content
         total_projects = sum(len(s.get("projects", [])) for s in structures)
         if total_projects == 0:
-            print("⚠️ No connected projects found, bypassing entity resolution to preserve entities")
+            print(
+                "⚠️ No connected projects found, bypassing entity resolution to preserve entities"
+            )
             return result
 
-        print(f"🔗 Found {total_projects} connected projects in {len(structures)} structures, proceeding with resolution")
+        print(
+            f"🔗 Found {total_projects} connected projects in {len(structures)} structures, proceeding with resolution"
+        )
 
         # Apply existing entity resolution
         resolved_structures = apply_entity_resolution(structures)
@@ -3009,13 +2763,3 @@ def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
     except Exception as e:
         print(f"⚠️ Entity resolution failed, returning unresolved: {e}")
         return result
-
-
-def rebuild_enhanced_structure_from_resolved_v2(
-    resolved_structures: list[dict],
-    original_result  # EnrichedReviewJSON type
-):
-    """Rebuild enhanced structure from resolved data."""
-    # For now, return original result since entity resolution is complex
-    # TODO: Implement proper rebuilding logic
-    return original_result

@@ -286,74 +286,6 @@ def log_api_response(
     )
 
 
-def analyze_logs(
-    log_file: str, start_date: str | None = None, end_date: str | None = None
-) -> dict[str, Any]:
-    """Analyze logs from a specific file."""
-    log_path = LOG_DIR_PATH / log_file
-
-    if not log_path.exists():
-        return {"error": f"Log file {log_file} not found"}
-
-    events = []
-    with open(log_path) as f:
-        for line in f:
-            try:
-                event = json.loads(line.strip())
-                events.append(event)
-            except json.JSONDecodeError:
-                continue
-
-    # Filter by date if provided
-    if start_date or end_date:
-        filtered_events = []
-        for event in events:
-            event_time = datetime.fromisoformat(event["timestamp"])
-            if start_date and event_time < datetime.fromisoformat(start_date):
-                continue
-            if end_date and event_time > datetime.fromisoformat(end_date):
-                continue
-            filtered_events.append(event)
-        events = filtered_events
-
-    # Basic analysis
-    analysis: dict[str, Any] = {
-        "total_events": len(events),
-        "date_range": {
-            "start": events[0]["timestamp"] if events else None,
-            "end": events[-1]["timestamp"] if events else None,
-        },
-        "event_types": {},
-        "performance_stats": {},
-    }
-
-    # Count event types
-    for event in events:
-        event_type = event.get("event_type", "unknown")
-        analysis["event_types"][event_type] = (
-            analysis["event_types"].get(event_type, 0) + 1
-        )
-
-    # Calculate performance stats for extraction completions
-    if log_file == "performance.jsonl":
-        durations = []
-        for event in events:
-            if event.get("event_type") == "extraction_complete":
-                duration = event["data"].get("total_duration_seconds")
-                if duration:
-                    durations.append(duration)
-
-        if durations:
-            analysis["performance_stats"] = {
-                "avg_duration": sum(durations) / len(durations),
-                "min_duration": min(durations),
-                "max_duration": max(durations),
-                "total_extractions": len(durations),
-            }
-
-    return analysis
-
-
 # Convenience function to get a monitor for the current extraction
 _current_monitors = {}
 
@@ -363,8 +295,3 @@ def get_extraction_monitor(source_id: str) -> ExtractionMonitor:
     if source_id not in _current_monitors:
         _current_monitors[source_id] = ExtractionMonitor(source_id)
     return _current_monitors[source_id]
-
-
-def clear_monitor(source_id: str):
-    """Clear a monitor after extraction is complete."""
-    _current_monitors.pop(source_id, None)

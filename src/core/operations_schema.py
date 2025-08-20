@@ -7,28 +7,28 @@ the entire JSON structure.
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, validator
 
 
 class OperationType(str, Enum):
     """Types of operations that can be performed on extraction entities."""
-    CREATE = "CREATE"      # Create new entity
-    UPDATE = "UPDATE"      # Modify existing entity (supports both replacement and merging)
-    CONNECT = "CONNECT"    # Create/update connections between entities
+
+    CREATE = "CREATE"  # Create new entity
+    UPDATE = "UPDATE"  # Modify existing entity (supports both replacement and merging)
+    CONNECT = "CONNECT"  # Create/update connections between entities
 
 
 class EntityOperation(BaseModel):
     """
     Represents a single operation to be performed on the extraction state.
-    
+
     This allows the LLM to specify incremental changes rather than
     reproducing the entire JSON structure.
     """
-    operation: OperationType = Field(
-        description="Type of operation to perform"
-    )
+
+    operation: OperationType = Field(description="Type of operation to perform")
 
     entity_type: Literal["action_field", "project", "measure", "indicator"] = Field(
         description="Type of entity this operation affects"
@@ -37,50 +37,41 @@ class EntityOperation(BaseModel):
     # For UPDATE operations
     entity_id: str | None = Field(
         default=None,
-        description="ID of existing entity to modify (required for UPDATE)"
+        description="ID of existing entity to modify (required for UPDATE)",
     )
 
     # For CREATE operations - content of new entity
     content: dict[str, Any] | None = Field(
-        default=None,
-        description="Content data for the entity"
+        default=None, description="Content data for the entity"
     )
-
 
     # For CONNECT operations
     connections: list[dict[str, Any]] | None = Field(
-        default=None,
-        description="List of connections to create/update"
+        default=None, description="List of connections to create/update"
     )
 
     # Metadata
     confidence: float = Field(
-        default=0.8,
-        ge=0.0,
-        le=1.0,
-        description="Confidence in this operation"
+        default=0.8, ge=0.0, le=1.0, description="Confidence in this operation"
     )
 
     reason: str | None = Field(
-        default=None,
-        description="Human-readable reason for this operation"
+        default=None, description="Human-readable reason for this operation"
     )
 
     # Source attribution
     source_pages: list[int] | None = Field(
-        default=None,
-        description="Page numbers where this information was found"
+        default=None, description="Page numbers where this information was found"
     )
 
     source_quote: str | None = Field(
-        default=None,
-        description="Relevant quote from source text"
+        default=None, description="Relevant quote from source text"
     )
 
-    @validator('entity_id')
-    def validate_entity_id_for_update_operations(cls, v, values):
+    @validator("entity_id")
+    def validate_entity_id_for_update_operations(_, v, values):
         """Ensure entity_id is provided for operations that require it. For CREATE, ignore provided entity_id."""
-        operation = values.get('operation')
+        operation = values.get("operation")
         # For CREATE operations, ignore any provided entity_id (it will be auto-generated)
         if operation == OperationType.CREATE:
             return None  # Force to None for CREATE operations
@@ -89,19 +80,18 @@ class EntityOperation(BaseModel):
                 raise ValueError(f"{operation} operations require entity_id")
         return v
 
-
-    @validator('content')
-    def validate_content_for_create(cls, v, values):
+    @validator("content")
+    def validate_content_for_create(_, v, values):
         """Ensure content is provided for CREATE operations."""
-        operation = values.get('operation')
+        operation = values.get("operation")
         if operation == OperationType.CREATE and not v:
             raise ValueError("CREATE operations require content")
         return v
 
-    @validator('connections')
-    def validate_connections_for_connect(cls, v, values):
+    @validator("connections")
+    def validate_connections_for_connect(_, v, values):
         """Ensure connections are provided for CONNECT operations."""
-        operation = values.get('operation')
+        operation = values.get("operation")
         if operation == OperationType.CONNECT and not v:
             raise ValueError("CONNECT operations require connections")
         return v
@@ -110,91 +100,78 @@ class EntityOperation(BaseModel):
 class ExtractionOperations(BaseModel):
     """
     Container for a list of operations to be applied to extraction state.
-    
+
     This is the response format expected from the LLM.
     """
+
     operations: list[EntityOperation] = Field(
         description="List of operations to apply to the extraction state"
     )
 
     # Metadata about the chunk that generated these operations
     chunk_index: int | None = Field(
-        default=None,
-        description="Index of the chunk that generated these operations"
+        default=None, description="Index of the chunk that generated these operations"
     )
 
     source_pages: list[int] | None = Field(
-        default=None,
-        description="Page numbers processed in this chunk"
+        default=None, description="Page numbers processed in this chunk"
     )
 
     extraction_confidence: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
-        description="Overall confidence in this chunk's extraction"
+        description="Overall confidence in this chunk's extraction",
     )
 
 
 class ConnectionOperation(BaseModel):
     """
     Represents a connection between two entities.
-    
+
     Used within EntityOperation for CONNECT operations.
     """
-    from_id: str = Field(
-        description="ID of the source entity"
-    )
 
-    to_id: str = Field(
-        description="ID of the target entity"
-    )
+    from_id: str = Field(description="ID of the source entity")
+
+    to_id: str = Field(description="ID of the target entity")
 
     relationship_type: str | None = Field(
         default="belongs_to",
-        description="Type of relationship (belongs_to, measures, implements, etc.)"
+        description="Type of relationship (belongs_to, measures, implements, etc.)",
     )
 
     confidence: float = Field(
-        default=0.8,
-        ge=0.0,
-        le=1.0,
-        description="Confidence in this connection"
+        default=0.8, ge=0.0, le=1.0, description="Confidence in this connection"
     )
 
     bidirectional: bool = Field(
-        default=False,
-        description="Whether this connection should be bidirectional"
+        default=False, description="Whether this connection should be bidirectional"
     )
 
 
 class OperationResult(BaseModel):
     """
     Result of applying an operation to the extraction state.
-    
+
     Used for logging and debugging operation application.
     """
-    operation: EntityOperation = Field(
-        description="The operation that was applied"
-    )
 
-    success: bool = Field(
-        description="Whether the operation was successfully applied"
-    )
+    operation: EntityOperation = Field(description="The operation that was applied")
+
+    success: bool = Field(description="Whether the operation was successfully applied")
 
     error_message: str | None = Field(
-        default=None,
-        description="Error message if operation failed"
+        default=None, description="Error message if operation failed"
     )
 
     entities_affected: list[str] = Field(
         default_factory=list,
-        description="List of entity IDs that were affected by this operation"
+        description="List of entity IDs that were affected by this operation",
     )
 
     new_entity_id: str | None = Field(
-        default=None,
-        description="ID of newly created entity (for CREATE operations)"
+        default=None, description="ID of newly created entity (for CREATE operations)"
     )
 
 
@@ -202,9 +179,8 @@ class OperationLog(BaseModel):
     """
     Log entry for tracking operation application across chunks.
     """
-    chunk_index: int = Field(
-        description="Index of the chunk being processed"
-    )
+
+    chunk_index: int = Field(description="Index of the chunk being processed")
 
     operation_results: list[OperationResult] = Field(
         description="Results of all operations applied in this chunk"
@@ -225,10 +201,10 @@ class OperationLog(BaseModel):
 
 # Export main classes for use in other modules
 __all__ = [
-    'ConnectionOperation',
-    'EntityOperation',
-    'ExtractionOperations',
-    'OperationLog',
-    'OperationResult',
-    'OperationType'
+    "ConnectionOperation",
+    "EntityOperation",
+    "ExtractionOperations",
+    "OperationLog",
+    "OperationResult",
+    "OperationType",
 ]
