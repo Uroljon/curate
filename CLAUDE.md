@@ -95,10 +95,7 @@ uvicorn main:app --reload
 curl -X POST "http://127.0.0.1:8000/upload" \
   -F "file=@sample.pdf"
 
-# Test legacy structure extraction
-curl -X GET "http://127.0.0.1:8000/extract_structure?source_id=your-source-id"
-
-# Test enhanced extraction endpoints (recommended)
+# Test extraction endpoints
 curl -X GET "http://127.0.0.1:8000/extract_enhanced?source_id=your-source-id"
 curl -X GET "http://127.0.0.1:8000/extract_enhanced_operations?source_id=your-source-id"
 
@@ -150,16 +147,11 @@ Phase 1: **Document Ingestion** (`/upload`)
 - Saves page-aware text to `_pages.txt` file (no vector embeddings created)
 - Returns `source_id` for subsequent extraction requests
 
-Phase 2: **Structure Extraction** (`/extract_structure`)
-- Single-pass extraction per chunk using `extract_structures_with_retry()`
-- Each chunk independently extracts complete action fields with projects, measures, and indicators
-- Results aggregated and deduplicated across all chunks
+Phase 2: **Enhanced Extraction** (recommended endpoints)
+- `/extract_enhanced_operations` - Modern operations-based extraction using CREATE/UPDATE/CONNECT schema
+- `/extract_enhanced` - Direct extraction to 4-bucket relational structure
+- Results processed with entity resolution and consistency validation
 - Structured output via Pydantic schemas (`src/core/schemas.py`)
-
-Phase 3: **Enhanced Structure** (`/enhance_structure`)
-- Transforms basic extraction into relational 4-bucket structure
-- Creates connections between entities with confidence scores
-- Applies entity resolution and consistency validation
 
 **RECOMMENDED: Operations-Based Extraction** (`/extract_enhanced_operations`)
 - Modern extraction system using simplified CREATE/UPDATE/CONNECT operations schema
@@ -184,7 +176,7 @@ Phase 3: **Enhanced Structure** (`/enhance_structure`)
   - Indicator-aware splitting preserves quantitative metrics with their context
 
 - **`src/extraction/structure_extractor.py`**: Core extraction functions:
-  - `extract_structures_with_retry()`: Single-pass extraction per chunk (used by `/extract_structure`)
+  - `extract_structures_with_retry()`: Single-pass extraction per chunk (used by operations extraction)
   - `extract_with_accumulation()`: Progressive extraction with context (unused by current APIs)
   - Contains 3-stage functions (`extract_action_fields_only`, `extract_projects_for_field`, `extract_project_details`) that are available but not used by current endpoints
 
@@ -215,7 +207,7 @@ Phase 3: **Enhanced Structure** (`/enhance_structure`)
 
 **LLM Processing Strategy:**
 - **Recommended (extract_enhanced_operations)**: Operations-based extraction using CREATE/UPDATE/CONNECT schema with global entity registry for consistency
-- **Legacy (extract_structure)**: Independent processing of each chunk with single-pass extraction using complete ExtractionResult schema  
+- **Legacy**: Previously supported `/extract_structure` and `/enhance_structure` endpoints (removed)  
 - **Alternative (extract_enhanced)**: Direct extraction to 4-bucket structure using smaller chunks and simplified prompts
 - Results aggregated and deduplicated at API level after all chunks processed
 
@@ -447,9 +439,9 @@ The codebase underwent systematic dead code removal using `vulture` and `dead` t
 ## Critical Architecture Notes
 
 **Extraction Pipeline Reality Check:**
-- The `/extract_structure` endpoint does NOT use the 3-stage extraction process (Stage 1→2→3)  
-- Instead, it uses `extract_structures_with_retry()` for single-pass extraction per chunk
-- **NEW**: The `/extract_enhanced` endpoint goes directly to 4-bucket structure with simplified prompts
+- Current endpoints use `extract_structures_with_retry()` for single-pass extraction per chunk
+- The `/extract_enhanced` endpoint goes directly to 4-bucket structure with simplified prompts
+- The `/extract_enhanced_operations` endpoint uses operations-based extraction for better consistency
 - 3-stage functions exist in codebase but are not used by current API endpoints
 - No vector embeddings are created during upload - only page-aware text files
 
@@ -472,7 +464,7 @@ The codebase underwent systematic dead code removal using `vulture` and `dead` t
 - `/upload` → Extracts text, saves page-aware files
 - `/extract_enhanced_operations` → **Recommended**: Operations-based extraction with CREATE/UPDATE/CONNECT schema
 - `/extract_enhanced` → Direct single-step extraction to 4-bucket structure (legacy)
-- `/extract_structure` → Legacy hierarchical extraction with separate enhancement step
+- Legacy endpoints (removed): `/extract_structure` and `/enhance_structure`
 
 **Data Structure & Entity Relationships:**
 
@@ -503,7 +495,7 @@ Based on the Appwrite schema analysis (see `docs/database.md` for complete detai
 **Schema Evolution:**
 - `ExtractionResult`: Hierarchical structure (action_fields → projects → measures/indicators)
 - `EnrichedReviewJSON`: Flat 4-bucket relational structure with bidirectional connections and confidence scores
-- Transform between structures happens in `/enhance_structure` endpoint
+- Transform between structures happens within the enhanced extraction endpoints
 
 **Critical Metadata to Extract:**
 - **Hierarchical relationships**: Parent-child structures within each entity type
