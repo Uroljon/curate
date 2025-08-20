@@ -2412,18 +2412,18 @@ def extract_direct_to_enhanced_with_operations(
 ) -> dict[str, Any] | None:
     """
     Extract directly from PDF text using operations-based approach.
-    
+
     This function implements the operations-based extraction approach:
     1. Chunks text with smaller windows and minimal overlap
     2. For each chunk, LLM returns operations to apply to current state
     3. Operations are applied deterministically to build final state
     4. No copy degradation or context bloat issues
-    
+
     Args:
         page_aware_text: List of (text, page_number) tuples from parser
         source_id: Source identifier for logging
         log_file_path: Optional path to log LLM dialog
-        
+
     Returns:
         Enhanced JSON structure or None if extraction fails
     """
@@ -2599,7 +2599,7 @@ HANDLUNGSFELDER - NUR ÜBERGEORDNETE BEREICHE:
 
 TYPISCHE HANDLUNGSFELDER KOMMUNALER STRATEGIEN:
 - Mobilität und Verkehr
-- Klimaschutz und Klimaanpassung  
+- Klimaschutz und Klimaanpassung
 - Energie
 - Siedlungs- und Quartiersentwicklung
 - Freiraumentwicklung
@@ -2637,15 +2637,15 @@ def create_simplified_extraction_prompt(chunk_text: str, source_id: str) -> str:
 KRITISCH: Handlungsfelder sind NUR breite strategische Bereiche (max. 8-15 total), NICHT spezifische Projekte!
 
 BEISPIELE DER HIERARCHIE:
-• Handlungsfeld: "Mobilität und Verkehr" 
+• Handlungsfeld: "Mobilität und Verkehr"
   → Projekt: "Stadtbahn Regensburg"
   → Projekt: "Radwegenetz Ausbau"
   → Projekt: "Neuer Zentraler Omnibusbahnhof"
-  
+
 • Handlungsfeld: "Klimaschutz und Klimaanpassung"
   → Projekt: "Green Deal Regensburg"
   → Projekt: "Klimaneutrale Verwaltung"
-  
+
 • Handlungsfeld: "Energie"
   → Projekt: "Solaroffensive"
   → Projekt: "Windkraftausbau"
@@ -2763,21 +2763,34 @@ def create_operations_system_message() -> str:
 IHRE AUFGABE: Analysieren Sie Textpassagen und erstellen Sie OPERATIONEN (nicht das vollständige JSON), um die bestehende Extraktionsstruktur zu erweitern.
 
 VERFÜGBARE OPERATIONEN:
-- CREATE: Neue Entity erstellen (nur wenn wirklich neu und einzigartig) - NIEMALS entity_id angeben, wird automatisch generiert!
- - UPDATE: Bestehende Entity mit zusätzlichen Details erweitern (intelligentes Mergen) - entity_id erforderlich
- - CONNECT: Verbindungen zwischen Entities erstellen - connections erforderlich
+- CREATE: Neue Entity erstellen (wenn keine ähnliche Entity existiert) - NIEMALS entity_id angeben, wird automatisch generiert!
+- UPDATE: Bestehende Entity anreichern (neue Felder hinzufügen, Texte erweitern, Listen ergänzen) - entity_id erforderlich
+- CONNECT: Verbindungen zwischen Entities erstellen (auch bestehende Entities können neue Verbindungen erhalten) - connections erforderlich
 
 HIERARCHISCHE STRUKTUR:
-- Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE (max. 8-15 total)
+- Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE
   → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
     → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
       → Indikatoren: Messbare Kennzahlen für Projekte/Maßnahmen
 
-WICHTIGE PRINZIPIEN:
-- Bevorzugen Sie UPDATE gegenüber CREATE für ähnliche/gleichartige Konzepte
-- Verwenden Sie exakte Entity-IDs für Verbindungen
+KRITISCHE VERBINDUNGSREGELN:
+- CONNECT-Operationen zu bestehenden UND neu erstellten Entities sind ERWÜNSCHT!
+- Verwenden Sie exakte Entity-IDs aus AKTUELLER EXTRAKTIONSSTAND
+- Neue Verbindungen zu bereits vorhandenen Entities sind ein ZIEL - nutzen Sie diese aktiv!
+- CONNECT-Operationen erfordern Konfidenz ≥ 0.7 und klaren thematischen Zusammenhang
+
+ENTSCHEIDUNGSLOGIK (in dieser Reihenfolge):
+1. Prüfen Sie AKTUELLER EXTRAKTIONSSTAND: Existiert ähnliche Entity? → UPDATE verwenden
+2. Falls keine Ähnlichkeit: CREATE mit kanonischem Titel 
+3. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
+4. Bevorzugen Sie UPDATE über CREATE bei semantischer Überlappung
+
+QUALITÄTSPRINZIPIEN:
+- Verwenden Sie exakte Entity-IDs aus dem gegebenen Kontext
 - Fügen Sie immer Quellenangaben (source_pages, source_quote) hinzu
 - Seien Sie konservativ bei neuen Handlungsfeldern
+- Bei Unsicherheit: UPDATE verwenden statt CREATE
+- Erstellen Sie CONNECT-Operationen wann immer thematische Zusammenhänge erkennbar sind
 
 Antworten Sie AUSSCHLIESSLICH mit der Operations-Liste im JSON-Format."""
 
@@ -2815,49 +2828,62 @@ ANWEISUNG: Analysieren Sie den Text und erstellen Sie Operationen zur Erweiterun
 
 {context_text}
 
+VERPFLICHTENDE PRÜFUNG vor jeder CREATE-Operation:
+1. Scannen Sie AKTUELLER EXTRAKTIONSSTAND vollständig nach ähnlichen Entities
+2. Bei semantischer Überlappung: UPDATE verwenden statt CREATE
+3. Nur CREATE wenn wirklich einzigartig und keine UPDATE-Möglichkeit besteht
+
+VERBINDUNGSREGELN (KRITISCH):
+- CONNECT-Operationen sind das ZIEL - erstellen Sie sie aktiv!
+- Verbindungen zu bestehenden UND neuen Entities sind gewünscht
+- Suchen Sie aktiv nach thematischen Zusammenhängen für Verbindungen
+
 TEXTABSCHNITT (Seiten {page_list}):
 {chunk_text}
 
 OPERATIONEN-BEISPIELE:
 
-CREATE neue Entity:
+CREATE mit Verbindungsabsicht (falls keine ähnliche Entity existiert):
 {{
   "operation": "CREATE",
-  "entity_type": "action_field",
-  "content": {{"title": "Mobilität", "description": "Nachhaltige Verkehrslösungen"}},
+  "entity_type": "project",
+  "content": {{"title": "Radverkehrsnetz Ausbau", "description": "Ausbau des städtischen Radwegenetzes"}},
   "source_pages": [{page_list}],
   "source_quote": "Kurzer relevanter Textauszug (max. 50 Wörter)",
-  "confidence": 0.9
+  "confidence": 0.9,
+  "reason": "Soll später mit Handlungsfeld 'Mobilität' (af_2) verbunden werden"
 }}
 
-UPDATE bestehende Entity (intelligent merging):
+UPDATE bevorzugt bei semantischer Ähnlichkeit:
 {{
-  "operation": "UPDATE", 
+  "operation": "UPDATE",
   "entity_type": "project",
   "entity_id": "proj_1",
-  "content": {{"description": "Neue oder erweiterte Beschreibung", "status": "active"}},
+  "content": {{"description": "Erweiterte Beschreibung mit neuen Details", "budget": "2.5M EUR"}},
   "source_pages": [{page_list}],
   "source_quote": "Zusätzlicher Textauszug (max. 50 Wörter)",
-  "confidence": 0.8
+  "confidence": 0.8,
+  "reason": "Anreicherung mit Budgetinformation aus neuem Textabschnitt"
 }}
 
-CONNECT Entities:
+CONNECT nur zwischen bestehenden Entities (beide IDs im aktuellen Stand):
 {{
   "operation": "CONNECT",
-  "entity_type": "project", 
+  "entity_type": "project",
   "connections": [
-    {{"from_id": "proj_2", "to_id": "af_1", "confidence": 0.8}},
-    {{"from_id": "proj_2", "to_id": "msr_1", "confidence": 0.9}}
+    {{"from_id": "proj_2", "to_id": "af_1", "confidence": 0.85}},
+    {{"from_id": "proj_2", "to_id": "ind_3", "confidence": 0.9}}
   ],
-  "confidence": 0.8
+  "confidence": 0.8,
+  "reason": "Klare thematische Zugehörigkeit aus Textkontext ersichtlich"
 }}
 
-WICHTIG: 
-- Verwenden Sie exakte Entity-IDs aus dem aktuellen Stand
+QUALITÄTSKONTROLLE:
+- Verwenden Sie NUR exakte Entity-IDs aus AKTUELLER EXTRAKTIONSSTAND
 - Fügen Sie IMMER source_pages und source_quote hinzu (außer bei CONNECT)
-- Seien Sie sparsam mit CREATE für Handlungsfelder
-- Verwenden Sie UPDATE für alle Änderungen an bestehenden Entities
-- CONNECT kann mehrere Verbindungen gleichzeitig erstellen
+- Konfidenz ≥ 0.7 für CONNECT, ≥ 0.8 für CREATE
+- Bevorzugen Sie UPDATE über CREATE bei jeder semantischen Überlappung
+- Kanonische Titel verwenden für bessere spätere Verknüpfung
 
 Antworten Sie NUR mit der Operations-Liste im JSON-Format:
 {{"operations": [...]}}"""
