@@ -9,7 +9,7 @@ the entire JSON structure.
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
 
 
 class OperationType(str, Enum):

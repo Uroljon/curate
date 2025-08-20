@@ -5,7 +5,6 @@ This module addresses the second major graph issue: inconsistent edge creation,
 where some projects have many connections while others have none.
 """
 
-import re
 from typing import Any
 
 from src.core.config import (

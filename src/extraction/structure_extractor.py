@@ -1,5 +1,4 @@
 import json
-import re
 from typing import Any
 
 from src.core import (
@@ -9,10 +8,8 @@ from src.core import (
     ActionFieldList,
     ExtractionResult,
     ProjectDetails,
-    ProjectDetailsEnhanced,
     ProjectList,
     query_ollama_structured,
-    query_ollama_with_thinking_mode,
 )
 
 from .prompts import (

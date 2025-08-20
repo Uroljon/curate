@@ -11,7 +11,6 @@ from typing import Any
 
 from src.core.operations_schema import (
     EntityOperation,
-    ExtractionOperations,
     OperationLog,
     OperationResult,
     OperationType,

@@ -6,7 +6,6 @@ used throughout the codebase.
 """
 
 import re
-from typing import Any
 
 from langdetect import LangDetectException, detect
 from spellchecker import SpellChecker

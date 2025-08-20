@@ -8,10 +8,6 @@ This module provides two main chunking strategies:
 With optional structure-aware chunking when PDF path is available.
 """
 
-import re
-from pathlib import Path
-from typing import Any
-
 from src.utils.text import is_heading
 
 # Optional imports for structure-aware chunking removed - not used in current implementation
