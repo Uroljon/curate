@@ -880,40 +880,6 @@ class StructureAwareChunker:
         return count
 
 
-def create_structure_aware_chunks(
-    pdf_path: str,
-    max_chunk_size: int = 2000,
-    min_chunk_size: int = 500,
-    overlap_size: int = 200,
-    max_pages: int | None = None,
-) -> list[dict[str, Any]]:
-    """
-    Convenience function to create structure-aware chunks.
-
-    Args:
-        pdf_path: Path to PDF file
-        max_chunk_size: Maximum chunk size in characters
-        min_chunk_size: Minimum chunk size in characters
-        overlap_size: Size of overlap between chunks
-        max_pages: Limit pages for testing (None = all pages)
-
-    Returns:
-        List of chunks with metadata
-    """
-    if not UNSTRUCTURED_AVAILABLE:
-        error_msg = (
-            "The 'unstructured' library is required for structure-aware chunking. "
-            "Please install it with: pip install unstructured[pdf]"
-        )
-        raise ImportError(error_msg)
-
-    chunker = StructureAwareChunker(
-        max_chunk_size=max_chunk_size,
-        min_chunk_size=min_chunk_size,
-        overlap_size=overlap_size,
-    )
-
-    return chunker.chunk_pdf(pdf_path, max_pages=max_pages)
 
 
 def chunk_for_embedding_with_pages(

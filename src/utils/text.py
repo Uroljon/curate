@@ -198,62 +198,6 @@ def is_heading(line: str) -> bool:
     return False
 
 
-def split_into_sentences(text: str) -> list[str]:
-    """
-    Split text into sentences, handling German abbreviations.
-
-    Args:
-        text: Text to split
-
-    Returns:
-        List of sentences
-    """
-    # Common German abbreviations that don't end sentences
-    abbreviations = {
-        "bzw",
-        "ca",
-        "d.h",
-        "evtl",
-        "ggf",
-        "i.d.R",
-        "inkl",
-        "max",
-        "min",
-        "o.ä",
-        "s.o",
-        "u.a",
-        "u.ä",
-        "usw",
-        "vgl",
-        "z.B",
-        "z.T",
-        "zzgl",
-        "Dr",
-        "Prof",
-        "Nr",
-        "Str",
-        "Mio",
-        "Mrd",
-        "Tsd",
-    }
-
-    # Replace abbreviations temporarily
-    temp_text = text
-    replacements = {}
-    for i, abbr in enumerate(abbreviations):
-        placeholder = f"__ABBR{i}__"
-        temp_text = re.sub(rf"\b{abbr}\.", placeholder, temp_text, flags=re.IGNORECASE)
-        replacements[placeholder] = f"{abbr}."
-
-    # Split on sentence boundaries
-    sentences = re.split(r"(?<=[.!?])\s+(?=[A-ZÄÖÜ])", temp_text)
-
-    # Restore abbreviations
-    for i, sentence in enumerate(sentences):
-        for placeholder, original in replacements.items():
-            sentences[i] = sentence.replace(placeholder, original)
-
-    return [s.strip() for s in sentences if s.strip()]
 
 
 def identify_headers_footers(
