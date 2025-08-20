@@ -19,6 +19,7 @@ from src.core import (
     FAST_EXTRACTION_MAX_CHUNKS,
     UPLOAD_FOLDER,
 )
+from src.core.config import PROJECT_ROOT
 from src.extraction import extract_structures_with_retry
 from src.processing import extract_text_with_ocr_fallback
 from src.utils import (
@@ -991,7 +992,7 @@ async def extract_enhanced_operations(
 
         # Save result to file
         try:
-            upload_dir = DATA_DIR / "uploads"
+            upload_dir = PROJECT_ROOT / "data" / "uploads"
             upload_dir.mkdir(exist_ok=True)
             
             result_filename = f"{source_id}_operations_result.json"

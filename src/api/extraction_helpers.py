@@ -2492,42 +2492,53 @@ def extract_direct_to_enhanced_with_operations(
             )
 
             if operations_result and operations_result.operations:
-                # Validate operations before applying
+                # Filter out invalid operations instead of skipping entire chunk
                 from src.extraction.operations_executor import validate_operations
                 validation_errors = validate_operations(operations_result.operations, current_state)
                 
                 if validation_errors:
-                    print(f"⚠️ Chunk {i+1}: Operation validation failed:")
+                    print(f"⚠️ Chunk {i+1}: {len(validation_errors)} operation validation errors:")
                     for error in validation_errors[:3]:  # Show first 3 errors
                         print(f"   - {error}")
                     if len(validation_errors) > 3:
                         print(f"   - ... and {len(validation_errors) - 3} more errors")
-                    print(f"   Skipping this chunk to preserve state integrity")
-                    continue
-                
-                # Apply validated operations to current state
-                try:
-                    new_state, operation_log = executor.apply_operations(
-                        current_state, 
-                        operations_result.operations,
-                        chunk_index=i
-                    )
                     
-                    # Only update current_state if operations were successfully applied
-                    if operation_log.successful_operations > 0:
-                        current_state = new_state
-                        all_operation_logs.append(operation_log)
+                    # Filter out invalid operations - validate each operation individually
+                    valid_operations = []
+                    for op in operations_result.operations:
+                        single_op_errors = validate_operations([op], current_state)
+                        if not single_op_errors:
+                            valid_operations.append(op)
+                    
+                    print(f"   Proceeding with {len(valid_operations)}/{len(operations_result.operations)} valid operations")
+                    operations_result.operations = valid_operations
+                
+                if operations_result.operations:  # Only proceed if we have valid operations
+                    # Apply validated operations to current state
+                    try:
+                        new_state, operation_log = executor.apply_operations(
+                            current_state, 
+                            operations_result.operations,
+                            chunk_index=i
+                        )
                         
-                        print(f"✅ Chunk {i+1}: {operation_log.successful_operations}/{operation_log.total_operations} operations applied")
-                        print(f"📊 Current state: {len(current_state.action_fields)} action fields, {len(current_state.projects)} projects, {len(current_state.measures)} measures, {len(current_state.indicators)} indicators")
-                    else:
-                        print(f"⚠️ Chunk {i+1}: No operations succeeded, keeping previous state")
-                        all_operation_logs.append(operation_log)
-                        
-                except Exception as op_error:
-                    print(f"❌ Chunk {i+1}: Error applying operations: {op_error}")
-                    print(f"   Keeping previous state to preserve integrity")
-                    continue
+                        # Only update current_state if operations were successfully applied
+                        if operation_log.successful_operations > 0:
+                            current_state = new_state
+                            all_operation_logs.append(operation_log)
+                            
+                            print(f"✅ Chunk {i+1}: {operation_log.successful_operations}/{operation_log.total_operations} operations applied")
+                            print(f"📊 Current state: {len(current_state.action_fields)} action fields, {len(current_state.projects)} projects, {len(current_state.measures)} measures, {len(current_state.indicators)} indicators")
+                        else:
+                            print(f"⚠️ Chunk {i+1}: No operations succeeded, keeping previous state")
+                            all_operation_logs.append(operation_log)
+                            
+                    except Exception as op_error:
+                        print(f"❌ Chunk {i+1}: Error applying operations: {op_error}")
+                        print(f"   Keeping previous state to preserve integrity")
+                        continue
+                else:
+                    print(f"⚠️ Chunk {i+1}: All operations filtered out, skipping")
                     
             else:
                 print(f"⚠️ No operations from chunk {i+1}")
@@ -2749,10 +2760,10 @@ def create_operations_system_message() -> str:
 IHRE AUFGABE: Analysieren Sie Textpassagen und erstellen Sie OPERATIONEN (nicht das vollständige JSON), um die bestehende Extraktionsstruktur zu erweitern.
 
 VERFÜGBARE OPERATIONEN:
-- CREATE: Neue Entity erstellen (nur wenn wirklich neu und einzigartig)
-- UPDATE: Bestehende Entity mit zusätzlichen Details erweitern  
-- MERGE: Neue Inhalte in bestehende Entity einarbeiten
-- CONNECT: Verbindungen zwischen Entities erstellen
+- CREATE: Neue Entity erstellen (nur wenn wirklich neu und einzigartig) - NIEMALS entity_id angeben, wird automatisch generiert!
+- UPDATE: Bestehende Entity mit zusätzlichen Details erweitern - entity_id erforderlich
+- MERGE: Neue Inhalte in bestehende Entity einarbeiten - merge_with_id erforderlich
+- CONNECT: Verbindungen zwischen Entities erstellen - connections erforderlich
 
 HIERARCHISCHE STRUKTUR:
 - Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE (max. 8-15 total)

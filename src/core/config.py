@@ -146,7 +146,7 @@ STRUCTURED_OUTPUT_OPTIONS = {
     # Note: temperature is not included here, use MODEL_TEMPERATURE when calling Ollama
     "top_p": 0.4,  # Research shows 0.3-0.5 optimal for factual extraction
     "top_k": 40,  # Focused candidate set for reliable JSON generation
-    "num_predict": 30720,  # Increased to 75% of context window to prevent JSON truncation
+    "num_predict": 50000,  # Increased to allow full JSON responses without truncation
     "num_ctx": 40960,  # Matches qwen3:14b context length
     "stop": ["</json>", "```"],
     "keep_alive": "24h",  # Keep model loaded in memory for 24 hours
