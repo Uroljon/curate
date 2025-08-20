@@ -294,14 +294,18 @@ class TerminalVisualizer:
         af_coverage = stats.action_field_coverage
         proj_coverage = stats.project_coverage
 
-        color_af = (
-            "green" if af_coverage > 0.9 else "yellow" if af_coverage > 0.7 else "red"
-        )
-        color_proj = (
-            "green"
-            if proj_coverage > 0.9
-            else "yellow" if proj_coverage > 0.7 else "red"
-        )
+        if af_coverage > 0.9:
+            color_af = "green"
+        elif af_coverage > 0.7:
+            color_af = "yellow"
+        else:
+            color_af = "red"
+        if proj_coverage > 0.9:
+            color_proj = "green"
+        elif proj_coverage > 0.7:
+            color_proj = "yellow"
+        else:
+            color_proj = "red"
 
         print(
             f"  Action field coverage: {self._colorize(f'{af_coverage:.1%}', color_af)}"
@@ -362,11 +366,12 @@ class TerminalVisualizer:
                         )
 
         quote_match_rate = stats.quote_match_rate
-        color = (
-            "green"
-            if quote_match_rate > 0.9
-            else "yellow" if quote_match_rate > 0.8 else "red"
-        )
+        if quote_match_rate > 0.9:
+            color = "green"
+        elif quote_match_rate > 0.8:
+            color = "yellow"
+        else:
+            color = "red"
         print(f"  Quote match rate: {self._colorize(f'{quote_match_rate:.1%}', color)}")
 
         if verbose:
@@ -376,11 +381,12 @@ class TerminalVisualizer:
                 valid_refs = stats.page_validity.get("valid_page_refs", 0)
                 if total_refs > 0:
                     validity_rate = valid_refs / total_refs
-                    color = (
-                        "green"
-                        if validity_rate > 0.95
-                        else "yellow" if validity_rate > 0.8 else "red"
-                    )
+                    if validity_rate > 0.95:
+                        color = "green"
+                    elif validity_rate > 0.8:
+                        color = "yellow"
+                    else:
+                        color = "red"
                     print(
                         f"  Page reference validity: {self._colorize(f'{validity_rate:.1%}', color)} "
                         f"({valid_refs}/{total_refs})"
@@ -503,9 +509,12 @@ class TerminalVisualizer:
         if result.source_stats.source_coverage:
             print("  Source coverage by entity type:")
             for entity_type, coverage in result.source_stats.source_coverage.items():
-                color = (
-                    "green" if coverage > 0.8 else "yellow" if coverage > 0.5 else "red"
-                )
+                if coverage > 0.8:
+                    color = "green"
+                elif coverage > 0.5:
+                    color = "yellow"
+                else:
+                    color = "red"
                 print(f"    {entity_type}: {self._colorize(f'{coverage:.1%}', color)}")
 
         if result.source_stats.evidence_density:
@@ -592,7 +601,12 @@ class TerminalVisualizer:
 
         before_color = self._grade_color(result.before.quality_score.grade)
         after_color = self._grade_color(result.after.quality_score.grade)
-        diff_color = "green" if score_diff > 0 else "red" if score_diff < 0 else "white"
+        if score_diff > 0:
+            diff_color = "green"
+        elif score_diff < 0:
+            diff_color = "red"
+        else:
+            diff_color = "white"
 
         print(
             f"Before: {self._colorize(f'{before_score:.1f}', before_color)} "
@@ -800,9 +814,12 @@ class HTMLReportGenerator:
         after_score = result.after.quality_score.overall_score
         score_diff = after_score - before_score
 
-        diff_class = (
-            "grade-A" if score_diff > 0 else "grade-F" if score_diff < 0 else "grade-C"
-        )
+        if score_diff > 0:
+            diff_class = "grade-A"
+        elif score_diff < 0:
+            diff_class = "grade-F"
+        else:
+            diff_class = "grade-C"
 
         content = f"""
         <div class="header">

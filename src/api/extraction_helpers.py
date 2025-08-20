@@ -697,7 +697,7 @@ def extract_direct_to_enhanced(
         # Create context-aware extraction prompt with full JSON structure
         system_message = create_simplified_system_message_with_context()
         main_prompt = create_simplified_extraction_prompt_with_context(
-            chunk_text, source_id, accumulated_json
+            chunk_text, accumulated_json
         )
 
         # Enhanced log context
@@ -873,7 +873,7 @@ def extract_direct_to_enhanced_with_operations(
         # Create operations-focused prompt
         system_message = create_operations_system_message()
         main_prompt = create_operations_extraction_prompt(
-            chunk_text, source_id, current_state, page_numbers
+            chunk_text, current_state, page_numbers
         )
 
         # Enhanced log context
@@ -999,7 +999,7 @@ Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das dem vorgegebenen Schema
 
 
 def create_simplified_extraction_prompt_with_context(
-    chunk_text: str, source_id: str, accumulated_json
+    chunk_text: str, accumulated_json
 ) -> str:
     """Create context-aware extraction prompt that includes full accumulated extraction state."""
 
@@ -1080,7 +1080,7 @@ Antworten Sie AUSSCHLIESSLICH mit der Operations-Liste im JSON-Format."""
 
 
 def create_operations_extraction_prompt(
-    chunk_text: str, source_id: str, current_state: dict, page_numbers: list[int]
+    chunk_text: str, current_state: dict, page_numbers: list[int]
 ) -> str:
     """Create operations-focused extraction prompt."""
 

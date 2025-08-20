@@ -435,8 +435,9 @@ async def extract_enhanced_operations(
             result_filename = f"{source_id}_operations_result.json"
             result_path = upload_dir / result_filename
 
-            with open(result_path, "w", encoding="utf-8") as f:
-                json.dump(extraction_result, f, indent=2, ensure_ascii=False)
+            import aiofiles
+            async with aiofiles.open(result_path, "w", encoding="utf-8") as f:
+                await f.write(json.dumps(extraction_result, indent=2, ensure_ascii=False))
 
             print(f"💾 Operations result saved to {result_filename}")
 
