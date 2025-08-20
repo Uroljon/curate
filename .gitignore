@@ -89,3 +89,4 @@ sonar-report.json
 # Project specific
 GEMINI.md
 AGENTS.md
+.coverage
