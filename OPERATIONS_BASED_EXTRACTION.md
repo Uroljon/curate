@@ -47,12 +47,12 @@ Chunk 3 → LLM (aware of State₂) → Operations → Apply → State₃
 
 ### Step 1: Enable Context-Aware Prompting
 
-The functions already exist but are not used:
-- `build_entity_context_summary(enhanced_structure)` - Creates summary of existing entities
-- `get_available_connection_targets(enhanced_structure)` - Lists entities available for connections
-- `get_next_available_ids(global_counters)` - Provides next sequential IDs
+**NEED TO IMPLEMENT** context-aware helper functions:
+- ~~`build_entity_context_summary(enhanced_structure)`~~ - REMOVED (confirmed unused)
+- ~~`get_available_connection_targets(enhanced_structure)`~~ - REMOVED (confirmed unused)  
+- ~~`get_next_available_ids(global_counters)`~~ - REMOVED (confirmed unused)
 
-**Location**: `src/api/extraction_helpers.py` (lines 827-900+)
+**Note**: These functions were removed as dead code. They need to be reimplemented when fixing context-aware prompting.
 
 ### Step 2: Modify Operations Extraction Function
 
@@ -64,10 +64,10 @@ accumulated_state = create_empty_enhanced_structure()
 global_counters = {"af": 0, "proj": 0, "msr": 0, "ind": 0}
 
 for chunk_idx, chunk_data in enumerate(chunks):
-    # Build context from accumulated state
-    entity_context = build_entity_context_summary(accumulated_state)
-    available_targets = get_available_connection_targets(accumulated_state)
-    next_ids = get_next_available_ids(global_counters)
+    # Build context from accumulated state (NEED TO IMPLEMENT)
+    entity_context = build_entity_context_summary(accumulated_state)  # REMOVED - needs reimplementation
+    available_targets = get_available_connection_targets(accumulated_state)  # REMOVED - needs reimplementation  
+    next_ids = get_next_available_ids(global_counters)  # REMOVED - needs reimplementation
     
     # Create context-aware prompt
     context_aware_prompt = f"""
