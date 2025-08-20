@@ -141,17 +141,5 @@ class ComparisonResult(BaseModel):
     summary: str = ""
 
 
-class BatchAnalysisResult(BaseModel):
-    """Result of analyzing multiple files."""
-
-    metadata: AnalysisMetadata
-    results: list[AnalysisResult] = Field(default_factory=list)
-    aggregate_stats: dict[str, Any] = Field(default_factory=dict)
-    trends: dict[str, list[float]] = Field(default_factory=dict)
-    outliers: list[str] = Field(default_factory=list)
-
-
 # Utility types for internal use
 NodeType = str | int
-EdgeType = tuple[NodeType, NodeType, dict[str, Any]]
-GraphData = dict[str, Any]

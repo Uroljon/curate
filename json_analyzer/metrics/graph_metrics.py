@@ -275,25 +275,3 @@ class GraphMetrics:
                     confidence=confidence,
                     relation=f"{entity_id.split('_')[0]}_to_{target_id.split('_')[0]}",
                 )
-
-    def get_component_analysis(self, graph: nx.Graph) -> dict[str, Any]:
-        """Get detailed analysis of graph components."""
-        if graph.number_of_nodes() == 0:
-            return {}
-
-        components = list(nx.connected_components(graph))
-        component_sizes = [len(comp) for comp in components]
-
-        return {
-            "num_components": len(components),
-            "component_sizes": component_sizes,
-            "largest_component": max(component_sizes) if component_sizes else 0,
-            "smallest_component": min(component_sizes) if component_sizes else 0,
-            "avg_component_size": mean(component_sizes) if component_sizes else 0,
-            "singleton_components": sum(1 for size in component_sizes if size == 1),
-        }
-
-    def get_degree_distribution(self, graph: nx.Graph) -> dict[int, int]:
-        """Get degree distribution as a histogram."""
-        degrees = [graph.degree[node] for node in graph.nodes()]
-        return dict(Counter(degrees))

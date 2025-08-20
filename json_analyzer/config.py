@@ -177,15 +177,6 @@ ID_PREFIXES = {
     "indicators": ["ind_"],
 }
 
-# Expected connection types for validation
-VALID_CONNECTIONS = {
-    ("proj", "af"): "project_to_action_field",
-    ("msr", "proj"): "measure_to_project",
-    ("msr", "af"): "measure_to_action_field",
-    ("ind", "proj"): "indicator_to_project",
-    ("ind", "af"): "indicator_to_action_field",
-    ("ind", "msr"): "indicator_to_measure",
-}
 
 # Language codes for content analysis
 SUPPORTED_LANGUAGES = ["de", "en", "fr", "es", "it"]
