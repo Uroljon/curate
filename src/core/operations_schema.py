@@ -55,9 +55,6 @@ class EntityOperation(BaseModel):
         default=0.8, ge=0.0, le=1.0, description="Confidence in this operation"
     )
 
-    reason: str | None = Field(
-        default=None, description="Human-readable reason for this operation"
-    )
 
     # Source attribution
     source_pages: list[int] | None = Field(
@@ -89,12 +86,6 @@ class ExtractionOperations(BaseModel):
         default=None, description="Page numbers processed in this chunk"
     )
 
-    extraction_confidence: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Overall confidence in this chunk's extraction",
-    )
 
 
 class ConnectionOperation(BaseModel):
@@ -108,18 +99,11 @@ class ConnectionOperation(BaseModel):
 
     to_id: str = Field(description="ID of the target entity")
 
-    relationship_type: str | None = Field(
-        default="belongs_to",
-        description="Type of relationship (belongs_to, measures, implements, etc.)",
-    )
 
     confidence: float = Field(
         default=0.8, ge=0.0, le=1.0, description="Confidence in this connection"
     )
 
-    bidirectional: bool = Field(
-        default=False, description="Whether this connection should be bidirectional"
-    )
 
 
 class OperationResult(BaseModel):

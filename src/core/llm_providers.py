@@ -36,17 +36,6 @@ class LLMProvider(ABC):
         """Query LLM with structured output using Pydantic models."""
         pass
 
-    @abstractmethod
-    def query_unstructured(
-        self,
-        prompt: str,
-        system_message: str | None = None,
-        log_file_path: str | None = None,
-        log_context: str | None = None,
-        override_num_predict: int | None = None,
-    ) -> str | None:
-        """Query LLM for unstructured text generation."""
-        pass
 
     def _log_llm_dialog(
         self,
@@ -187,66 +176,6 @@ class OllamaProvider(LLMProvider):
             print(f"❌ Unexpected error: {e!s}")
             return None
 
-    def query_unstructured(
-        self,
-        prompt: str,
-        system_message: str | None = None,
-        log_file_path: str | None = None,
-        log_context: str | None = None,
-        override_num_predict: int | None = None,
-    ) -> str | None:
-        """Query Ollama for unstructured text generation."""
-        try:
-            messages = []
-
-            if system_message:
-                messages.append({"role": "system", "content": system_message})
-
-            messages.append({"role": "user", "content": prompt})
-
-            options = self.structured_output_options.copy()
-            options["temperature"] = self.temperature
-
-            if override_num_predict:
-                options["num_predict"] = override_num_predict
-
-            request_body = {
-                "model": self.model_name,
-                "messages": messages,
-                "stream": False,
-                "options": options,
-            }
-
-            response = requests.post(
-                self.chat_url, json=request_body, timeout=self.timeout
-            )
-            response.raise_for_status()
-
-            data = response.json()
-
-            if "message" in data and "content" in data["message"]:
-                content = data["message"]["content"].strip()
-
-                # Log the dialog if log file path is provided
-                if log_file_path:
-                    self._log_llm_dialog(
-                        log_file_path,
-                        system_message,
-                        prompt,
-                        content,
-                        log_context,
-                    )
-
-                return content
-
-            return None
-
-        except requests.RequestException as e:
-            print(f"❌ Ollama API Error: {e!s}")
-            return None
-        except Exception as e:
-            print(f"❌ Unexpected error: {e!s}")
-            return None
 
 
 class VLLMProvider(LLMProvider):
@@ -453,51 +382,6 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
             print(f"❌ vLLM API Error: {e!s}")
             return None
 
-    def query_unstructured(
-        self,
-        prompt: str,
-        system_message: str | None = None,
-        log_file_path: str | None = None,
-        log_context: str | None = None,
-        override_num_predict: int | None = None,
-    ) -> str | None:
-        """Query vLLM for unstructured text generation."""
-        try:
-            messages = []
-
-            if system_message:
-                messages.append({"role": "system", "content": system_message})
-
-            messages.append({"role": "user", "content": prompt})
-
-            llm_start_time = time.time()
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=override_num_predict or self.max_tokens,
-                timeout=self.timeout,
-            )
-            llm_response_time = time.time() - llm_start_time
-            print(f"      🤖 LLM response in {llm_response_time:.2f}s")
-
-            content = response.choices[0].message.content.strip()
-
-            # Log the dialog if log file path is provided
-            if log_file_path:
-                self._log_llm_dialog(
-                    log_file_path,
-                    system_message,
-                    prompt,
-                    content,
-                    log_context,
-                )
-
-            return content
-
-        except Exception as e:
-            print(f"❌ vLLM API Error: {e!s}")
-            return None
 
 
 class OpenRouterProvider(LLMProvider):
@@ -614,47 +498,6 @@ Respond ONLY with the JSON object, no additional text."""
             print(f"❌ OpenRouter API Error: {e}")
             return None
 
-    def query_unstructured(
-        self,
-        prompt: str,
-        system_message: str | None = None,
-        log_file_path: str | None = None,
-        log_context: str | None = None,
-        override_num_predict: int | None = None,
-    ) -> str | None:
-        """Query OpenRouter for unstructured text generation."""
-        try:
-            messages = []
-
-            if system_message:
-                messages.append({"role": "system", "content": system_message})
-
-            messages.append({"role": "user", "content": prompt})
-
-            llm_start_time = time.time()
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=override_num_predict or self.max_tokens,
-                timeout=self.timeout,
-            )
-            llm_response_time = time.time() - llm_start_time
-            print(f"      🤖 OpenRouter response in {llm_response_time:.2f}s")
-
-            content = response.choices[0].message.content.strip()
-
-            # Log the dialog
-            if log_file_path:
-                self._log_llm_dialog(
-                    log_file_path, system_message, prompt, content, log_context
-                )
-
-            return content
-
-        except Exception as e:
-            print(f"❌ OpenRouter API Error: {e}")
-            return None
 
 
 class ExternalAPIProvider(LLMProvider):
@@ -880,105 +723,8 @@ Respond ONLY with the JSON object, no additional text."""
             print(f"❌ Gemini API Error: {e}")
             return None
 
-    def query_unstructured(
-        self,
-        prompt: str,
-        system_message: str | None = None,
-        log_file_path: str | None = None,
-        log_context: str | None = None,
-        override_num_predict: int | None = None,
-    ) -> str | None:
-        """Query external API for unstructured text generation."""
-        if self.api_provider == "openai":
-            return self._query_openai_unstructured(
-                prompt, system_message, log_file_path, log_context, override_num_predict
-            )
-        elif self.api_provider == "gemini":
-            return self._query_gemini_unstructured(
-                prompt, system_message, log_file_path, log_context, override_num_predict
-            )
 
-    def _query_openai_unstructured(
-        self,
-        prompt: str,
-        system_message: str | None,
-        log_file_path: str | None,
-        log_context: str | None,
-        override_num_predict: int | None,
-    ) -> str | None:
-        """Query OpenAI for unstructured text generation."""
-        try:
-            messages = []
 
-            if system_message:
-                messages.append({"role": "system", "content": system_message})
-
-            messages.append({"role": "user", "content": prompt})
-
-            llm_start_time = time.time()
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=override_num_predict or self.max_tokens,
-                timeout=self.timeout,
-            )
-            llm_response_time = time.time() - llm_start_time
-            print(f"      🤖 OpenAI response in {llm_response_time:.2f}s")
-
-            content = response.choices[0].message.content.strip()
-
-            # Log the dialog
-            if log_file_path:
-                self._log_llm_dialog(
-                    log_file_path, system_message, prompt, content, log_context
-                )
-
-            return content
-
-        except Exception as e:
-            print(f"❌ OpenAI API Error: {e}")
-            return None
-
-    def _query_gemini_unstructured(
-        self,
-        prompt: str,
-        system_message: str | None,
-        log_file_path: str | None,
-        log_context: str | None,
-        override_num_predict: int | None,
-    ) -> str | None:
-        """Query Gemini for unstructured text generation."""
-        try:
-            # Combine system message and prompt
-            full_prompt = prompt
-            if system_message:
-                full_prompt = f"{system_message}\n\n{prompt}"
-
-            llm_start_time = time.time()
-            response = self.client.generate_content(
-                full_prompt,
-                generation_config={
-                    "temperature": self.temperature,
-                    "max_output_tokens": override_num_predict or self.max_tokens,
-                },
-            )
-            llm_response_time = time.time() - llm_start_time
-            print(f"      🤖 Gemini response in {llm_response_time:.2f}s")
-
-            content = response.text.strip()
-
-            # Log the dialog
-            if log_file_path:
-                self._log_llm_dialog(
-                    log_file_path, system_message, prompt, content, log_context
-                )
-
-            return content
-
-        except Exception as e:
-            print(f"❌ Gemini API Error: {e}")
-            return None
 
 
 def get_llm_provider(

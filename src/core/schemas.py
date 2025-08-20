@@ -79,18 +79,6 @@ class ProjectDetailsEnhanced(BaseModel):
     indicators: list[str] = Field(
         default_factory=list, description="List of indicators/KPIs"
     )
-    confidence_scores: dict[str, float] = Field(
-        default_factory=dict,
-        description="Maps each measure/indicator to confidence score (0.0-1.0)",
-    )
-    reasoning: dict[str, str] = Field(
-        default_factory=dict,
-        description="Maps each measure/indicator to classification reasoning",
-    )
-    key_patterns: dict[str, list[str]] = Field(
-        default_factory=dict,
-        description="Maps each measure/indicator to detected key patterns",
-    )
 
 
 # Enhanced schemas for the two-layer LLM pipeline (enhance_structure endpoint)
@@ -99,12 +87,8 @@ class ProjectDetailsEnhanced(BaseModel):
 class ConnectionWithConfidence(BaseModel):
     """Represents a connection between entities with confidence scoring."""
 
-    model_config = {"extra": "forbid"}
 
     target_id: str = Field(..., description="ID of the target entity")
-    confidence_score: float = Field(
-        ..., ge=0.0, le=1.0, description="Confidence score between 0.0 and 1.0"
-    )
 
 
 class EnhancedActionField(BaseModel):

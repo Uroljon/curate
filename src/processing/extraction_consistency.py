@@ -27,8 +27,6 @@ class ExtractionConsistencyValidator:
 
     def __init__(self):
         """Initialize the consistency validator."""
-        self.german_measure_patterns = self._compile_measure_patterns()
-        self.german_indicator_patterns = self._compile_indicator_patterns()
 
     def _compile_measure_patterns(self) -> list[re.Pattern]:
         """

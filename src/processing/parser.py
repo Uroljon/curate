@@ -239,15 +239,3 @@ def extract_text_with_ocr_fallback(pdf_path: str) -> tuple[list[tuple[str, int]]
     return page_aware_text, metadata
 
 
-def extract_text_legacy(pdf_path: str) -> tuple[str, dict]:
-    """
-    Legacy function that returns combined text for backward compatibility.
-
-    This function maintains the old interface while using the new page-aware parser.
-    """
-    page_aware_text, metadata = extract_text_with_ocr_fallback(pdf_path)
-
-    # Combine all page texts into a single string
-    combined_text = "\n\n".join(text for text, _ in page_aware_text)
-
-    return combined_text, metadata
