@@ -880,8 +880,6 @@ class StructureAwareChunker:
         return count
 
 
-
-
 def chunk_for_embedding_with_pages(
     page_aware_text: list[tuple[str, int]],
     max_chars: int = 5000,

@@ -36,26 +36,6 @@ GERMAN_SECTION_KEYWORDS = [
     "Zusammenfassung",
 ]
 
-# Common German action field prefixes
-ACTION_FIELD_PATTERNS = [
-    r"im Handlungsfeld[:\s]+([^\.]+)",
-    r"Handlungsfeld[:\s]+([^\.]+)",
-    r"für das Handlungsfeld[:\s]+([^\.]+)",
-    r"zum Handlungsfeld[:\s]+([^\.]+)",
-]
-
-# English terms that should not appear in German extraction
-ENGLISH_FILTER_TERMS = [
-    "Development",
-    "Enhancement",
-    "Support",
-    "Promotion",
-    "Implementation",
-    "Management",
-    "Strategy",
-    "Initiative",
-]
-
 
 # Text processing thresholds
 MIN_LINE_LENGTH = 3  # Minimum characters for a valid line

@@ -296,9 +296,7 @@ class VLLMProvider(LLMProvider):
 
         except ImportError:
             msg = "OpenAI client library required for vLLM. Install with: pip install openai"
-            raise ImportError(
-                msg
-            )
+            raise ImportError(msg)
 
     def query_structured(
         self,
@@ -530,9 +528,7 @@ class OpenRouterProvider(LLMProvider):
             print(f"📡 OpenRouter client initialized for model: {self.model_name}")
         except ImportError:
             msg = "OpenAI library required for OpenRouter. Install with: pip install openai"
-            raise ImportError(
-                msg
-            )
+            raise ImportError(msg)
 
     def query_structured(
         self,
@@ -702,9 +698,7 @@ class ExternalAPIProvider(LLMProvider):
             print(f"📡 OpenAI client initialized for model: {self.model_name}")
         except ImportError:
             msg = "OpenAI library required. Install with: pip install openai"
-            raise ImportError(
-                msg
-            )
+            raise ImportError(msg)
 
     def _init_gemini_client(self):
         """Initialize Google Gemini client."""
@@ -716,9 +710,7 @@ class ExternalAPIProvider(LLMProvider):
             print(f"📡 Gemini client initialized for model: {self.model_name}")
         except ImportError:
             msg = "Google Generative AI library required. Install with: pip install google-generativeai"
-            raise ImportError(
-                msg
-            )
+            raise ImportError(msg)
 
     def query_structured(
         self,

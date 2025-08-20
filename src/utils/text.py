@@ -198,8 +198,6 @@ def is_heading(line: str) -> bool:
     return False
 
 
-
-
 def identify_headers_footers(
     page_texts: list[str], frequency_threshold: float = 0.3
 ) -> tuple[list[str], list[str]]:
