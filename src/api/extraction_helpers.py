@@ -1055,7 +1055,7 @@ def rebuild_enhanced_structure_from_resolved(
             new_action_fields.append(
                 EnhancedActionField(
                     id=af_id,
-                    content={"name": action_field_title},
+                    content={"title": action_field_title},
                     connections=[],  # Will be populated in second pass
                 )
             )
@@ -1116,16 +1116,16 @@ def rebuild_enhanced_structure_from_resolved(
                     new_indicators.append(
                         EnhancedIndicator(
                             id=ind_id,
-                            content={"name": indicator_title},
+                            content={"title": indicator_title},
                             connections=[],  # Will be populated in second pass
                         )
                     )
 
     # Second pass: Build connections with deduplication
-    af_lookup = {af.content["name"]: af for af in new_action_fields}
+    af_lookup = {af.content["title"]: af for af in new_action_fields}
     proj_lookup = {p.content["title"]: p for p in new_projects}
     msr_lookup = {m.content["title"]: m for m in new_measures}
-    ind_lookup = {i.content["name"]: i for i in new_indicators}
+    ind_lookup = {i.content["title"]: i for i in new_indicators}
 
     for structure in resolved_structures:
         action_field_title = structure.get("action_field", "")
@@ -1174,6 +1174,22 @@ def rebuild_enhanced_structure_from_resolved(
                         for c in project_node.connections
                     ):
                         project_node.connections.append(ind_connection)
+
+                # Add Measure -> Indicator connections (measures within this project may connect to indicators)
+                for measure_title in project.get("measures", []):
+                    if measure_title and measure_title in msr_lookup:
+                        measure_node = msr_lookup[measure_title]
+                        for indicator_title in project.get("indicators", []):
+                            if indicator_title and indicator_title in ind_lookup:
+                                indicator_node = ind_lookup[indicator_title]
+                                msr_ind_connection = ConnectionWithConfidence(
+                                    target_id=indicator_node.id, confidence_score=0.75
+                                )
+                                if not any(
+                                    c.target_id == indicator_node.id
+                                    for c in measure_node.connections
+                                ):
+                                    measure_node.connections.append(msr_ind_connection)
 
     # Validate all IDs are unique
     all_ids = (
@@ -2290,7 +2306,7 @@ def extract_direct_to_enhanced(
     # Initialize Global Entity Registry for consistency across chunks
     from src.processing.global_registry import GlobalEntityRegistry
     global_registry = GlobalEntityRegistry()
-    
+
     all_results = []
     llm_provider = get_llm_provider()
 
@@ -2299,7 +2315,7 @@ def extract_direct_to_enhanced(
 
         # Get full accumulated extraction state instead of just entity names
         accumulated_json = merge_enhanced_results(all_results) if all_results else None
-        
+
         # Create context-aware extraction prompt with full JSON structure
         system_message = create_simplified_system_message_with_context()
         main_prompt = create_simplified_extraction_prompt_with_context(chunk_text, source_id, accumulated_json)
@@ -2326,7 +2342,7 @@ def extract_direct_to_enhanced(
                         # Write back to BOTH fields for compatibility
                         action_field.content['name'] = canonical_name
                         action_field.content['title'] = canonical_name
-                
+
                 # Add page attribution to all entities
                 add_page_attribution_to_enhanced_result(result, page_numbers)
                 all_results.append(result)
@@ -2363,7 +2379,7 @@ def extract_direct_to_enhanced(
 
     # Step 5: Print Global Entity Registry summary
     global_registry.print_summary()
-    
+
     # Step 6: Return as dictionary for API response
     extraction_time = time.time() - start_time
     print(f"✅ Direct enhanced extraction completed in {extraction_time:.1f}s")
@@ -2424,8 +2440,8 @@ def extract_direct_to_enhanced_with_operations(
         PROJECT_ROOT,
     )
     from src.core.llm_providers import get_llm_provider
-    from src.core.schemas import EnrichedReviewJSON
     from src.core.operations_schema import ExtractionOperations
+    from src.core.schemas import EnrichedReviewJSON
     from src.extraction.operations_executor import OperationExecutor
     from src.processing.chunker import chunk_for_llm_with_pages
 
@@ -2465,7 +2481,7 @@ def extract_direct_to_enhanced_with_operations(
         measures=[],
         indicators=[]
     )
-    
+
     executor = OperationExecutor()
     llm_provider = get_llm_provider()
     all_operation_logs = []
@@ -2495,51 +2511,51 @@ def extract_direct_to_enhanced_with_operations(
                 # Filter out invalid operations instead of skipping entire chunk
                 from src.extraction.operations_executor import validate_operations
                 validation_errors = validate_operations(operations_result.operations, current_state)
-                
+
                 if validation_errors:
                     print(f"⚠️ Chunk {i+1}: {len(validation_errors)} operation validation errors:")
                     for error in validation_errors[:3]:  # Show first 3 errors
                         print(f"   - {error}")
                     if len(validation_errors) > 3:
                         print(f"   - ... and {len(validation_errors) - 3} more errors")
-                    
+
                     # Filter out invalid operations - validate each operation individually
                     valid_operations = []
                     for op in operations_result.operations:
                         single_op_errors = validate_operations([op], current_state)
                         if not single_op_errors:
                             valid_operations.append(op)
-                    
+
                     print(f"   Proceeding with {len(valid_operations)}/{len(operations_result.operations)} valid operations")
                     operations_result.operations = valid_operations
-                
+
                 if operations_result.operations:  # Only proceed if we have valid operations
                     # Apply validated operations to current state
                     try:
                         new_state, operation_log = executor.apply_operations(
-                            current_state, 
+                            current_state,
                             operations_result.operations,
                             chunk_index=i
                         )
-                        
+
                         # Only update current_state if operations were successfully applied
                         if operation_log.successful_operations > 0:
                             current_state = new_state
                             all_operation_logs.append(operation_log)
-                            
+
                             print(f"✅ Chunk {i+1}: {operation_log.successful_operations}/{operation_log.total_operations} operations applied")
                             print(f"📊 Current state: {len(current_state.action_fields)} action fields, {len(current_state.projects)} projects, {len(current_state.measures)} measures, {len(current_state.indicators)} indicators")
                         else:
                             print(f"⚠️ Chunk {i+1}: No operations succeeded, keeping previous state")
                             all_operation_logs.append(operation_log)
-                            
+
                     except Exception as op_error:
                         print(f"❌ Chunk {i+1}: Error applying operations: {op_error}")
-                        print(f"   Keeping previous state to preserve integrity")
+                        print("   Keeping previous state to preserve integrity")
                         continue
                 else:
                     print(f"⚠️ Chunk {i+1}: All operations filtered out, skipping")
-                    
+
             else:
                 print(f"⚠️ No operations from chunk {i+1}")
 
@@ -2550,9 +2566,9 @@ def extract_direct_to_enhanced_with_operations(
     # Step 4: Final statistics and return
     extraction_time = time.time() - start_time
     operation_summary = executor.get_operation_summary()
-    
+
     print(f"✅ Operations-based extraction completed in {extraction_time:.1f}s")
-    print(f"📊 Operation Summary:")
+    print("📊 Operation Summary:")
     print(f"   - Total operations: {operation_summary['total_operations']}")
     print(f"   - Successful: {operation_summary['successful_operations']}")
     print(f"   - Success rate: {operation_summary['success_rate']:.1%}")
@@ -2710,11 +2726,11 @@ Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das dem vorgegebenen Schema
 
 def create_simplified_extraction_prompt_with_context(chunk_text: str, source_id: str, accumulated_json) -> str:
     """Create context-aware extraction prompt that includes full accumulated extraction state."""
-    
+
     if accumulated_json:
         # Format the full JSON structure for the LLM
         import json
-        accumulated_json_str = json.dumps(accumulated_json.model_dump() if hasattr(accumulated_json, 'model_dump') else accumulated_json, 
+        accumulated_json_str = json.dumps(accumulated_json.model_dump() if hasattr(accumulated_json, 'model_dump') else accumulated_json,
                                         indent=2, ensure_ascii=False)
         context_text = f"""AKTUELLER EXTRAKTIONSSTAND (bisher gefundene Strukturen):
 {accumulated_json_str}
@@ -2722,7 +2738,7 @@ def create_simplified_extraction_prompt_with_context(chunk_text: str, source_id:
 WICHTIG: Erweitern Sie diese bestehende Struktur. Verwenden Sie exakte IDs und Namen aus dem obigen JSON. Erstellen Sie Verbindungen zu bestehenden Entities."""
     else:
         context_text = "Noch keine Strukturen extrahiert - dies ist der erste Chunk."
-    
+
     return f"""Extrahieren Sie aus diesem Textabschnitt die HIERARCHISCH KORREKTEN Strukturen.
 
 {context_text}
@@ -2767,23 +2783,23 @@ Antworten Sie AUSSCHLIESSLICH mit der Operations-Liste im JSON-Format."""
 
 
 def create_operations_extraction_prompt(
-    chunk_text: str, 
-    source_id: str, 
+    chunk_text: str,
+    source_id: str,
     current_state: dict,
     page_numbers: list[int]
 ) -> str:
     """Create operations-focused extraction prompt."""
-    
+
     import json
-    
+
     # Format current state for display
-    if (hasattr(current_state, 'action_fields') and 
-        (current_state.action_fields or current_state.projects or 
+    if (hasattr(current_state, 'action_fields') and
+        (current_state.action_fields or current_state.projects or
          current_state.measures or current_state.indicators)):
-        
+
         current_json_str = json.dumps(
             current_state.model_dump() if hasattr(current_state, 'model_dump') else current_state,
-            indent=2, 
+            indent=2,
             ensure_ascii=False
         )
         context_text = f"""AKTUELLER EXTRAKTIONSSTAND:
@@ -2792,9 +2808,9 @@ def create_operations_extraction_prompt(
 ANWEISUNG: Analysieren Sie den Text und erstellen Sie Operationen zur Erweiterung dieser Struktur."""
     else:
         context_text = "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
-    
+
     page_list = ", ".join(map(str, sorted(page_numbers)))
-    
+
     return f"""Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.
 
 {context_text}
@@ -2919,28 +2935,28 @@ def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
                 "projects": []
             }
 
-            # Find connected projects
+            # Find connected projects (using parent→child connections)
             for proj in result.projects:
-                for conn in proj.connections:
-                    if conn.target_id == af.id:
+                # Check if this project is connected from the action field
+                if proj.id in [conn.target_id for conn in af.connections]:
                         proj_dict = {
                             "title": proj.content.get("title", ""),
                             "measures": [],
                             "indicators": []
                         }
 
-                        # Find connected measures and indicators
+                        # Find connected measures and indicators (using parent→child connections)
                         for msr in result.measures:
-                            for msr_conn in msr.connections:
-                                if msr_conn.target_id == proj.id:
+                            # Check if this measure is connected from the project
+                            if msr.id in [conn.target_id for conn in proj.connections]:
                                     proj_dict["measures"].append({
                                         "title": msr.content.get("title", ""),
                                         "description": msr.content.get("description", "")
                                     })
 
                         for ind in result.indicators:
-                            for ind_conn in ind.connections:
-                                if ind_conn.target_id == proj.id:
+                            # Check if this indicator is connected from the project
+                            if ind.id in [conn.target_id for conn in proj.connections]:
                                     proj_dict["indicators"].append({
                                         "title": ind.content.get("title", ""),
                                         "description": ind.content.get("description", "")
@@ -2955,9 +2971,9 @@ def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
         if total_projects == 0:
             print("⚠️ No connected projects found, bypassing entity resolution to preserve entities")
             return result
-        
+
         print(f"🔗 Found {total_projects} connected projects in {len(structures)} structures, proceeding with resolution")
-        
+
         # Apply existing entity resolution
         resolved_structures = apply_entity_resolution(structures)
 

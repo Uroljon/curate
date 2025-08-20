@@ -197,12 +197,15 @@ class EnhancedIndicator(BaseModel):
     """Enhanced indicator for relational 4-bucket structure matching Appwrite Indicators schema."""
 
     id: str = Field(..., description="Unique identifier (e.g., 'ind_1')")
-    content: dict[str, str | list[str] | bool | None] = Field(
+    content: dict[str, str | list[str] | int | float | bool | None] = Field(
         ..., description="Indicator content matching Appwrite Indicators schema"
     )
     connections: list[ConnectionWithConfidence] = Field(
         default_factory=list,
         description="Connections to measures that contribute to this indicator",
+    )
+    sources: list[SourceAttribution] | None = Field(
+        default=None, description="Source attribution with validated quotes"
     )
 
     # Expected content fields (for reference):
