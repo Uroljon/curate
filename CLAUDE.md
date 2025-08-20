@@ -124,6 +124,22 @@ python -m json_analyzer batch data/uploads/ --output quality_report.csv
 python -m json_analyzer config --output strict_config.json
 ```
 
+**Testing:**
+```bash
+# Run individual test files (limited test coverage currently)
+python test_operations_fixes.py  # Operations extraction fixes test
+
+# JSON Analyzer tests
+python json_analyzer/tests/test_analyzer.py  # JSON quality analyzer tests
+python json_analyzer/tests/test_metrics.py   # Metrics calculation tests
+
+# Quick import test (verify no import errors after changes)
+python -c "from src.api import routes; print('Import successful!')"
+
+# Test server startup (ensure no runtime errors)
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
 ## Architecture
 
 **Processing Pipeline:**
