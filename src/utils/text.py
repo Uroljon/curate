@@ -18,7 +18,6 @@ from src.core.constants import (
     SECTION_PATTERNS,
     TITLE_CASE_RATIO,
 )
-from src.core.errors import LanguageDetectionError
 
 
 def clean_ocr_text(

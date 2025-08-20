@@ -10,7 +10,14 @@ __version__ = "1.0.0"
 __author__ = "CURATE Project"
 
 from .analyzer import JSONAnalyzer
-from .config import AnalyzerConfig, DEFAULT_CONFIG
-from .models import AnalysisResult, ComparisonResult, AnalysisMetadata
+from .config import DEFAULT_CONFIG, AnalyzerConfig
+from .models import AnalysisMetadata, AnalysisResult, ComparisonResult
 
-__all__ = ["JSONAnalyzer", "AnalyzerConfig", "DEFAULT_CONFIG", "AnalysisResult", "ComparisonResult", "AnalysisMetadata"]
+__all__ = [
+    "DEFAULT_CONFIG",
+    "AnalysisMetadata",
+    "AnalysisResult",
+    "AnalyzerConfig",
+    "ComparisonResult",
+    "JSONAnalyzer",
+]

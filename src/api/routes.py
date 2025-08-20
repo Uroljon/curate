@@ -6,7 +6,6 @@ import re
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any
 
 from fastapi import Request, UploadFile
 from fastapi.encoders import jsonable_encoder
@@ -785,7 +784,9 @@ async def extract_enhanced(
         from src.api.extraction_helpers import extract_direct_to_enhanced
 
         # Create log file path
-        log_file_path = os.path.join(UPLOAD_FOLDER, f"{source_id}_enhanced_extraction.jsonl")
+        log_file_path = os.path.join(
+            UPLOAD_FOLDER, f"{source_id}_enhanced_extraction.jsonl"
+        )
 
         # Perform direct enhanced extraction
         extraction_result = extract_direct_to_enhanced(
@@ -813,7 +814,9 @@ async def extract_enhanced(
             json.dump(enhanced_data, f, ensure_ascii=False, indent=2)
 
         print(f"💾 Saved enhanced structure to: {enhanced_filename}")
-        monitor.end_stage("file_saving", enhanced_file_size=os.path.getsize(enhanced_path))
+        monitor.end_stage(
+            "file_saving", enhanced_file_size=os.path.getsize(enhanced_path)
+        )
 
         # Stage 4: Prepare response
         monitor.start_stage("response_preparation", source_id=source_id)
@@ -824,7 +827,12 @@ async def extract_enhanced(
             "enhanced_file": enhanced_filename,  # Add filename for reference
             "metadata": extraction_result["metadata"],
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "processing_stages": ["file_loading", "enhanced_extraction", "file_saving", "response_preparation"]
+            "processing_stages": [
+                "file_loading",
+                "enhanced_extraction",
+                "file_saving",
+                "response_preparation",
+            ],
         }
 
         monitor.end_stage("response_preparation")
@@ -838,7 +846,7 @@ async def extract_enhanced(
         return JSONResponse(
             content=jsonable_encoder(response_data),
             status_code=200,
-            headers={"Content-Type": "application/json; charset=utf-8"}
+            headers={"Content-Type": "application/json; charset=utf-8"},
         )
 
     except FileNotFoundError as e:
@@ -852,9 +860,9 @@ async def extract_enhanced(
                 "error": "File not found",
                 "detail": str(e),
                 "source_id": source_id,
-                "suggestion": "Make sure to upload the PDF first using /upload endpoint"
+                "suggestion": "Make sure to upload the PDF first using /upload endpoint",
             },
-            status_code=404
+            status_code=404,
         )
 
     except ValueError as e:
@@ -864,12 +872,8 @@ async def extract_enhanced(
         log_api_response("/extract_enhanced", 400, response_time)
 
         return JSONResponse(
-            content={
-                "error": "Invalid data",
-                "detail": str(e),
-                "source_id": source_id
-            },
-            status_code=400
+            content={"error": "Invalid data", "detail": str(e), "source_id": source_id},
+            status_code=400,
         )
 
     except RuntimeError as e:
@@ -882,9 +886,9 @@ async def extract_enhanced(
             content={
                 "error": "Extraction failed",
                 "detail": str(e),
-                "source_id": source_id
+                "source_id": source_id,
             },
-            status_code=500
+            status_code=500,
         )
 
     except Exception as e:
@@ -897,9 +901,9 @@ async def extract_enhanced(
             content={
                 "error": "Internal server error",
                 "detail": str(e),
-                "source_id": source_id
+                "source_id": source_id,
             },
-            status_code=500
+            status_code=500,
         )
 
 
@@ -963,10 +967,14 @@ async def extract_enhanced_operations(
         monitor.start_stage("operations_extraction", source_id=source_id)
 
         # Build log file path (consistent with extract_enhanced)
-        log_file_path = os.path.join(UPLOAD_FOLDER, f"{source_id}_operations_extraction.jsonl")
+        log_file_path = os.path.join(
+            UPLOAD_FOLDER, f"{source_id}_operations_extraction.jsonl"
+        )
 
         # Import and run operations-based extraction
-        from src.api.extraction_helpers import extract_direct_to_enhanced_with_operations
+        from src.api.extraction_helpers import (
+            extract_direct_to_enhanced_with_operations,
+        )
 
         extraction_result = extract_direct_to_enhanced_with_operations(
             page_aware_text=page_aware_text,
@@ -983,9 +991,9 @@ async def extract_enhanced_operations(
                 content={
                     "error": "No content extracted",
                     "detail": "Operations-based extraction returned no results",
-                    "source_id": source_id
+                    "source_id": source_id,
                 },
-                status_code=404
+                status_code=404,
             )
 
         monitor.end_stage("operations_extraction", success=True)
@@ -998,7 +1006,7 @@ async def extract_enhanced_operations(
             result_filename = f"{source_id}_operations_result.json"
             result_path = upload_dir / result_filename
 
-            with open(result_path, 'w', encoding='utf-8') as f:
+            with open(result_path, "w", encoding="utf-8") as f:
                 json.dump(extraction_result, f, indent=2, ensure_ascii=False)
 
             print(f"💾 Operations result saved to {result_filename}")
@@ -1021,9 +1029,9 @@ async def extract_enhanced_operations(
             content={
                 "error": "File not found",
                 "detail": str(e),
-                "source_id": source_id
+                "source_id": source_id,
             },
-            status_code=404
+            status_code=404,
         )
 
     except json.JSONDecodeError as e:
@@ -1035,18 +1043,19 @@ async def extract_enhanced_operations(
             content={
                 "error": "Invalid JSON in extraction",
                 "detail": str(e),
-                "source_id": source_id
+                "source_id": source_id,
             },
-            status_code=400
+            status_code=400,
         )
 
     except Exception as e:
         # Log the exception for debugging
         import traceback
+
         error_details = {
             "error_type": type(e).__name__,
             "error_message": str(e),
-            "traceback": traceback.format_exc()
+            "traceback": traceback.format_exc(),
         }
         print(f"❌ Operations extraction error: {json.dumps(error_details, indent=2)}")
 
@@ -1059,7 +1068,7 @@ async def extract_enhanced_operations(
             content={
                 "error": "Internal server error",
                 "detail": str(e),
-                "source_id": source_id
+                "source_id": source_id,
             },
-            status_code=500
+            status_code=500,
         )

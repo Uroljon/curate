@@ -8,13 +8,12 @@ entities and providing similarity matching to merge similar concepts.
 
 import re
 from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Set, Tuple
 
 
 class GlobalEntityRegistry:
     """
     Registry to track entities across document chunks and prevent duplication.
-    
+
     The core insight is that LLM extraction fragmentation occurs because each chunk
     is processed independently without knowing what other chunks found. By maintaining
     a global registry of known entities and providing context to each chunk, we can
@@ -24,7 +23,7 @@ class GlobalEntityRegistry:
     def __init__(self, similarity_threshold: float = 0.8):
         """
         Initialize the global entity registry.
-        
+
         Args:
             similarity_threshold: Minimum similarity score (0-1) to consider entities as duplicates
         """
@@ -44,10 +43,10 @@ class GlobalEntityRegistry:
     def _compile_german_normalizations(self) -> list[tuple[str, str]]:
         """Compile German-specific text normalizations for better matching."""
         return [
-            (r'\s+und\s+', ' & '),  # Normalize "und" to "&" for consistency
-            (r'\s+&\s+', ' & '),    # Normalize spacing around "&"
-            (r'\s+', ' '),          # Normalize multiple spaces
-            (r'[^\w\s&-]', ''),     # Remove special characters except &, -, spaces
+            (r"\s+und\s+", " & "),  # Normalize "und" to "&" for consistency
+            (r"\s+&\s+", " & "),  # Normalize spacing around "&"
+            (r"\s+", " "),  # Normalize multiple spaces
+            (r"[^\w\s&-]", ""),  # Remove special characters except &, -, spaces
         ]
 
     def _normalize_entity_name(self, name: str) -> str:
@@ -60,14 +59,16 @@ class GlobalEntityRegistry:
 
         return normalized.strip()
 
-    def register_entity(self, entity_name: str, entity_type: str = "action_field") -> str:
+    def register_entity(
+        self, entity_name: str, entity_type: str = "action_field"
+    ) -> str:
         """
         Register an entity and return its canonical name.
-        
+
         Args:
             entity_name: Name of entity to register
             entity_type: Type of entity (currently supports "action_field")
-            
+
         Returns:
             Canonical name to use for this entity
         """
@@ -89,7 +90,9 @@ class GlobalEntityRegistry:
             self.duplicate_count += 1
             self.merge_log.append((entity_name, canonical_match))
 
-            print(f"   🔗 Merged '{entity_name}' → '{canonical_match}' (similarity match)")
+            print(
+                f"   🔗 Merged '{entity_name}' → '{canonical_match}' (similarity match)"
+            )
             return canonical_match
         else:
             # New unique entity - add to registry
@@ -102,10 +105,10 @@ class GlobalEntityRegistry:
     def find_canonical_match(self, entity_name: str) -> str | None:
         """
         Find the canonical match for an entity name using similarity scoring.
-        
+
         Args:
             entity_name: Entity name to match
-            
+
         Returns:
             Canonical name if match found, None otherwise
         """
@@ -117,7 +120,9 @@ class GlobalEntityRegistry:
             normalized_canonical = self._normalize_entity_name(canonical)
 
             # Calculate similarity score
-            similarity = SequenceMatcher(None, normalized_input, normalized_canonical).ratio()
+            similarity = SequenceMatcher(
+                None, normalized_input, normalized_canonical
+            ).ratio()
 
             if similarity > best_score and similarity >= self.similarity_threshold:
                 best_score = similarity
@@ -128,10 +133,10 @@ class GlobalEntityRegistry:
     def get_known_entities(self, entity_type: str = "action_field") -> list[str]:
         """
         Get list of known canonical entities for inclusion in prompts.
-        
+
         Args:
             entity_type: Type of entities to retrieve
-            
+
         Returns:
             List of canonical entity names
         """
@@ -146,8 +151,12 @@ class GlobalEntityRegistry:
             "total_entities_seen": len(self.known_action_fields),
             "canonical_entities": len(self.canonical_entities),
             "duplicates_merged": self.duplicate_count,
-            "merge_rate": self.duplicate_count / len(self.known_action_fields) if self.known_action_fields else 0,
-            "recent_merges": self.merge_log[-5:] if self.merge_log else []
+            "merge_rate": (
+                self.duplicate_count / len(self.known_action_fields)
+                if self.known_action_fields
+                else 0
+            ),
+            "recent_merges": self.merge_log[-5:] if self.merge_log else [],
         }
 
     def print_summary(self):
@@ -160,13 +169,14 @@ class GlobalEntityRegistry:
         print(f"   Duplicates merged: {stats['duplicates_merged']}")
         print(f"   Deduplication rate: {stats['merge_rate']:.1%}")
 
-        if stats['recent_merges']:
+        if stats["recent_merges"]:
             print("   Recent merges:")
-            for original, canonical in stats['recent_merges']:
+            for original, canonical in stats["recent_merges"]:
                 print(f"     • '{original}' → '{canonical}'")
 
 
 # Utility functions for integration with existing code
+
 
 def create_global_registry() -> GlobalEntityRegistry:
     """Create a new global entity registry with optimal settings for German text."""
@@ -182,11 +192,17 @@ def format_known_entities_for_prompt(known_entities: list[str]) -> str:
     return f"BEREITS BEKANNTE HANDLUNGSFELDER:\n{formatted}"
 
 
-def extract_entity_names_from_result(result, entity_type: str = "action_field") -> list[str]:
+def extract_entity_names_from_result(
+    result, entity_type: str = "action_field"
+) -> list[str]:
     """Extract entity names from extraction result for registry processing."""
     if entity_type == "action_field":
-        if hasattr(result, 'action_fields'):
-            return [af.content.get('name', '') for af in result.action_fields if af.content.get('name')]
+        if hasattr(result, "action_fields"):
+            return [
+                af.content.get("name", "")
+                for af in result.action_fields
+                if af.content.get("name")
+            ]
         else:
             return []
     return []

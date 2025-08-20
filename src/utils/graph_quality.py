@@ -5,9 +5,8 @@ This module provides tools to measure and monitor the quality of the extracted
 graph structures, focusing on node fragmentation and edge consistency issues.
 """
 
-import json
-from collections import Counter, defaultdict
-from typing import Any, Dict, List, Set, Tuple
+from collections import Counter
+from typing import Any
 
 import networkx as nx
 

@@ -7,17 +7,29 @@ the current extraction state, building the final result incrementally.
 
 import copy
 import time
-import uuid
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
-from src.core.operations_schema import ConnectionOperation, EntityOperation, ExtractionOperations, OperationLog, OperationResult, OperationType
-from src.core.schemas import ConnectionWithConfidence, EnhancedActionField, EnhancedIndicator, EnhancedMeasure, EnhancedProject, EnrichedReviewJSON
+from src.core.operations_schema import (
+    EntityOperation,
+    ExtractionOperations,
+    OperationLog,
+    OperationResult,
+    OperationType,
+)
+from src.core.schemas import (
+    ConnectionWithConfidence,
+    EnhancedActionField,
+    EnhancedIndicator,
+    EnhancedMeasure,
+    EnhancedProject,
+    EnrichedReviewJSON,
+)
 
 
 class OperationExecutor:
     """
     Executor for applying operations to extraction state.
-    
+
     Handles CREATE, UPDATE (with intelligent merge), and CONNECT operations
     with validation and error handling.
     """
@@ -31,16 +43,16 @@ class OperationExecutor:
         self,
         current_state: EnrichedReviewJSON,
         operations: list[EntityOperation],
-        chunk_index: int | None = None
+        chunk_index: int | None = None,
     ) -> tuple[EnrichedReviewJSON, OperationLog]:
         """
         Apply a list of operations to the current extraction state.
-        
+
         Args:
             current_state: Current extraction state
             operations: List of operations to apply
             chunk_index: Optional chunk index for logging
-            
+
         Returns:
             Tuple of (new_state, operation_log)
         """
@@ -62,12 +74,22 @@ class OperationExecutor:
                     # Improve CONNECT logging to avoid confusing "- None"
                     if operation.operation == OperationType.CONNECT:
                         # entities_affected contains [from_id, to_id, ...] pairs
-                        edge_count = max(1, len(result.entities_affected) // 2) if result.entities_affected else 0
-                        print(f"   ✅ {operation.operation}: {operation.entity_type} - {edge_count} connection(s)")
+                        edge_count = (
+                            max(1, len(result.entities_affected) // 2)
+                            if result.entities_affected
+                            else 0
+                        )
+                        print(
+                            f"   ✅ {operation.operation}: {operation.entity_type} - {edge_count} connection(s)"
+                        )
                     else:
-                        print(f"   ✅ {operation.operation}: {operation.entity_type} - {result.new_entity_id or operation.entity_id}")
+                        print(
+                            f"   ✅ {operation.operation}: {operation.entity_type} - {result.new_entity_id or operation.entity_id}"
+                        )
                 else:
-                    print(f"   ❌ {operation.operation}: {operation.entity_type} - {result.error_message}")
+                    print(
+                        f"   ❌ {operation.operation}: {operation.entity_type} - {result.error_message}"
+                    )
 
             except Exception as e:
                 error_result = OperationResult(
@@ -75,10 +97,12 @@ class OperationExecutor:
                     success=False,
                     error_message=f"Unexpected error: {e!s}",
                     entities_affected=[],
-                    new_entity_id=None
+                    new_entity_id=None,
                 )
                 operation_results.append(error_result)
-                print(f"   💥 {operation.operation}: {operation.entity_type} - Exception: {e!s}")
+                print(
+                    f"   💥 {operation.operation}: {operation.entity_type} - Exception: {e!s}"
+                )
 
         # Create operation log
         processing_time = time.time() - start_time
@@ -89,7 +113,7 @@ class OperationExecutor:
             operation_results=operation_results,
             total_operations=len(operations),
             successful_operations=successful_ops,
-            processing_time_seconds=processing_time
+            processing_time_seconds=processing_time,
         )
 
         self.operation_logs.append(operation_log)
@@ -97,9 +121,7 @@ class OperationExecutor:
         return new_state, operation_log
 
     def _apply_single_operation(
-        self,
-        state: EnrichedReviewJSON,
-        operation: EntityOperation
+        self, state: EnrichedReviewJSON, operation: EntityOperation
     ) -> OperationResult:
         """Apply a single operation to the state."""
 
@@ -115,13 +137,11 @@ class OperationExecutor:
                 success=False,
                 error_message=f"Unknown operation type: {operation.operation}",
                 entities_affected=[],
-                new_entity_id=None
+                new_entity_id=None,
             )
 
     def _handle_create_operation(
-        self,
-        state: EnrichedReviewJSON,
-        operation: EntityOperation
+        self, state: EnrichedReviewJSON, operation: EntityOperation
     ) -> OperationResult:
         """Handle CREATE operation - add new entity to state."""
 
@@ -131,7 +151,7 @@ class OperationExecutor:
                 success=False,
                 error_message="CREATE operation requires content",
                 entities_affected=[],
-                new_entity_id=None
+                new_entity_id=None,
             )
 
         # Generate new ID
@@ -141,25 +161,22 @@ class OperationExecutor:
         sources = None
         if operation.source_pages and operation.source_quote:
             from src.core.schemas import SourceAttribution
-            sources = [SourceAttribution(
-                page_number=page,
-                quote=operation.source_quote
-            ) for page in operation.source_pages]
+
+            sources = [
+                SourceAttribution(page_number=page, quote=operation.source_quote)
+                for page in operation.source_pages
+            ]
 
         try:
             if operation.entity_type == "action_field":
                 entity = EnhancedActionField(
-                    id=new_id,
-                    content=operation.content,
-                    connections=[]
+                    id=new_id, content=operation.content, connections=[]
                 )
                 state.action_fields.append(entity)
 
             elif operation.entity_type == "project":
                 entity = EnhancedProject(
-                    id=new_id,
-                    content=operation.content,
-                    connections=[]
+                    id=new_id, content=operation.content, connections=[]
                 )
                 state.projects.append(entity)
 
@@ -168,7 +185,7 @@ class OperationExecutor:
                     id=new_id,
                     content=operation.content,
                     connections=[],
-                    sources=sources
+                    sources=sources,
                 )
                 state.measures.append(entity)
 
@@ -177,7 +194,7 @@ class OperationExecutor:
                     id=new_id,
                     content=operation.content,
                     connections=[],
-                    sources=sources
+                    sources=sources,
                 )
                 state.indicators.append(entity)
 
@@ -186,7 +203,7 @@ class OperationExecutor:
                 success=True,
                 error_message=None,
                 entities_affected=[new_id],
-                new_entity_id=new_id
+                new_entity_id=new_id,
             )
 
         except Exception as e:
@@ -195,13 +212,11 @@ class OperationExecutor:
                 success=False,
                 error_message=f"Failed to create entity: {e!s}",
                 entities_affected=[],
-                new_entity_id=None
+                new_entity_id=None,
             )
 
     def _handle_update_operation(
-        self,
-        state: EnrichedReviewJSON,
-        operation: EntityOperation
+        self, state: EnrichedReviewJSON, operation: EntityOperation
     ) -> OperationResult:
         """Handle UPDATE operation - modify existing entity with intelligent merging."""
 
@@ -211,7 +226,7 @@ class OperationExecutor:
                 success=False,
                 error_message="UPDATE operation requires entity_id",
                 entities_affected=[],
-                new_entity_id=None
+                new_entity_id=None,
             )
 
         # Find the entity
@@ -222,7 +237,7 @@ class OperationExecutor:
                 success=False,
                 error_message=f"Entity {operation.entity_id} not found",
                 entities_affected=[],
-                new_entity_id=None
+                new_entity_id=None,
             )
 
         try:
@@ -231,12 +246,17 @@ class OperationExecutor:
                 self._merge_entity_content(entity, operation.content)
 
             # Add source attribution if provided (only for measures and indicators)
-            if operation.source_pages and operation.source_quote and hasattr(entity, 'sources'):
+            if (
+                operation.source_pages
+                and operation.source_quote
+                and hasattr(entity, "sources")
+            ):
                 from src.core.schemas import SourceAttribution
-                new_sources = [SourceAttribution(
-                    page_number=page,
-                    quote=operation.source_quote
-                ) for page in operation.source_pages]
+
+                new_sources = [
+                    SourceAttribution(page_number=page, quote=operation.source_quote)
+                    for page in operation.source_pages
+                ]
 
                 if entity.sources:
                     entity.sources.extend(new_sources)
@@ -248,7 +268,7 @@ class OperationExecutor:
                 success=True,
                 error_message=None,
                 entities_affected=[operation.entity_id],
-                new_entity_id=None
+                new_entity_id=None,
             )
 
         except Exception as e:
@@ -257,14 +277,11 @@ class OperationExecutor:
                 success=False,
                 error_message=f"Failed to update entity: {e!s}",
                 entities_affected=[],
-                new_entity_id=None
+                new_entity_id=None,
             )
 
-
     def _handle_connect_operation(
-        self,
-        state: EnrichedReviewJSON,
-        operation: EntityOperation
+        self, state: EnrichedReviewJSON, operation: EntityOperation
     ) -> OperationResult:
         """Handle CONNECT operation - create connections between entities with partial success support."""
 
@@ -274,7 +291,7 @@ class OperationExecutor:
                 success=False,
                 error_message="CONNECT operation requires connections",
                 entities_affected=[],
-                new_entity_id=None
+                new_entity_id=None,
             )
 
         affected_entities = []
@@ -283,9 +300,9 @@ class OperationExecutor:
 
         try:
             for conn_data in operation.connections:
-                from_id = conn_data.get('from_id')
-                to_id = conn_data.get('to_id')
-                confidence = conn_data.get('confidence', operation.confidence)
+                from_id = conn_data.get("from_id")
+                to_id = conn_data.get("to_id")
+                confidence = conn_data.get("confidence", operation.confidence)
 
                 if not from_id or not to_id:
                     skipped_connections += 1
@@ -305,8 +322,7 @@ class OperationExecutor:
 
                 # Create connection
                 connection = ConnectionWithConfidence(
-                    target_id=to_id,
-                    confidence_score=confidence
+                    target_id=to_id, confidence_score=confidence
                 )
 
                 # Add connection if it doesn't already exist
@@ -318,7 +334,7 @@ class OperationExecutor:
                     skipped_connections += 1  # Already exists
 
             # Determine success - succeed if we created at least one connection
-            successful_connections = (total_connections - skipped_connections)
+            successful_connections = total_connections - skipped_connections
             is_success = successful_connections > 0
 
             error_msg = None
@@ -332,7 +348,7 @@ class OperationExecutor:
                 success=is_success,
                 error_message=error_msg,
                 entities_affected=affected_entities,
-                new_entity_id=None
+                new_entity_id=None,
             )
 
         except Exception as e:
@@ -341,23 +357,23 @@ class OperationExecutor:
                 success=False,
                 error_message=f"Failed to create connections: {e!s}",
                 entities_affected=[],
-                new_entity_id=None
+                new_entity_id=None,
             )
 
-
     def _find_entity_by_id(
-        self,
-        state: EnrichedReviewJSON,
-        entity_id: str
-    ) -> EnhancedActionField | EnhancedProject | EnhancedMeasure | EnhancedIndicator | None:
+        self, state: EnrichedReviewJSON, entity_id: str
+    ) -> (
+        EnhancedActionField
+        | EnhancedProject
+        | EnhancedMeasure
+        | EnhancedIndicator
+        | None
+    ):
         """Find an entity by its ID across all buckets."""
 
         # Search in all entity lists
         all_entities = (
-            state.action_fields +
-            state.projects +
-            state.measures +
-            state.indicators
+            state.action_fields + state.projects + state.measures + state.indicators
         )
 
         for entity in all_entities:
@@ -366,7 +382,9 @@ class OperationExecutor:
 
         return None
 
-    def _merge_entity_content(self, target_entity: Any, new_content: dict[str, Any]) -> None:
+    def _merge_entity_content(
+        self, target_entity: Any, new_content: dict[str, Any]
+    ) -> None:
         """Intelligently merge new content into existing entity."""
 
         for key, value in new_content.items():
@@ -400,7 +418,7 @@ class OperationExecutor:
             "action_field": "af",
             "project": "proj",
             "measure": "msr",
-            "indicator": "ind"
+            "indicator": "ind",
         }
 
         prefix = prefix_map.get(entity_type, "ent")
@@ -412,7 +430,9 @@ class OperationExecutor:
         """Get a summary of all operations applied."""
 
         total_operations = sum(log.total_operations for log in self.operation_logs)
-        successful_operations = sum(log.successful_operations for log in self.operation_logs)
+        successful_operations = sum(
+            log.successful_operations for log in self.operation_logs
+        )
         total_time = sum(log.processing_time_seconds for log in self.operation_logs)
 
         return {
@@ -420,9 +440,11 @@ class OperationExecutor:
             "total_operations": total_operations,
             "successful_operations": successful_operations,
             "failed_operations": total_operations - successful_operations,
-            "success_rate": successful_operations / total_operations if total_operations > 0 else 0,
+            "success_rate": (
+                successful_operations / total_operations if total_operations > 0 else 0
+            ),
             "total_processing_time_seconds": total_time,
-            "entities_created": sum(self.entity_counters.values())
+            "entities_created": sum(self.entity_counters.values()),
         }
 
 
@@ -430,38 +452,33 @@ class OperationExecutor:
 def apply_operations_to_state(
     current_state: EnrichedReviewJSON,
     operations: ExtractionOperations,
-    chunk_index: int | None = None
+    chunk_index: int | None = None,
 ) -> tuple[EnrichedReviewJSON, OperationLog]:
     """
     Convenience function to apply operations to state.
-    
+
     Args:
         current_state: Current extraction state
         operations: Operations to apply
         chunk_index: Optional chunk index for logging
-        
+
     Returns:
         Tuple of (new_state, operation_log)
     """
     executor = OperationExecutor()
-    return executor.apply_operations(
-        current_state,
-        operations.operations,
-        chunk_index
-    )
+    return executor.apply_operations(current_state, operations.operations, chunk_index)
 
 
 def validate_operations(
-    operations: list[EntityOperation],
-    current_state: EnrichedReviewJSON | None = None
+    operations: list[EntityOperation], current_state: EnrichedReviewJSON | None = None
 ) -> list[str]:
     """
     Validate a list of operations for basic correctness.
-    
+
     Args:
         operations: Operations to validate
         current_state: Optional current state for reference validation
-        
+
     Returns:
         List of validation error messages (empty if all valid)
     """
@@ -486,6 +503,8 @@ def validate_operations(
         if current_state and op.entity_id and op.operation != OperationType.CREATE:
             executor = OperationExecutor()
             if not executor._find_entity_by_id(current_state, op.entity_id):
-                errors.append(f"{op_prefix}: Entity {op.entity_id} not found in current state")
+                errors.append(
+                    f"{op_prefix}: Entity {op.entity_id} not found in current state"
+                )
 
     return errors

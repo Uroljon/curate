@@ -6,8 +6,7 @@ where some projects have many connections while others have none.
 """
 
 import re
-from collections import defaultdict
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any
 
 from src.core.config import (
     EXTRACTION_CONSISTENCY_ENABLED,

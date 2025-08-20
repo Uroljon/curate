@@ -8,8 +8,7 @@ extracted structures.
 
 import re
 from collections import defaultdict
-from difflib import SequenceMatcher
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any
 
 from sentence_transformers import SentenceTransformer
 
@@ -102,11 +101,15 @@ class EntityResolver:
             ),
             # Economy and Science patterns
             (
-                re.compile(r"^Wirtschaft(\s+und\s+|\s*&\s*)Wissenschaft$", re.IGNORECASE),
+                re.compile(
+                    r"^Wirtschaft(\s+und\s+|\s*&\s*)Wissenschaft$", re.IGNORECASE
+                ),
                 "Wirtschaft und Wissenschaft",
             ),
             (
-                re.compile(r"^Wissenschaft(\s+und\s+|\s*&\s*)Wirtschaft$", re.IGNORECASE),
+                re.compile(
+                    r"^Wissenschaft(\s+und\s+|\s*&\s*)Wirtschaft$", re.IGNORECASE
+                ),
                 "Wirtschaft und Wissenschaft",
             ),
             # Energy patterns - keep separate from climate

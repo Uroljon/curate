@@ -2,8 +2,6 @@ import json
 import re
 from typing import Any
 
-import json5
-
 from src.core import (
     CHUNK_WARNING_THRESHOLD,
     EXTRACTION_MAX_RETRIES,

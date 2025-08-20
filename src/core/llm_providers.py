@@ -1005,7 +1005,6 @@ def get_llm_provider(
     from .config import (
         LLM_BACKEND,
         MODEL_MAPPINGS,
-        MODEL_NAME,
         MODEL_TEMPERATURE,
         MODEL_TIMEOUT,
         OLLAMA_HOST,
