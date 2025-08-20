@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from src.core.constants import ACTION_FIELD_PATTERNS, INDICATOR_PATTERNS
+from src.core.constants import INDICATOR_PATTERNS
 from src.utils.text import is_heading
 
 # Optional imports for structure-aware chunking

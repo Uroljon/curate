@@ -20,7 +20,6 @@ from src.core.config import (
 from src.extraction.structure_extractor import (
     extract_action_fields_only,
     extract_project_details,
-    extract_project_details_cot,
     extract_projects_for_field,
     extract_structures_with_retry,
 )
