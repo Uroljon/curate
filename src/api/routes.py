@@ -2,21 +2,22 @@
 
 import json
 import os
-import re
 import time
 import uuid
 from datetime import datetime, timezone
 
 import aiofiles
 from fastapi import Request, UploadFile
-from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
+from src.api.extraction_helpers import (
+    create_error_response,
+    create_success_response,
+    load_and_validate_pages,
+    monitor_stage,
+    save_json_file,
+)
 from src.core import (
-    CHUNK_MAX_CHARS,
-    CHUNK_MIN_CHARS,
-    FAST_EXTRACTION_ENABLED,
-    FAST_EXTRACTION_MAX_CHUNKS,
     UPLOAD_FOLDER,
 )
 from src.core.config import PROJECT_ROOT
@@ -25,13 +26,6 @@ from src.utils import (
     get_extraction_monitor,
     log_api_request,
     log_api_response,
-)
-from src.api.extraction_helpers import (
-    create_error_response,
-    create_success_response,
-    load_and_validate_pages,
-    monitor_stage,
-    save_json_file,
 )
 
 
@@ -182,9 +176,7 @@ async def extract_enhanced(
             # Save the enhanced structure JSON file for visualization tool
             enhanced_filename = f"{source_id}_enhanced_structure.json"
             enhanced_data = extraction_result["extraction_result"]
-            enhanced_path = await save_json_file(
-                enhanced_data, enhanced_filename, UPLOAD_FOLDER
-            )
+            await save_json_file(enhanced_data, enhanced_filename, UPLOAD_FOLDER)
             print(f"💾 Saved enhanced structure to: {enhanced_filename}")
 
         # Stage 4: Prepare response
@@ -319,7 +311,8 @@ async def extract_enhanced_operations(
             )
 
             if not extraction_result:
-                raise ValueError("Operations-based extraction returned no results")
+                error_msg = "Operations-based extraction returned no results"
+                raise ValueError(error_msg)
 
         # Save result to file
         try:

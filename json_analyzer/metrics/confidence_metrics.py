@@ -131,7 +131,7 @@ class ConfidenceMetrics:
                 target_id = connection.get("target_id", "")
                 confidence = connection.get("confidence_score", 1.0)
 
-                if target_id and isinstance(confidence, (int, float)):
+                if target_id and isinstance(confidence, int | float):
                     connection_type = self._get_connection_type(source_type, target_id)
                     confidence_by_type[connection_type].append(confidence)
 
@@ -186,7 +186,7 @@ class ConfidenceMetrics:
             target_id = connection.get("target_id", "")
             confidence = connection.get("confidence_score", 1.0)
 
-            if target_id and isinstance(confidence, (int, float)):
+            if target_id and isinstance(confidence, int | float):
                 connection_type = self._get_connection_type(source_type, target_id)
                 total_counts[connection_type] += 1
 

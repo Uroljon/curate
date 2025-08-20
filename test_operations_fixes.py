@@ -21,7 +21,7 @@ from src.extraction.operations_executor import OperationExecutor, validate_opera
 
 # Helper Functions
 def create_op(
-    op_type: OperationType, entity_type: str, entity_id: str = None, **content
+    op_type: OperationType, entity_type: str, entity_id: str | None = None, **content
 ) -> EntityOperation:
     """Factory for creating EntityOperation objects with minimal boilerplate."""
     return EntityOperation(

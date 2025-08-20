@@ -6,18 +6,20 @@ the large extraction functions in routes.py.
 """
 
 import json
+import os
 import re
 import time
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any
 
+import aiofiles
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
+
 from src.core.config import (
     AGGREGATION_CHUNK_SIZE,
-    CONFIDENCE_THRESHOLD,
-    USE_CHAIN_OF_THOUGHT,
-)
-from src.extraction.structure_extractor import (
-    extract_structures_with_retry,
 )
 
 # ============================================================================
@@ -32,7 +34,8 @@ Behalten Sie die meisten Handlungsfelder bei - Reduzierung um maximal 30-40%.
 Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der vorgegebenen Struktur entspricht.
 KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
 
-EXTRACTION_SYSTEM_MESSAGE = """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten und Indikatoren aus deutschen kommunalen Strategiedokumenten.
+EXTRACTION_SYSTEM_MESSAGE = """Sie sind ein Experte für die Extraktion von Handlungsfeldern,
+Projekten und Indikatoren aus deutschen kommunalen Strategiedokumenten.
 
 HIERARCHISCHE STRUKTUR - KRITISCH WICHTIG:
 - Handlungsfelder (action_fields): BREITE STRATEGISCHE BEREICHE (max. 8-15 Stück)
@@ -47,7 +50,8 @@ KONSISTENZ-REGEL (KRITISCH WICHTIG):
 
 Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das dem vorgegebenen Schema entspricht. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
 
-OPERATIONS_SYSTEM_MESSAGE = """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten, Maßnahmen und Indikatoren aus deutschen kommunalen Strategiedokumenten.
+OPERATIONS_SYSTEM_MESSAGE = """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten,
+Maßnahmen und Indikatoren aus deutschen kommunalen Strategiedokumenten.
 
 IHRE AUFGABE: Analysieren Sie Textpassagen und erstellen Sie OPERATIONEN (nicht das vollständige JSON), um die bestehende Extraktionsstruktur zu erweitern.
 
@@ -117,7 +121,8 @@ def prepare_chunks_for_extraction(
     from src.processing.chunker import chunk_for_llm_with_pages
 
     if not page_aware_text:
-        raise ValueError("No page-aware text provided")
+        error_msg = "No page-aware text provided"
+        raise ValueError(error_msg)
 
     print(
         f"📝 Chunking with settings: {min_chars}-{max_chars} chars, {ENHANCED_CHUNK_OVERLAP*100}% overlap"
@@ -132,7 +137,8 @@ def prepare_chunks_for_extraction(
     )
 
     if not chunks_with_pages:
-        raise ValueError("No chunks created from text")
+        error_msg = "No chunks created from text"
+        raise ValueError(error_msg)
 
     # Apply chunk limit for performance
     if len(chunks_with_pages) > max_chunks:
@@ -223,7 +229,7 @@ def create_extraction_prompt(
     template_type: str,
     chunk_text: str,
     context_data=None,
-    page_numbers: list[int] = None,
+    page_numbers: list[int] | None = None,
 ) -> str:
     """Create extraction prompts using templates."""
     if template_type == "simplified":
@@ -280,7 +286,8 @@ Antworten Sie NUR mit der Operations-Liste im JSON-Format:
 {{"operations": [...]}}"""
 
     else:
-        raise ValueError(f"Unknown template type: {template_type}")
+        error_msg = f"Unknown template type: {template_type}"
+        raise ValueError(error_msg)
 
 
 def add_page_attribution_to_enhanced_result(result, page_numbers: list[int]) -> None:
@@ -915,7 +922,6 @@ def extract_direct_to_enhanced(
     )
     from src.core.llm_providers import get_llm_provider
     from src.core.schemas import EnrichedReviewJSON
-    from src.processing.chunker import chunk_for_llm_with_pages
 
     print(f"🔄 Starting direct enhanced extraction for {source_id}")
     start_time = time.time()
@@ -1068,14 +1074,12 @@ def extract_direct_to_enhanced_with_operations(
     from src.core.config import (
         ENHANCED_CHUNK_MAX_CHARS,
         ENHANCED_CHUNK_MIN_CHARS,
-        ENHANCED_CHUNK_OVERLAP,
         FAST_EXTRACTION_MAX_CHUNKS,
     )
     from src.core.llm_providers import get_llm_provider
     from src.core.operations_schema import ExtractionOperations
     from src.core.schemas import EnrichedReviewJSON
     from src.extraction.operations_executor import OperationExecutor
-    from src.processing.chunker import chunk_for_llm_with_pages
 
     print(f"🔄 Starting operations-based extraction for {source_id}")
     start_time = time.time()
@@ -1286,15 +1290,6 @@ def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
 # COMMON ROUTE HELPERS FOR REDUCING ROUTES.PY LINE COUNT
 # ============================================================================
 
-import os
-from contextlib import contextmanager
-from datetime import datetime, timezone
-from typing import Any, Optional
-
-import aiofiles
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
-
 
 def create_error_response(
     endpoint: str,
@@ -1392,7 +1387,8 @@ async def load_and_validate_pages(
 
         if not page_aware_text:
             pages_filename = os.path.splitext(source_id)[0] + "_pages.txt"
-            raise ValueError(f"No valid page content found in {pages_filename}")
+            error_msg = f"No valid page content found in {pages_filename}"
+            raise ValueError(error_msg)
 
         print(f"📄 Loaded {len(page_aware_text)} pages from page-aware text file")
         return page_aware_text
