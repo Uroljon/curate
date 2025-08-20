@@ -36,6 +36,84 @@ class LLMProvider(ABC):
         """Query LLM with structured output using Pydantic models."""
         pass
 
+    def _build_messages(
+        self, prompt: str, system_message: str | None = None
+    ) -> list[dict[str, str]]:
+        """Build message list for API calls."""
+        messages = []
+        if system_message:
+            messages.append({"role": "system", "content": system_message})
+        messages.append({"role": "user", "content": prompt})
+        return messages
+
+    def _build_structured_prompt(
+        self, prompt: str, response_model: type[T], disable_thinking: bool = False
+    ) -> str:
+        """Build structured prompt with JSON schema."""
+        schema_str = json.dumps(response_model.model_json_schema(), indent=2)
+
+        # Check if this is a Qwen3 model for thinking mode control
+        no_think_suffix = ""
+        if disable_thinking and "qwen3" in self.model_name.lower():
+            no_think_suffix = " /no_think"
+
+        return f"""{prompt}
+
+IMPORTANT: Respond with valid JSON matching this schema:
+{schema_str}
+
+Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
+
+    def _parse_json_response(
+        self, content: str, response_model: type[T]
+    ) -> T | None:
+        """Parse and validate JSON response with fallback repair."""
+        # Handle Qwen3 thinking mode output if present
+        if "<think>" in content and "</think>" in content:
+            think_end = content.find("</think>")
+            if think_end != -1:
+                actual_content = content[think_end + 8:].strip()
+                if actual_content:
+                    content = actual_content
+
+        # Try direct JSON validation first
+        try:
+            return response_model.model_validate_json(content)
+        except Exception as e:
+            print(f"⚠️ JSON validation failed: {e!s}")
+
+            # Try json-repair as fallback
+            try:
+                from json_repair import repair_json
+                repaired = repair_json(content)
+                return response_model.model_validate(repaired)
+            except Exception as repair_error:
+                print(f"❌ JSON repair failed: {repair_error!s}")
+
+                # Check for common empty response patterns
+                if content.strip() in ['{"action_fields": []}', '{"action_fields":[]}']:
+                    print("⚠️ Model returned empty action fields")
+                return None
+
+    def _process_llm_response(
+        self,
+        content: str,
+        response_model: type[T],
+        log_file_path: str | None,
+        system_message: str | None,
+        prompt: str,
+        log_context: str | None,
+    ) -> T | None:
+        """Process LLM response: log, parse, and validate."""
+        # Log the dialog if requested
+        if log_file_path:
+            self._log_llm_dialog(
+                log_file_path, system_message, prompt, content, log_context
+            )
+
+        # Parse and validate JSON response
+        return self._parse_json_response(content, response_model)
+
     def _log_llm_dialog(
         self,
         log_file_path: str,
@@ -81,6 +159,64 @@ BACKEND: {self.__class__.__name__}
             print(f"⚠️ Failed to log LLM dialog: {e!s}")
 
 
+class OpenAICompatibleProvider(LLMProvider):
+    """Base class for providers using OpenAI-compatible API."""
+
+    def __init__(
+        self,
+        model_name: str,
+        temperature: float = 0.2,
+        base_url: str = "",
+        api_key: str = "EMPTY",
+        max_tokens: int = 4096,
+        timeout: int = 300,
+    ):
+        super().__init__(model_name, temperature)
+        self.base_url = base_url
+        self.api_key = api_key
+        self.max_tokens = max_tokens
+        self.timeout = timeout
+        self.client = None
+
+    def _init_openai_client(self):
+        """Initialize OpenAI client."""
+        try:
+            from openai import OpenAI
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+            )
+        except ImportError:
+            msg = "OpenAI client library required. Install with: pip install openai"
+            raise ImportError(msg) from None
+
+    def _make_openai_request(
+        self,
+        messages: list[dict[str, str]],
+        response_model: type[T],
+        override_num_predict: int | None = None,
+        extra_params: dict[str, Any] | None = None,
+    ) -> Any:
+        """Make OpenAI-compatible API request with common parameters."""
+        if not self.client:
+            error_msg = "OpenAI client not initialized"
+            raise RuntimeError(error_msg)
+
+        request_params = {
+            "model": self.model_name,
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": override_num_predict or self.max_tokens,
+            "timeout": self.timeout,
+        }
+
+        # Add provider-specific parameters
+        if extra_params:
+            request_params.update(extra_params)
+
+        return self.client.chat.completions.create(**request_params)
+
+
 class OllamaProvider(LLMProvider):
     """Ollama provider implementation."""
 
@@ -108,12 +244,8 @@ class OllamaProvider(LLMProvider):
     ) -> T | None:
         """Query Ollama with structured output using Pydantic models."""
         try:
-            messages = []
-
-            if system_message:
-                messages.append({"role": "system", "content": system_message})
-
-            messages.append({"role": "user", "content": prompt})
+            # Build messages using shared method
+            messages = self._build_messages(prompt, system_message)
 
             options = self.structured_output_options.copy()
             options["temperature"] = self.temperature
@@ -140,31 +272,10 @@ class OllamaProvider(LLMProvider):
             if "message" in data and "content" in data["message"]:
                 content = data["message"]["content"].strip()
 
-                # Log the dialog if log file path is provided
-                if log_file_path:
-                    self._log_llm_dialog(
-                        log_file_path,
-                        system_message,
-                        prompt,
-                        content,
-                        log_context,
-                    )
-
-                # Try to parse and validate with Pydantic
-                try:
-                    return response_model.model_validate_json(content)
-                except Exception as e:
-                    print(f"⚠️ JSON validation failed: {e!s}")
-
-                    # Try json-repair as fallback
-                    try:
-                        from json_repair import repair_json
-
-                        repaired = repair_json(content)
-                        return response_model.model_validate(repaired)
-                    except Exception as repair_error:
-                        print(f"❌ JSON repair failed: {repair_error!s}")
-                        return None
+                # Process response using shared method
+                return self._process_llm_response(
+                    content, response_model, log_file_path, system_message, prompt, log_context
+                )
 
             return None
 
@@ -176,7 +287,7 @@ class OllamaProvider(LLMProvider):
             return None
 
 
-class VLLMProvider(LLMProvider):
+class VLLMProvider(OpenAICompatibleProvider):
     """vLLM provider implementation using OpenAI-compatible API."""
 
     def __init__(
@@ -188,42 +299,28 @@ class VLLMProvider(LLMProvider):
         max_tokens: int = 30720,
         timeout: int = 600,
     ):
-        super().__init__(model_name, temperature)
-        self.base_url = f"http://{vllm_host}/v1"
-        self.api_key = api_key
-        self.max_tokens = max_tokens
-        self.timeout = timeout
+        base_url = f"http://{vllm_host}/v1"
+        super().__init__(model_name, temperature, base_url, api_key, max_tokens, timeout)
 
         # Initialize OpenAI client
+        self._init_openai_client()
+
+        # Try to get model info to determine actual context length
         try:
-            from openai import OpenAI
-
-            self.client = OpenAI(
-                api_key=self.api_key,
-                base_url=self.base_url,
-            )
-
-            # Try to get model info to determine actual context length
-            try:
-                models = self.client.models.list()
-                for model in models.data:
-                    if model.id == self.model_name:
-                        self.max_model_len = getattr(model, "max_model_len", 16384)
-                        # Conservative: assume input uses 60% of context, leave 40% for output
-                        # For 16K model: ~6.5K tokens for output
-                        self.max_tokens = min(max_tokens, int(self.max_model_len * 0.4))
-                        print(
-                            f"📊 vLLM Model: {self.model_name}, Context: {self.max_model_len}, Max output: {self.max_tokens}"
-                        )
-                        break
-            except Exception:
-                # If we can't get model info, use conservative defaults
-                self.max_model_len = 16384
-                self.max_tokens = min(max_tokens, 8192)
-
-        except ImportError:
-            msg = "OpenAI client library required for vLLM. Install with: pip install openai"
-            raise ImportError(msg) from None
+            models = self.client.models.list()
+            for model in models.data:
+                if model.id == self.model_name:
+                    self.max_model_len = getattr(model, "max_model_len", 16384)
+                    # Conservative: assume input uses 60% of context, leave 40% for output
+                    self.max_tokens = min(max_tokens, int(self.max_model_len * 0.4))
+                    print(
+                        f"📊 vLLM Model: {self.model_name}, Context: {self.max_model_len}, Max output: {self.max_tokens}"
+                    )
+                    break
+        except Exception:
+            # If we can't get model info, use conservative defaults
+            self.max_model_len = 16384
+            self.max_tokens = min(max_tokens, 8192)
 
     def query_structured(
         self,
@@ -236,31 +333,11 @@ class VLLMProvider(LLMProvider):
     ) -> T | None:
         """Query vLLM with structured output using JSON mode."""
         try:
-            messages = []
-
-            # For structured output, we need to include the schema in the prompt
-            schema_str = json.dumps(response_model.model_json_schema(), indent=2)
-
-            # Check if this is a Qwen3 model - if so, add /no_think to disable thinking mode for JSON
-            # Thinking mode can interfere with structured JSON output
-            no_think_suffix = ""
-            if "qwen3" in self.model_name.lower():
-                no_think_suffix = " /no_think"
-
-            structured_prompt = f"""{prompt}
-
-IMPORTANT: You must respond with valid JSON that matches this exact schema:
-{schema_str}
-
-Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
-
-            if system_message:
-                messages.append({"role": "system", "content": system_message})
-
-            messages.append({"role": "user", "content": structured_prompt})
-
-            # Use structured output with vLLM
-            # vLLM supports guided_json in extra_body or json_schema format
+            # Build structured prompt with thinking mode disabled for Qwen3
+            structured_prompt = self._build_structured_prompt(
+                prompt, response_model, disable_thinking=True
+            )
+            messages = self._build_messages(structured_prompt, system_message)
 
             # Use Qwen3-specific parameters if applicable
             temperature = self.temperature
@@ -272,21 +349,23 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
                 temperature = 0.7  # Non-thinking mode recommendation
                 top_p = 0.8
 
+            # Build extra parameters for vLLM
+            extra_body_params = {"top_k": top_k, "min_p": 0}
+
+            # Try different vLLM structured output approaches
             try:
                 # First try: Use guided_json in extra_body (recommended for vLLM)
                 llm_start_time = time.time()
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    temperature=temperature,
-                    top_p=top_p,
-                    max_tokens=override_num_predict or self.max_tokens,
-                    extra_body={
+                extra_params = {
+                    "temperature": temperature,
+                    "top_p": top_p,
+                    "extra_body": {
                         "guided_json": response_model.model_json_schema(),
-                        "top_k": top_k,
-                        "min_p": 0,  # Qwen3 recommendation
+                        **extra_body_params,
                     },
-                    timeout=self.timeout,
+                }
+                response = self._make_openai_request(
+                    messages, response_model, override_num_predict, extra_params
                 )
                 llm_response_time = time.time() - llm_start_time
                 print(f"      🤖 LLM response in {llm_response_time:.2f}s")
@@ -294,94 +373,55 @@ Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
                 try:
                     # Second try: Use response_format with json_schema
                     llm_start_time = time.time()
-                    response = self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=messages,
-                        temperature=temperature,
-                        top_p=top_p,
-                        max_tokens=override_num_predict or self.max_tokens,
-                        response_format={
+                    extra_params = {
+                        "temperature": temperature,
+                        "top_p": top_p,
+                        "response_format": {
                             "type": "json_schema",
                             "json_schema": {
                                 "name": response_model.__name__,
                                 "schema": response_model.model_json_schema(),
                             },
                         },
-                        extra_body={"top_k": top_k, "min_p": 0},
-                        timeout=self.timeout,
+                        "extra_body": extra_body_params,
+                    }
+                    response = self._make_openai_request(
+                        messages, response_model, override_num_predict, extra_params
                     )
                     llm_response_time = time.time() - llm_start_time
                     print(f"      🤖 LLM response in {llm_response_time:.2f}s")
                 except Exception:
                     # Final fallback: Use prompt-based JSON generation
-                    print(
-                        "⚠️ vLLM structured output not available, using prompt-based JSON generation"
-                    )
+                    print("⚠️ vLLM structured output not available, using prompt-based JSON generation")
                     llm_start_time = time.time()
-                    response = self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=messages,
-                        temperature=temperature,
-                        top_p=top_p,
-                        max_tokens=override_num_predict or self.max_tokens,
-                        extra_body={"top_k": top_k, "min_p": 0},
-                        timeout=self.timeout,
+                    extra_params = {
+                        "temperature": temperature,
+                        "top_p": top_p,
+                        "extra_body": extra_body_params,
+                    }
+                    response = self._make_openai_request(
+                        messages, response_model, override_num_predict, extra_params
                     )
                     llm_response_time = time.time() - llm_start_time
                     print(f"      🤖 LLM response in {llm_response_time:.2f}s")
 
             content = response.choices[0].message.content.strip()
 
-            # Handle Qwen3 thinking mode output if present
-            # Even with /no_think, sometimes the model may include thinking tags
-            if "<think>" in content and "</think>" in content:
-                # Extract content after thinking block
-                think_end = content.find("</think>")
-                if think_end != -1:
-                    actual_content = content[think_end + 8 :].strip()
-                    if actual_content:
-                        content = actual_content
-
-            # Log the dialog if log file path is provided
-            if log_file_path:
-                self._log_llm_dialog(
-                    log_file_path,
-                    system_message,
-                    structured_prompt,
-                    content,
-                    log_context,
-                )
-
-            # Try to parse and validate with Pydantic
-            try:
-                return response_model.model_validate_json(content)
-            except Exception as e:
-                print(f"⚠️ JSON validation failed: {e!s}")
-                # Debug: show first 500 chars of response
+            # Debug: show first 500 chars of response if JSON validation might fail
+            if not content.strip().startswith(("{", "[")):
                 print(f"📋 Response preview: {content[:500]}...")
 
-                # Try json-repair as fallback
-                try:
-                    from json_repair import repair_json
-
-                    repaired = repair_json(content)
-                    return response_model.model_validate(repaired)
-                except Exception as repair_error:
-                    print(f"❌ JSON repair failed: {repair_error!s}")
-                    # Debug: Check if response is empty JSON
-                    if content.strip() in [
-                        '{"action_fields": []}',
-                        '{"action_fields":[]}',
-                    ]:
-                        print("⚠️ Model returned empty action fields")
-                    return None
+            # Process response using shared method
+            return self._process_llm_response(
+                content, response_model, log_file_path, system_message, structured_prompt, log_context
+            )
 
         except Exception as e:
             print(f"❌ vLLM API Error: {e!s}")
             return None
 
 
-class OpenRouterProvider(LLMProvider):
+class OpenRouterProvider(OpenAICompatibleProvider):
     """OpenRouter provider for unified access to multiple LLM providers."""
 
     def __init__(
@@ -392,24 +432,12 @@ class OpenRouterProvider(LLMProvider):
         max_tokens: int = 4096,
         timeout: int = 300,
     ):
-        super().__init__(model_name, temperature)
-        self.api_key = api_key
-        self.base_url = "https://openrouter.ai/api/v1"
-        self.max_tokens = max_tokens
-        self.timeout = timeout
+        base_url = "https://openrouter.ai/api/v1"
+        super().__init__(model_name, temperature, base_url, api_key, max_tokens, timeout)
 
         # Initialize OpenAI client with OpenRouter endpoint
-        try:
-            from openai import OpenAI
-
-            self.client = OpenAI(
-                api_key=self.api_key,
-                base_url=self.base_url,
-            )
-            print(f"📡 OpenRouter client initialized for model: {self.model_name}")
-        except ImportError:
-            msg = "OpenAI library required for OpenRouter. Install with: pip install openai"
-            raise ImportError(msg) from None
+        self._init_openai_client()
+        print(f"📡 OpenRouter client initialized for model: {self.model_name}")
 
     def query_structured(
         self,
@@ -422,31 +450,15 @@ class OpenRouterProvider(LLMProvider):
     ) -> T | None:
         """Query OpenRouter with structured output using JSON schema."""
         try:
-            messages = []
-
-            if system_message:
-                messages.append({"role": "system", "content": system_message})
-
-            # Include schema in prompt for better structured output
-            schema_str = json.dumps(response_model.model_json_schema(), indent=2)
-            structured_prompt = f"""{prompt}
-
-IMPORTANT: Respond with valid JSON matching this schema:
-{schema_str}
-
-Respond ONLY with the JSON object, no additional text."""
-
-            messages.append({"role": "user", "content": structured_prompt})
+            # Build structured prompt and messages
+            structured_prompt = self._build_structured_prompt(prompt, response_model)
+            messages = self._build_messages(structured_prompt, system_message)
 
             llm_start_time = time.time()
 
             # OpenRouter supports structured output for compatible models
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=override_num_predict or self.max_tokens,
-                response_format={
+            extra_params = {
+                "response_format": {
                     "type": "json_schema",
                     "json_schema": {
                         "name": response_model.__name__,
@@ -454,42 +466,25 @@ Respond ONLY with the JSON object, no additional text."""
                         "schema": response_model.model_json_schema(),
                     },
                 },
-                extra_body={
+                "extra_body": {
                     "provider": {
                         "require_parameters": True  # Ensure structured output support
                     }
                 },
-                timeout=self.timeout,
+            }
+
+            response = self._make_openai_request(
+                messages, response_model, override_num_predict, extra_params
             )
             llm_response_time = time.time() - llm_start_time
             print(f"      🤖 OpenRouter response in {llm_response_time:.2f}s")
 
             content = response.choices[0].message.content.strip()
 
-            # Log the dialog
-            if log_file_path:
-                self._log_llm_dialog(
-                    log_file_path,
-                    system_message,
-                    structured_prompt,
-                    content,
-                    log_context,
-                )
-
-            # Parse and validate with Pydantic
-            try:
-                return response_model.model_validate_json(content)
-            except Exception as e:
-                print(f"⚠️ JSON validation failed: {e}")
-                # Try json-repair as fallback
-                try:
-                    from json_repair import repair_json
-
-                    repaired = repair_json(content)
-                    return response_model.model_validate(repaired)
-                except Exception:
-                    print("❌ JSON repair failed")
-                    return None
+            # Process response using shared method
+            return self._process_llm_response(
+                content, response_model, log_file_path, system_message, structured_prompt, log_context
+            )
 
         except Exception as e:
             print(f"❌ OpenRouter API Error: {e}")
@@ -591,62 +586,35 @@ class ExternalAPIProvider(LLMProvider):
     ) -> T | None:
         """Query OpenAI with structured output."""
         try:
-            messages = []
-
-            if system_message:
-                messages.append({"role": "system", "content": system_message})
-
-            # Include schema in prompt for better structured output
-            schema_str = json.dumps(response_model.model_json_schema(), indent=2)
-            structured_prompt = f"""{prompt}
-
-IMPORTANT: Respond with valid JSON matching this schema:
-{schema_str}
-
-Respond ONLY with the JSON object, no additional text."""
-
-            messages.append({"role": "user", "content": structured_prompt})
+            # Build structured prompt and messages using shared methods
+            structured_prompt = self._build_structured_prompt(prompt, response_model)
+            messages = self._build_messages(structured_prompt, system_message)
 
             llm_start_time = time.time()
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=override_num_predict or self.max_tokens,
-                response_format=(
-                    {"type": "json_object"} if "gpt" in self.model_name else None
-                ),
-                timeout=self.timeout,
-            )
+
+            # Build request parameters for OpenAI
+            request_params = {
+                "model": self.model_name,
+                "messages": messages,
+                "temperature": self.temperature,
+                "max_tokens": override_num_predict or self.max_tokens,
+                "timeout": self.timeout,
+            }
+
+            # Add response format for GPT models
+            if "gpt" in self.model_name:
+                request_params["response_format"] = {"type": "json_object"}
+
+            response = self.client.chat.completions.create(**request_params)
             llm_response_time = time.time() - llm_start_time
             print(f"      🤖 OpenAI response in {llm_response_time:.2f}s")
 
             content = response.choices[0].message.content.strip()
 
-            # Log the dialog
-            if log_file_path:
-                self._log_llm_dialog(
-                    log_file_path,
-                    system_message,
-                    structured_prompt,
-                    content,
-                    log_context,
-                )
-
-            # Parse and validate with Pydantic
-            try:
-                return response_model.model_validate_json(content)
-            except Exception as e:
-                print(f"⚠️ JSON validation failed: {e}")
-                # Try json-repair as fallback
-                try:
-                    from json_repair import repair_json
-
-                    repaired = repair_json(content)
-                    return response_model.model_validate(repaired)
-                except Exception:
-                    print("❌ JSON repair failed")
-                    return None
+            # Process response using shared method
+            return self._process_llm_response(
+                content, response_model, log_file_path, system_message, structured_prompt, log_context
+            )
 
         except Exception as e:
             print(f"❌ OpenAI API Error: {e}")
@@ -663,19 +631,13 @@ Respond ONLY with the JSON object, no additional text."""
     ) -> T | None:
         """Query Gemini with structured output."""
         try:
-            # Combine system message and prompt
+            # Combine system message and prompt for Gemini
             full_prompt = prompt
             if system_message:
                 full_prompt = f"{system_message}\n\n{prompt}"
 
-            # Include schema in prompt
-            schema_str = json.dumps(response_model.model_json_schema(), indent=2)
-            structured_prompt = f"""{full_prompt}
-
-IMPORTANT: Respond with valid JSON matching this schema:
-{schema_str}
-
-Respond ONLY with the JSON object, no additional text."""
+            # Build structured prompt using shared method
+            structured_prompt = self._build_structured_prompt(full_prompt, response_model)
 
             llm_start_time = time.time()
             response = self.client.generate_content(
@@ -690,30 +652,10 @@ Respond ONLY with the JSON object, no additional text."""
 
             content = response.text.strip()
 
-            # Log the dialog
-            if log_file_path:
-                self._log_llm_dialog(
-                    log_file_path,
-                    system_message,
-                    structured_prompt,
-                    content,
-                    log_context,
-                )
-
-            # Parse and validate with Pydantic
-            try:
-                return response_model.model_validate_json(content)
-            except Exception as e:
-                print(f"⚠️ JSON validation failed: {e}")
-                # Try json-repair as fallback
-                try:
-                    from json_repair import repair_json
-
-                    repaired = repair_json(content)
-                    return response_model.model_validate(repaired)
-                except Exception:
-                    print("❌ JSON repair failed")
-                    return None
+            # Process response using shared method
+            return self._process_llm_response(
+                content, response_model, log_file_path, system_message, structured_prompt, log_context
+            )
 
         except Exception as e:
             print(f"❌ Gemini API Error: {e}")
