@@ -1,83 +1,107 @@
-graph TB
+flowchart TD
     %% Upload Endpoint (Entry Point)
     subgraph Upload["/upload - Document Ingestion"]
-        A[PDF Upload] --> B[Text Extraction + OCR]
-        B --> C[Page-Aware Text Processing]
-        C --> D[Save: source_id_pages.txt]
-        D --> E[Return Source ID]
+        A["PDF Upload"]
+        B["Text Extraction + OCR"]
+        C["Page-Aware Text Processing"]
+        D["Save: source_id_pages.txt"]
+        E["Return Source ID"]
+        
+        A --> B
+        B --> C
+        C --> D
+        D --> E
     end
 
-    %% Shared Processing Components
-    subgraph Shared["Shared Processing Components"]
-        F[Load source_id_pages.txt]
-        G[Create 8K-12K char chunks with 10% overlap]
-        H[extract_structures_with_retry per chunk]
+    %% Initial Chunking (Only Truly Shared Step)
+    subgraph InitialChunk["Initial Chunking (Shared)"]
+        F["Load source_id_pages.txt"]
+        G["Create 8K-12K char chunks with 10% overlap"]
+        
+        F --> G
     end
 
-    %% LLM Backend
+    %% Enhanced Extraction Pipeline
+    subgraph Enhanced["/extract_enhanced Pipeline"]
+        H1["extract_direct_to_enhanced()"]
+        I1["create_simplified_system_message_with_context()"]
+        J1["Prompts: 4-bucket JSON with accumulated context"]
+        K1["LLM Query: EnrichedReviewJSON schema"]
+        L1["Conservative entity resolution"]
+        M1["Output: _enhanced_structure.json"]
+        
+        H1 --> I1
+        I1 --> J1
+        J1 --> K1
+        K1 --> L1
+        L1 --> M1
+    end
+
+    %% Operations Extraction Pipeline
+    subgraph Operations["/extract_enhanced_operations Pipeline"]
+        H2["extract_direct_to_enhanced_with_operations()"]
+        I2["create_operations_system_message()"]
+        J2["Prompts: CREATE/UPDATE/CONNECT operations"]
+        K2["LLM Query: ExtractionOperations schema"]
+        L2["OperationExecutor + Global registry"]
+        M2["Output: _operations_result.json"]
+        
+        H2 --> I2
+        I2 --> J2
+        J2 --> K2
+        K2 --> L2
+        L2 --> M2
+    end
+
+    %% LLM Backend (Shared Infrastructure)
     subgraph LLM["Multi-Provider LLM Backend"]
-        I[Provider Abstraction]
-        I --> I1[OpenRouter: o4-mini-high - Default]
-        I --> I2[Ollama: Local Models]
-        I --> I3[vLLM: High Performance]
-        I --> I4[OpenAI/Gemini: Direct APIs]
+        LLM1["Provider Abstraction"]
+        LLM2["OpenRouter: o4-mini-high (Default)"]
+        LLM3["Ollama: Local Models"]
+        LLM4["vLLM: High Performance"]
+        LLM5["OpenAI/Gemini: Direct APIs"]
+        LLM6["200K+ Context, 65K Output, German Support"]
         
-        I --> J[200K+ Context, 65K Output, German Support]
-    end
-
-    %% The Key Difference: What the LLM Returns
-    subgraph Difference["Key Difference: LLM Output Strategy"]
-        K1["/extract_enhanced<br/>Returns: Complete 4-bucket JSON"]
-        K2["/extract_enhanced_operations<br/>Returns: CREATE/UPDATE/CONNECT operations"]
-    end
-
-    %% Post-Processing (Different for Each Method)
-    subgraph PostProcess["Post-Processing"]
-        L1[Enhanced: Conservative entity resolution]
-        L2[Operations: OperationExecutor + Global registry]
-        
-        M1[Enhanced: _enhanced_structure.json]
-        M2[Operations: _operations_result.json]
+        LLM1 --> LLM2
+        LLM1 --> LLM3
+        LLM1 --> LLM4
+        LLM1 --> LLM5
+        LLM1 --> LLM6
     end
 
     %% File Storage
     subgraph Storage["File Storage (data/uploads/)"]
-        N[source_id_pages.txt - Always created]
-        O[Dialog logs: .jsonl files]
-        P[Results: .json files]
-        Q[Legacy: _llm_dialog.txt, _intermediate_extraction.json]
+        N["source_id_pages.txt - Always created"]
+        O["Dialog logs: .jsonl files"]
+        P["Extraction results: .json files"]
     end
 
-    %% Flow Connections
+    %% Main Flow Connections
     E --> F
-    F --> G
-    G --> H
-    H --> I
-    I --> K1
-    I --> K2
+    G --> H1
+    G --> H2
     
-    K1 --> L1
-    K2 --> L2
+    K1 --> LLM1
+    K2 --> LLM1
     
-    L1 --> M1
-    L2 --> M2
-    
+    %% File Storage Connections (dotted lines)
     D -.-> N
     M1 -.-> P
     M2 -.-> P
-    H -.-> O
+    J1 -.-> O
+    J2 -.-> O
 
     %% Styling
     classDef upload fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef shared fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef enhanced fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef operations fill:#fff3e0,stroke:#ff6f00,stroke-width:2px
     classDef llm fill:#ffccbc,stroke:#f57c00,stroke-width:2px
-    classDef difference fill:#fff3e0,stroke:#ff6f00,stroke-width:3px
-    classDef post fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
     classDef storage fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
 
     class A,B,C,D,E upload
-    class F,G,H shared
-    class I,I1,I2,I3,I4,J llm
-    class K1,K2 difference
-    class L1,L2,M1,M2 post
-    class N,O,P,Q storage
+    class F,G shared
+    class H1,I1,J1,K1,L1,M1 enhanced
+    class H2,I2,J2,K2,L2,M2 operations
+    class LLM1,LLM2,LLM3,LLM4,LLM5,LLM6 llm
+    class N,O,P storage
