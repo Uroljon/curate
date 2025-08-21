@@ -52,6 +52,17 @@ system_messages:
     - Erstellen Sie CONNECT-Operationen zwischen bestehenden Entities, wann immer klare Zusammenhänge erkennbar sind.
 
     BEISPIELE:
+    - CREATE (Handlungsfeld):
+      {
+        "operation": "CREATE",
+        "entity_type": "action_field",
+        "content": {
+          "title": "Mobilität und Verkehr",
+          "description": "Nachhaltige Verkehrslösungen und Mobilitätskonzepte für die Stadt."
+        },
+        "confidence": 0.75
+      }
+
     - CREATE (Projekt):
       {
         "operation": "CREATE",
@@ -104,6 +115,91 @@ system_messages:
     Antworten Sie AUSSCHLIESSLICH mit der Operations-Liste im JSON-Format.
 
 templates:
+  operations_nodes_chunk: |
+    Analysieren Sie diesen Textabschnitt und erstellen Sie NUR ENTITY-OPERATIONEN (CREATE/UPDATE).
+
+    WICHTIG: Nur CREATE und UPDATE Operationen erlaubt - KEINE CONNECT Operationen!
+    
+    {context_text}
+
+    MODUS: NUR ENTITY-EXTRAKTION
+    - ✅ CREATE: Neue Entities erstellen (wenn eindeutig neu)
+    - ✅ UPDATE: Bestehende Entities anreichern/erweitern
+    - ❌ CONNECT: VERBOTEN in diesem Pass - wird in separatem Schritt erledigt
+
+    VOLLSTÄNDIGKEITS-FOKUS:
+    - Bei CREATE/UPDATE immer vollständige, textbasierte Beschreibungen liefern
+    - Quellenangaben (source_pages, source_quote) sind PFLICHT für Maßnahmen/Indikatoren
+    - Konfidenz-Richtwerte: CREATE ≥ 0.7, UPDATE ≥ 0.6
+    - Ziel: Maximale Entität-Vollständigkeit ohne Verbindungskomplexität
+
+    TEXTABSCHNITT (Seiten {page_list}):
+    {chunk_text}
+
+    QUALITÄTSKONTROLLE:
+    - CONTENT-VOLLSTÄNDIGKEIT: Aussagekräftige Beschreibungen (1-2 Sätze, textbasiert)
+    - Entity-Felder: action_field (title, description), project (title, description), measure (title, description), indicator (title, description, unit, target_values)
+    - Bevorzugen Sie UPDATE über CREATE bei semantischer Nähe
+    - Extrahieren Sie alle klar benannten Projekte, Maßnahmen und Indikatoren
+
+    Falls keine validen CREATE/UPDATE-Operationen ableitbar sind: Antworten Sie mit {{"operations": []}}.
+
+    Antworten Sie NUR mit der Operations-Liste im JSON-Format:
+    {{"operations": [...]}}
+
+  operations_connections_chunk: |
+    Analysieren Sie diesen Textabschnitt und erstellen Sie NUR VERBINDUNGS-OPERATIONEN (CONNECT).
+
+    WICHTIG: Nur CONNECT Operationen erlaubt - KEINE CREATE/UPDATE Operationen!
+    
+    {context_text}
+
+    MODUS: NUR VERBINDUNGS-EXTRAKTION  
+    - ❌ CREATE: VERBOTEN in diesem Pass - Entities bereits erstellt
+    - ❌ UPDATE: VERBOTEN in diesem Pass - Entities bereits vollständig
+    - ✅ CONNECT: Verbindungen zwischen bestehenden Entities aus ID-MAPPING-TABELLE
+
+    VERBINDUNGS-CHECKLISTE (aktiv prüfen):
+    - action_field → project (Projekt gehört zu Handlungsfeld)
+    - project → measure (Maßnahme gehört zu Projekt) 
+    - project/measure → indicator (Indikator misst Erfolg)
+
+    KRITISCHE VERBINDUNGSREGELN:
+    - NUR exakte IDs aus ID-MAPPING-TABELLE verwenden (af_1, proj_2, etc.)
+    - NIEMALS Entity-Namen/Titel verwenden
+    - NIEMALS temporäre IDs (temp_, placeholder_)
+    - Konfidenz-Richtwert: CONNECT ≥ 0.6
+    - Klarer thematischer Zusammenhang erforderlich
+
+    TEXTABSCHNITT (Seiten {page_list}):
+    {chunk_text}
+
+    CONNECT-OPERATION BEISPIEL:
+    {{
+      "operation": "CONNECT", 
+      "entity_type": "action_field",
+      "connections": [
+        {{
+          "from_id": "af_1",
+          "to_id": "proj_2", 
+          "confidence": 0.8
+        }}
+      ],
+      "confidence": 0.7
+    }}
+
+    QUALITÄTSKONTROLLE:
+    - ⚠️  from_id/to_id: NUR IDs aus ID-MAPPING verwenden
+    - FALSCH: "to_id": "Mobilität und Verkehr" ❌
+    - FALSCH: "from_id": "temp_af_1" ❌  
+    - RICHTIG: "to_id": "af_1" (aus ID-MAPPING) ✅
+    - Suchen Sie aktiv nach allen sinnvollen Verbindungen im Text
+
+    Falls keine validen CONNECT-Operationen ableitbar sind: Antworten Sie mit {{"operations": []}}.
+
+    Antworten Sie NUR mit der Operations-Liste im JSON-Format:
+    {{"operations": [...]}}
+
   operations_chunk: |
     Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.
 
@@ -143,7 +239,7 @@ templates:
     - FALSCH: "from_id": "temp_af_1" ❌
     - RICHTIG: "to_id": "af_1" (aus ID-MAPPING) ✅
     - CONTENT-VOLLSTÄNDIGKEIT: Bei CREATE/UPDATE immer aussagekräftige Felder liefern (Beschreibung i.d.R. 1–2 Sätze, textbasiert, keine Annahmen):
-      • action_field: name, description
+      • action_field: title, description
       • project: title, description (ggf. full_description), optionale tags
       • measure: title, description
       • indicator: title, description (und ggf. unit, target_values)
@@ -156,7 +252,7 @@ templates:
       • project/measure → indicator (Indikator misst Erfolg)
     - Ziel ist hohe Vollständigkeit: Extrahieren Sie alle klar benannten Projekte, Maßnahmen und Indikatoren.
 
-    Falls keine validen Operationen ableitbar sind: Antworten Sie mit {"operations": []}.
+    Falls keine validen Operationen ableitbar sind: Antworten Sie mit {{"operations": []}}.
 
     Antworten Sie NUR mit der Operations-Liste im JSON-Format:
     {{"operations": [...]}}

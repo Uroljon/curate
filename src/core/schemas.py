@@ -1,5 +1,6 @@
 # schemas.py
 
+from typing import Any
 from pydantic import BaseModel, Field
 
 
@@ -91,7 +92,7 @@ class EnhancedActionField(BaseModel):
     """Enhanced action field for relational 4-bucket structure matching Appwrite Dimensions schema."""
 
     id: str = Field(..., description="Unique identifier (e.g., 'af_1')")
-    content: dict[str, str | list[str] | None] = Field(
+    content: dict[str, Any] = Field(
         ..., description="Action field content matching Appwrite Dimensions schema"
     )
     connections: list[ConnectionWithConfidence] = Field(
@@ -114,7 +115,7 @@ class EnhancedProject(BaseModel):
     """Enhanced project for relational 4-bucket structure matching Appwrite Measures schema."""
 
     id: str = Field(..., description="Unique identifier (e.g., 'proj_1')")
-    content: dict[str, str | list[str] | int | float | bool | None] = Field(
+    content: dict[str, Any] = Field(
         ..., description="Project content matching Appwrite Measures schema"
     )
     connections: list[ConnectionWithConfidence] = Field(
@@ -152,7 +153,7 @@ class EnhancedMeasure(BaseModel):
     """Enhanced measure for relational 4-bucket structure - concrete actions within projects."""
 
     id: str = Field(..., description="Unique identifier (e.g., 'msr_1')")
-    content: dict[str, str | list[str] | None] = Field(
+    content: dict[str, Any] = Field(
         ..., description="Measure content with 'title' and optional 'description'"
     )
     connections: list[ConnectionWithConfidence] = Field(
@@ -177,7 +178,7 @@ class EnhancedIndicator(BaseModel):
     """Enhanced indicator for relational 4-bucket structure matching Appwrite Indicators schema."""
 
     id: str = Field(..., description="Unique identifier (e.g., 'ind_1')")
-    content: dict[str, str | list[str] | int | float | bool | None] = Field(
+    content: dict[str, Any] = Field(
         ..., description="Indicator content matching Appwrite Indicators schema"
     )
     connections: list[ConnectionWithConfidence] = Field(

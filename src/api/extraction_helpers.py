@@ -241,6 +241,58 @@ def create_extraction_prompt(
         raise ValueError(error_msg)
 
 
+def build_operations_prompt(
+    mode: str,
+    chunk_text: str,
+    state,
+    page_numbers: list[int] | None = None,
+) -> str:
+    """Build mode-aware operations prompt (nodes or connections)."""
+    context_text = (
+        format_context_json(state)
+        if state and (state.action_fields or state.projects or state.measures or state.indicators)
+        else "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
+    )
+    page_list = ", ".join(map(str, sorted(page_numbers))) if page_numbers else "N/A"
+    
+    if mode == "nodes":
+        return get_prompt("operations.templates.operations_nodes_chunk",
+                         context_text=context_text,
+                         page_list=page_list,
+                         chunk_text=chunk_text)
+    elif mode == "connections":
+        return get_prompt("operations.templates.operations_connections_chunk",
+                         context_text=context_text,
+                         page_list=page_list,
+                         chunk_text=chunk_text)
+    else:
+        error_msg = f"Unknown mode: {mode}. Must be 'nodes' or 'connections'"
+        raise ValueError(error_msg)
+
+
+def filter_operations_by_mode(operations: list, mode: str) -> list:
+    """Filter operations by mode (nodes=CREATE/UPDATE, connections=CONNECT)."""
+    from src.core.operations_schema import OperationType
+    
+    if mode == "nodes":
+        # Keep CREATE and UPDATE, drop CONNECT
+        return [op for op in operations 
+                if op.operation in (OperationType.CREATE, OperationType.UPDATE)]
+    elif mode == "connections":
+        # Keep CONNECT, drop CREATE and UPDATE
+        return [op for op in operations 
+                if op.operation == OperationType.CONNECT]
+    else:
+        error_msg = f"Unknown mode: {mode}. Must be 'nodes' or 'connections'"
+        raise ValueError(error_msg)
+
+
+def should_run_connections_pass(entities_ops: list) -> bool:
+    """Check if connections pass should run based on entities operations."""
+    # Skip connections pass if no entities were created/updated
+    return len(entities_ops) > 0
+
+
 def add_page_attribution_to_enhanced_result(result, page_numbers: list[int]) -> None:
     """Add page attribution to all entities in enhanced result."""
     page_str = f"Seiten {', '.join(map(str, sorted(page_numbers)))}"
@@ -1045,6 +1097,204 @@ def extract_direct_to_enhanced_with_operations(
     llm_provider = get_llm_provider()
     all_operation_logs = []
 
+    # Check if two-pass mode is enabled
+    from src.core.config import OPERATIONS_TWO_PASS_ENABLED, OPERATIONS_CONNECTION_SWEEP_ENABLED
+    
+    if OPERATIONS_TWO_PASS_ENABLED:
+        print("🚀 Using two-pass operations extraction (nodes first, then connections)")
+        current_state, all_operation_logs = _process_two_pass_extraction(
+            chunks_with_pages, current_state, executor, llm_provider, source_id, log_file_path
+        )
+        
+        # Optional connection sweep pass
+        if OPERATIONS_CONNECTION_SWEEP_ENABLED:
+            print("🔄 Running optional connection sweep pass...")
+            current_state, sweep_logs = _process_connection_sweep(
+                chunks_with_pages, current_state, executor, llm_provider, source_id, log_file_path
+            )
+            all_operation_logs.extend(sweep_logs)
+    else:
+        # Original single-pass processing
+        current_state, all_operation_logs = _process_single_pass_extraction(
+            chunks_with_pages, current_state, executor, llm_provider, source_id, log_file_path
+        )
+
+    # Step 4: Final statistics and return
+    extraction_time = time.time() - start_time
+    operation_summary = executor.get_operation_summary()
+
+    print(f"✅ Operations-based extraction completed in {extraction_time:.1f}s")
+    print("📊 Operation Summary:")
+    print(f"   - Total operations: {operation_summary['total_operations']}")
+    print(f"   - Successful: {operation_summary['successful_operations']}")
+    print(f"   - Success rate: {operation_summary['success_rate']:.1%}")
+    print(f"   - Entities created: {operation_summary['entities_created']}")
+    print(
+        f"📊 Final: {len(current_state.action_fields)} action fields, "
+        f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
+        f"{len(current_state.indicators)} indicators"
+    )
+
+    # Return in same format as other endpoints for visualization tool compatibility
+    return current_state.model_dump()
+
+
+def _process_two_pass_extraction(
+    chunks_with_pages: list,
+    initial_state,
+    executor,
+    llm_provider,
+    source_id: str,
+    log_file_path: str | None = None
+) -> tuple:
+    """Process chunks using two-pass approach: entities first, then connections."""
+    from src.core.operations_schema import ExtractionOperations
+    
+    current_state = initial_state
+    all_operation_logs = []
+    
+    # PASS 1: NODES (CREATE/UPDATE only)
+    print("🔧 Pass 1: Extracting entities (CREATE/UPDATE operations)")
+    for i, (chunk_text, page_numbers) in enumerate(chunks_with_pages):
+        print(f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} - NODES (pages {page_numbers})")
+        
+        # Build nodes-only prompt
+        nodes_prompt = build_operations_prompt("nodes", chunk_text, current_state, page_numbers)
+        system_message = get_prompt("operations.system_messages.operations_extraction")
+        enhanced_log_context = f"nodes_{source_id}_chunk_{i+1}"
+        
+        # Execute LLM extraction for nodes
+        operations_result = execute_llm_extraction(
+            llm_provider,
+            nodes_prompt, 
+            ExtractionOperations,
+            system_message,
+            log_file_path,
+            enhanced_log_context,
+            i,
+        )
+        
+        if operations_result and operations_result.operations:
+            # Filter to only CREATE/UPDATE operations
+            entities_ops = filter_operations_by_mode(operations_result.operations, "nodes")
+            
+            if entities_ops:
+                # Apply entities operations
+                current_state, entities_ops, operation_log = _apply_validated_operations(
+                    current_state, entities_ops, executor, i, "nodes"
+                )
+                all_operation_logs.append(operation_log)
+            else:
+                print(f"⚠️ Chunk {i+1}: No valid entities operations")
+        else:
+            print(f"⚠️ No operations from chunk {i+1} (nodes pass)")
+    
+    print(f"✅ Pass 1 completed: {len(current_state.action_fields)} action fields, "
+          f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
+          f"{len(current_state.indicators)} indicators")
+    
+    # PASS 2: CONNECTIONS (CONNECT only) 
+    print("\n🔗 Pass 2: Creating connections (CONNECT operations)")
+    for i, (chunk_text, page_numbers) in enumerate(chunks_with_pages):
+        print(f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} - CONNECTIONS (pages {page_numbers})")
+        
+        # Build connections-only prompt with fresh ID mapping
+        connections_prompt = build_operations_prompt("connections", chunk_text, current_state, page_numbers)
+        system_message = get_prompt("operations.system_messages.operations_extraction")
+        enhanced_log_context = f"connections_{source_id}_chunk_{i+1}"
+        
+        # Execute LLM extraction for connections
+        operations_result = execute_llm_extraction(
+            llm_provider,
+            connections_prompt,
+            ExtractionOperations,
+            system_message,
+            log_file_path,
+            enhanced_log_context,
+            i,
+        )
+        
+        if operations_result and operations_result.operations:
+            # Filter to only CONNECT operations
+            connect_ops = filter_operations_by_mode(operations_result.operations, "connections")
+            
+            if connect_ops:
+                # Apply connection operations
+                current_state, connect_ops, operation_log = _apply_validated_operations(
+                    current_state, connect_ops, executor, i, "connections"
+                )
+                all_operation_logs.append(operation_log)
+            else:
+                print(f"⚠️ Chunk {i+1}: No valid connection operations")
+        else:
+            print(f"⚠️ No operations from chunk {i+1} (connections pass)")
+    
+    print("✅ Pass 2 completed: Connections established")
+    
+    return current_state, all_operation_logs
+
+
+def _process_connection_sweep(
+    chunks_with_pages: list,
+    initial_state,
+    executor,
+    llm_provider,
+    source_id: str,
+    log_file_path: str | None = None
+) -> tuple:
+    """Optional final sweep for cross-chunk connections."""
+    from src.core.operations_schema import ExtractionOperations
+    
+    current_state = initial_state
+    sweep_logs = []
+    
+    for i, (chunk_text, page_numbers) in enumerate(chunks_with_pages):
+        print(f"🔍 Sweep chunk {i+1}/{len(chunks_with_pages)} - CROSS-CONNECTIONS (pages {page_numbers})")
+        
+        # Build connections-only prompt with final ID mapping
+        connections_prompt = build_operations_prompt("connections", chunk_text, current_state, page_numbers)
+        system_message = get_prompt("operations.system_messages.operations_extraction")
+        enhanced_log_context = f"sweep_{source_id}_chunk_{i+1}"
+        
+        # Execute LLM extraction for sweep connections
+        operations_result = execute_llm_extraction(
+            llm_provider,
+            connections_prompt,
+            ExtractionOperations,
+            system_message,
+            log_file_path,
+            enhanced_log_context,
+            i,
+        )
+        
+        if operations_result and operations_result.operations:
+            # Filter to only CONNECT operations
+            connect_ops = filter_operations_by_mode(operations_result.operations, "connections")
+            
+            if connect_ops:
+                # Apply sweep connection operations
+                current_state, connect_ops, operation_log = _apply_validated_operations(
+                    current_state, connect_ops, executor, i, "sweep"
+                )
+                sweep_logs.append(operation_log)
+    
+    return current_state, sweep_logs
+
+
+def _process_single_pass_extraction(
+    chunks_with_pages: list,
+    initial_state,
+    executor,
+    llm_provider,
+    source_id: str,
+    log_file_path: str | None = None
+) -> tuple:
+    """Original single-pass extraction for backward compatibility."""
+    from src.core.operations_schema import ExtractionOperations, OperationType
+    
+    current_state = initial_state
+    all_operation_logs = []
+    
     # Step 3: Process each chunk with operations
     for i, (chunk_text, page_numbers) in enumerate(chunks_with_pages):
         print(
@@ -1072,8 +1322,6 @@ def extract_direct_to_enhanced_with_operations(
 
         if operations_result and operations_result.operations:
             # Reorder operations by type to ensure proper dependency resolution
-            from src.core.operations_schema import OperationType
-
             operation_priority = {
                 OperationType.CREATE: 0,
                 OperationType.UPDATE: 1,
@@ -1094,88 +1342,101 @@ def extract_direct_to_enhanced_with_operations(
                 if original_types != reordered_types:
                     print(f"🔄 Reordered {len(operations_result.operations)} operations: {' '.join(original_types)} → {' '.join(reordered_types)}")
 
-            # Filter out invalid operations instead of skipping entire chunk
-            from src.extraction.operations_executor import validate_operations
-
-            validation_errors = validate_operations(
-                operations_result.operations, current_state
+            # Apply operations using the helper function
+            current_state, valid_operations, operation_log = _apply_validated_operations(
+                current_state, operations_result.operations, executor, i, "single"
             )
-
-            if validation_errors:
-                print(
-                    f"⚠️ Chunk {i+1}: {len(validation_errors)} operation validation errors:"
-                )
-                for error in validation_errors[:3]:  # Show first 3 errors
-                    print(f"   - {error}")
-                if len(validation_errors) > 3:
-                    print(f"   - ... and {len(validation_errors) - 3} more errors")
-
-                # Filter out invalid operations - validate each operation individually
-                valid_operations = []
-                for op in operations_result.operations:
-                    single_op_errors = validate_operations([op], current_state)
-                    if not single_op_errors:
-                        valid_operations.append(op)
-
-                print(
-                    f"   Proceeding with {len(valid_operations)}/{len(operations_result.operations)} valid operations"
-                )
-                operations_result.operations = valid_operations
-
-            if operations_result.operations:  # Only proceed if we have valid operations
-                # Apply validated operations to current state
-                try:
-                    new_state, operation_log = executor.apply_operations(
-                        current_state, operations_result.operations, chunk_index=i
-                    )
-
-                    # Only update current_state if operations were successfully applied
-                    if operation_log.successful_operations > 0:
-                        current_state = new_state
-                        all_operation_logs.append(operation_log)
-
-                        print(
-                            f"✅ Chunk {i+1}: {operation_log.successful_operations}/{operation_log.total_operations} operations applied"
-                        )
-                        print(
-                            f"📊 Current state: {len(current_state.action_fields)} action fields, "
-                            f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
-                            f"{len(current_state.indicators)} indicators"
-                        )
-                    else:
-                        print(
-                            f"⚠️ Chunk {i+1}: No operations succeeded, keeping previous state"
-                        )
-                        all_operation_logs.append(operation_log)
-
-                except Exception as op_error:
-                    print(f"❌ Chunk {i+1}: Error applying operations: {op_error}")
-                    print("   Keeping previous state to preserve integrity")
-                    continue
-            else:
-                print(f"⚠️ Chunk {i+1}: All operations filtered out, skipping")
+            all_operation_logs.append(operation_log)
 
         else:
             print(f"⚠️ No operations from chunk {i+1}")
+    
+    return current_state, all_operation_logs
 
-    # Step 4: Final statistics and return
-    extraction_time = time.time() - start_time
-    operation_summary = executor.get_operation_summary()
 
-    print(f"✅ Operations-based extraction completed in {extraction_time:.1f}s")
-    print("📊 Operation Summary:")
-    print(f"   - Total operations: {operation_summary['total_operations']}")
-    print(f"   - Successful: {operation_summary['successful_operations']}")
-    print(f"   - Success rate: {operation_summary['success_rate']:.1%}")
-    print(f"   - Entities created: {operation_summary['entities_created']}")
-    print(
-        f"📊 Final: {len(current_state.action_fields)} action fields, "
-        f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
-        f"{len(current_state.indicators)} indicators"
-    )
+def _apply_validated_operations(
+    current_state,
+    operations: list,
+    executor,
+    chunk_index: int,
+    mode: str = "operations"
+) -> tuple:
+    """Apply operations with validation and error handling."""
+    # Filter out invalid operations instead of skipping entire chunk
+    from src.extraction.operations_executor import validate_operations
 
-    # Return in same format as other endpoints for visualization tool compatibility
-    return current_state.model_dump()
+    validation_errors = validate_operations(operations, current_state)
+
+    if validation_errors:
+        print(
+            f"⚠️ Chunk {chunk_index+1} ({mode}): {len(validation_errors)} operation validation errors:"
+        )
+        for error in validation_errors[:3]:  # Show first 3 errors
+            print(f"   - {error}")
+        if len(validation_errors) > 3:
+            print(f"   - ... and {len(validation_errors) - 3} more errors")
+
+        # Filter out invalid operations - validate each operation individually
+        valid_operations = []
+        for op in operations:
+            single_op_errors = validate_operations([op], current_state)
+            if not single_op_errors:
+                valid_operations.append(op)
+
+        print(
+            f"   Proceeding with {len(valid_operations)}/{len(operations)} valid operations"
+        )
+        operations = valid_operations
+
+    if operations:  # Only proceed if we have valid operations
+        # Apply validated operations to current state
+        try:
+            new_state, operation_log = executor.apply_operations(
+                current_state, operations, chunk_index=chunk_index
+            )
+
+            # Only update current_state if operations were successfully applied
+            if operation_log.successful_operations > 0:
+                current_state = new_state
+
+                print(
+                    f"✅ Chunk {chunk_index+1} ({mode}): {operation_log.successful_operations}/{operation_log.total_operations} operations applied"
+                )
+                print(
+                    f"📊 Current state: {len(current_state.action_fields)} action fields, "
+                    f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
+                    f"{len(current_state.indicators)} indicators"
+                )
+                return current_state, operations, operation_log
+            else:
+                print(
+                    f"⚠️ Chunk {chunk_index+1} ({mode}): No operations succeeded, keeping previous state"
+                )
+                return current_state, [], operation_log
+
+        except Exception as op_error:
+            print(f"❌ Chunk {chunk_index+1} ({mode}): Error applying operations: {op_error}")
+            print("   Keeping previous state to preserve integrity")
+            # Create a minimal operation log for the error
+            from src.extraction.operations_executor import OperationLog
+            error_log = OperationLog(
+                total_operations=len(operations),
+                successful_operations=0,
+                failed_operations=len(operations),
+                chunk_index=chunk_index
+            )
+            return current_state, [], error_log
+    else:
+        print(f"⚠️ Chunk {chunk_index+1} ({mode}): All operations filtered out, skipping")
+        # Create empty operation log
+        from src.extraction.operations_executor import OperationLog
+        empty_log = OperationLog(
+            total_operations=0,
+            successful_operations=0, 
+            failed_operations=0,
+            chunk_index=chunk_index
+        )
+        return current_state, [], empty_log
 
 
 def apply_conservative_entity_resolution(result):  # EnrichedReviewJSON type
