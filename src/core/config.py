@@ -148,13 +148,13 @@ INDICATOR_WINDOW_SIZE = 150  # Characters to check around split points
 
 # Fast Extraction Configuration
 FAST_EXTRACTION_ENABLED = True  # Enable fast single-pass extraction endpoint
-FAST_EXTRACTION_MAX_CHUNKS = 2  # Limit chunks for speed (0 = no limit)
+FAST_EXTRACTION_MAX_CHUNKS = int(os.getenv("FAST_EXTRACTION_MAX_CHUNKS", "50"))  # Limit chunks for speed (0 = no limit)
 
 # Two-Pass Operations Extraction Configuration
 OPERATIONS_TWO_PASS_ENABLED = True  # Enable two-pass mode (nodes first, then connections)
 OPERATIONS_CONNECTION_SWEEP_ENABLED = False  # Optional final pass for cross-chunk connections
 OPERATIONS_CONFIDENCE_CREATE = 0.7  # Minimum confidence for CREATE operations
-OPERATIONS_CONFIDENCE_UPDATE = 0.6  # Minimum confidence for UPDATE operations  
+OPERATIONS_CONFIDENCE_UPDATE = 0.6  # Minimum confidence for UPDATE operations
 OPERATIONS_CONFIDENCE_CONNECT = 0.6  # Minimum confidence for CONNECT operations
 OPERATIONS_MAX_OPS_PER_CHUNK = 50  # Maximum operations per chunk (guardrails)
 
