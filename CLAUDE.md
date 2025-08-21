@@ -75,7 +75,7 @@ black . && ruff check . && mypy .
 cp example.env .env
 
 # Edit .env file to configure your LLM backend
-# Default uses OpenRouter with o4-mini-high model
+# Default uses OpenRouter with gpt-5-mini model (released Aug 2025)
 # Set your OpenRouter API key
 export OPENROUTER_API_KEY="your-api-key-here"
 ```
@@ -204,6 +204,12 @@ Phase 2: **Enhanced Extraction** (recommended endpoints)
   - Structured output with Pydantic schemas for extraction
   - JSON repair for handling malformed LLM responses
   - Provider-specific model mappings and configurations
+
+- **`prompts/`**: Centralized YAML-based prompt management system (Aug 2025):
+  - All prompts moved from inline strings to structured YAML files
+  - Organized by category: core operations, extraction, structure, thinking modes
+  - Easy prompt iteration and A/B testing without code changes
+  - Consistent prompt versioning and management
 
 - **`src/core/config.py`**: Central configuration for all tunable parameters including model selection, chunk sizes, extraction settings
 
@@ -345,8 +351,8 @@ python json_analyzer/tests/test_metrics.py
 
 Key settings in `src/core/config.py`:
 - `LLM_BACKEND`: Default "openrouter" (options: "openrouter", "ollama", "vllm", "openai", "gemini")
-- `OPENROUTER_MODEL_NAME`: Default "openai/o4-mini-high" (200K context, cost-effective)
-- `OPENROUTER_MAX_TOKENS`: 65536 tokens (increased to reduce JSON truncation)
+- `OPENROUTER_MODEL_NAME`: Default "openai/gpt-5-mini" (400K context, latest model from Aug 2025)
+- `OPENROUTER_MAX_TOKENS`: 65536 tokens (optimized for context window utilization)
 - `CHUNK_MAX_CHARS`: 20K chars for LLM chunks
 - `ENHANCED_CHUNK_MAX_CHARS`: 8-12K chars for enhanced extraction
 - `FAST_EXTRACTION_MAX_CHUNKS`: Limit chunks for speed (default 50)
@@ -358,7 +364,7 @@ The system supports multiple LLM backends. Configure via environment variables i
 # OpenRouter (default - recommended)
 LLM_BACKEND=openrouter
 OPENROUTER_API_KEY=your-api-key
-OPENROUTER_MODEL_NAME=openai/o4-mini-high  # 200K context, cost-effective
+OPENROUTER_MODEL_NAME=openai/gpt-5-mini  # 400K context, latest Aug 2025 model
 
 # Local Ollama
 LLM_BACKEND=ollama
@@ -418,6 +424,12 @@ When using vLLM, the system automatically maps Ollama model names to vLLM equiva
 - Review extraction logs in `logs/extraction.jsonl`
 - Check for API errors in `logs/errors.jsonl`
 
+**OpenRouter Issues:**
+- Verify model names match OpenRouter's catalog (e.g., `openai/gpt-5-mini`, not `openai/o4-mini-high`)
+- Check token limits: Total tokens (input + output) must stay within model's context window
+- For schema validation errors, ensure using `json_object` mode rather than strict `json_schema`
+- Use relaxed provider requirements for better model compatibility
+
 **Performance:**
 - Adjust `FAST_EXTRACTION_MAX_CHUNKS` to balance speed vs completeness
 - Monitor with built-in telemetry (`src/utils/monitoring.py`)
@@ -447,9 +459,12 @@ When using vLLM, the system automatically maps Ollama model names to vLLM equiva
 - Global entity registry maintains cross-chunk consistency
 - Higher token limits (65536) with OpenRouter to reduce JSON truncation
 
-**OpenRouter Integration:**
+**OpenRouter Integration & GPT-5-mini Support (August 2025):**
 - Default backend switched from Ollama to OpenRouter
-- Using `openai/o4-mini-high` model (200K context, cost-effective)
+- **NEW**: Full GPT-5-mini integration (400K context, released Aug 7, 2025)
+- Resolved OpenRouter routing issues with OpenAI models via relaxed provider requirements
+- Switched from strict `json_schema` to `json_object` mode for maximum compatibility
+- Optimized token limits (65K output) to work within model constraints
 - Multi-provider support: OpenRouter, Ollama, vLLM, OpenAI, Gemini
 - Model-specific configurations and mappings
 
