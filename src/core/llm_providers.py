@@ -13,6 +13,8 @@ from typing import Any, TypeVar
 import requests
 from pydantic import BaseModel
 
+from ..prompts import get_prompt
+
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -57,12 +59,10 @@ class LLMProvider(ABC):
         if disable_thinking and "qwen3" in self.model_name.lower():
             no_think_suffix = " /no_think"
 
-        return f"""{prompt}
-
-IMPORTANT: Respond with valid JSON matching this schema:
-{schema_str}
-
-Respond ONLY with the JSON object, no additional text.{no_think_suffix}"""
+        return get_prompt("core.templates.structured_json_wrapper",
+                         prompt=prompt,
+                         schema=schema_str,
+                         no_think_suffix=no_think_suffix)
 
     def _parse_json_response(self, content: str, response_model: type[T]) -> T | None:
         """Parse and validate JSON response with fallback repair."""

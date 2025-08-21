@@ -235,61 +235,9 @@ def extract_structures_with_retry(
     """
     Extract structures from text using Ollama structured output.
     """
-    system_message = """Sie sind ein Experte für die Analyse deutscher kommunaler Strategiedokumente.
+    system_message = get_prompt("extraction.system_messages.retry_extraction")
 
-KRITISCHE ANWEISUNG: Verwenden Sie AUSSCHLIESSLICH Informationen aus dem bereitgestellten Quelldokument.
-Nutzen Sie NIEMALS Ihr Vorwissen oder Annahmen - nur den vorliegenden Text.
-
-VERFAHREN (Quote-Before-Answer):
-1. ZITATE EXTRAHIEREN: Identifizieren Sie relevante Textpassagen im Dokument
-2. ANALYSE: Basieren Sie Ihre Extraktion ausschließlich auf diesen Zitaten
-3. VALIDIERUNG: Jeder extrahierte Punkt muss direkt im Quelltext nachweisbar sein
-
-DEUTSCHE VERWALTUNGSSPRACHE - BEISPIELE (nicht limitierend):
-✓ Handlungsfelder können vielfältig sein: Mobilität, Klimaschutz, Energie, Wohnen, Bildung,
-  Soziales, Wirtschaft, Kultur, Sport, Digitalisierung, Gesundheit, Sicherheit, Verwaltung, etc.
-✓ Extrahieren Sie ALLE im Text gefundenen Handlungsfelder, nicht nur die genannten Beispiele
-✓ Verwaltungsterminologie: Bescheid, Verordnung, Verwaltungsakt, Maßnahme, Indikator
-
-ABSOLUT VERBOTEN - Englische Begriffe:
-✗ "Current State", "Future Vision", "Urban Planning", "Smart City"
-✗ Jegliche englische Fachterminologie
-
-EXTRAKTION PRO HANDLUNGSFELD:
-- Titel: Prägnante deutsche Bezeichnung (max. 100 Zeichen)
-- Maßnahmen: Konkrete Umsetzungsschritte aus dem Dokument
-- Indikatoren: Quantitative UND qualitative Zielgrößen aus dem Text
-
-INDIKATOREN (beide Typen erfassen):
-- Quantitativ: "55% Reduktion bis 2030", "500 Ladepunkte", "18 km Radwege"
-- Qualitativ: "Verbesserung der Luftqualität", "Stärkung des Zusammenhalts"
-
-Antworten Sie nur basierend auf explizit im Dokument gefundenen Informationen.
-Falls Informationen nicht verfügbar sind: "Information im Quelldokument nicht verfügbar"."""
-
-    prompt = f"""QUELLDOKUMENT:
-========
-{chunk_text.strip()}
-========
-
-ARBEITSSCHRITTE:
-
-1. RELEVANTE ZITATE IDENTIFIZIEREN:
-Suchen Sie alle Textpassagen, die Handlungsfelder, Projekte, Maßnahmen oder Indikatoren erwähnen.
-
-2. DEUTSCHE HANDLUNGSFELDER EXTRAHIEREN:
-Basierend nur auf den gefundenen Zitaten - identifizieren Sie ALLE unterschiedlichen Handlungsfelder.
-KRITISCH: Extrahieren Sie JEDES einzigartige Handlungsfeld aus diesem Chunk, auch wenn es nur einmal erwähnt wird!
-Verschiedene Chunks können verschiedene Handlungsfelder enthalten - erfassen Sie die Vielfalt!
-
-3. PROJEKTE UND DETAILS ZUORDNEN:
-Für jedes gefundene Handlungsfeld - extrahieren Sie nur die im Text explizit erwähnten Projekte und Details.
-
-WICHTIG:
-- Verwenden Sie ausschließlich Informationen aus dem obigen Quelldokument
-- Extrahieren Sie ALLE Handlungsfelder, die Sie im Text finden
-- Begrenzen Sie sich NICHT auf Standard-Handlungsfelder
-- Jeder Chunk kann unterschiedliche Handlungsfelder enthalten"""
+    prompt = get_prompt("extraction.templates.retry_chunk", chunk_text=chunk_text.strip())
 
     # Validate chunk size
     if len(chunk_text) > CHUNK_WARNING_THRESHOLD:
@@ -376,46 +324,12 @@ def extract_with_accumulation(
         f"🔄 Progressive extraction for chunk {chunk_index + 1}/{total_chunks} ({len(chunk_text)} chars)"
     )
 
-    system_message = """Erweitere die bestehende Extraktion mit neuen Informationen aus dem kommunalen Dokument.
+    system_message = get_prompt("extraction.system_messages.accumulated_enhancement")
 
-WICHTIGE REGELN:
-1. BEHALTE alle bestehenden Daten - entferne nichts
-2. ERGÄNZE bestehende Projekte mit neuen Maßnahmen/Indikatoren
-3. VERSCHMELZE doppelte Projekte (gleicher Titel = gleiches Projekt)
-4. FÜGE neue Handlungsfelder und Projekte hinzu
-5. SUCHE aktiv nach übersehenen Indikatoren
-
-PROJEKTTITEL REGELN:
-- Verwende prägnante, offizielle Bezeichnungen (max. 100 Zeichen)
-- RICHTIG: "Stadtbahn Regensburg", "Klimaschutzkonzept 2030", "Digitales Rathaus"
-- FALSCH: "Weiterentwicklung der bisherigen Dienstleistungsachse zu einer Dienstleistungs-, Technologie- und Wissenschaftsachse"
-- Bei langen Beschreibungen: Extrahiere den Kernnamen oder erstelle eine kurze, treffende Bezeichnung
-- Deutsche Komposita sind erlaubt: "Nachhaltigkeitsorientierte Stadtentwicklungskonzeption"
-
-BESONDERER FOKUS auf Indikatoren - finde ALLE quantitativen Informationen:
-- Zahlen mit Einheiten: "500 Ladepunkte", "18 km", "1000 Wohneinheiten"
-- Prozentangaben: "40% Reduktion", "um 30% senken"
-- Zeitziele: "bis 2030", "ab 2025", "innerhalb 5 Jahren"
-- Häufigkeiten: "jährlich", "pro Jahr", "monatlich"
-- Vergleiche: "Verdopplung", "Halbierung", "30% weniger"
-
-QUALITATIVE INDIKATOREN sind auch wichtig:
-- "Deutliche Reduktion der CO2-Emissionen" (später quantifizieren)
-- "Erhöhung der Biodiversität" (Zahlen folgen eventuell später)
-- "Verbesserung der Luftqualität" (konkrete Werte können später kommen)
-
-Alles auf Deutsch extrahieren."""
-
-    prompt = f"""Current extraction state has {len(accumulated_data.get('action_fields', []))} action fields:
-
-{json.dumps(accumulated_data, indent=2, ensure_ascii=False)}
-
-Now process this NEW text and enhance the above structure:
-
-{chunk_text.strip()}
-
-Return the COMPLETE enhanced JSON with all existing data plus new findings.
-Remember: ENHANCE and ADD, never remove."""
+    prompt = get_prompt("extraction.templates.accumulated_enhance",
+                        count=len(accumulated_data.get('action_fields', [])),
+                        accumulated_json=json.dumps(accumulated_data, indent=2, ensure_ascii=False),
+                        chunk_text=chunk_text.strip())
 
     # Use structured output for consistency
     enhanced_result = query_ollama_structured(

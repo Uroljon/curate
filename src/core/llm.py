@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from .config import MODEL_NAME, MODEL_TEMPERATURE
 from .llm_providers import get_llm_provider
+from ..prompts import get_prompt
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -42,41 +43,13 @@ def query_ollama_with_thinking_mode(
         Validated Pydantic model instance or None if failed
     """
 
-    thinking_prompts = {
-        "analytical": """<think>
-Ich analysiere diesen Text systematisch:
-1. Welche Informationen sind gegeben?
-2. Welche Muster erkenne ich?
-3. Wie ordne ich diese in die Kategorien ein?
-4. Welche Unsicherheiten bestehen?
-5. Welche Konfidenz ist angemessen?
-</think>""",
-        "comparative": """<think>
-Ich vergleiche jeden gefundenen Punkt:
-- Handelt es sich um eine Aktion oder ein Messwert?
-- Ähnelt es bekannten Maßnahmen oder Indikatoren?
-- Welche Kategorie passt besser und warum?
-- Wie sicher bin ich bei dieser Einschätzung?
-</think>""",
-        "systematic": """<think>
-Ich gehe systematisch vor:
-1. Alle Textabschnitte identifizieren
-2. Jeden Punkt einzeln klassifizieren
-3. Begründung für jede Entscheidung notieren
-4. Konfidenz basierend auf Klarheit der Hinweise
-5. Gesamtvalidierung der Ergebnisse
-</think>""",
-        "contextual": """<think>
-Ich berücksichtige den Kontext vollständig:
-1. Dokumentstruktur und Hierarchie verstehen
-2. Bezug zu anderen Abschnitten herstellen
-3. Verwaltungslogik und Amtssprache anwenden
-4. Typische Muster in deutschen Strategiedokumenten
-5. Konfidenz durch Kontextklarheit bestimmen
-</think>""",
-    }
+    # Validate thinking mode and get prefix from YAML
+    try:
+        prefix = get_prompt(f"core.thinking_modes.{thinking_mode}")
+    except KeyError:
+        raise ValueError(f"Invalid thinking_mode '{thinking_mode}'. Available modes: analytical, comparative, systematic, contextual")
 
-    enhanced_prompt = f"{thinking_prompts.get(thinking_mode, thinking_prompts['analytical'])}\n\n{prompt}"
+    enhanced_prompt = f"{prefix}\n\n{prompt}"
 
     return query_ollama_structured(
         prompt=enhanced_prompt,

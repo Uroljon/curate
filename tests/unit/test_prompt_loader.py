@@ -84,7 +84,7 @@ class TestPromptLoader:
         prompts = list_available_prompts()
         
         # Should have all expected configs
-        expected_configs = ["operations", "extraction", "legacy", "utils"]
+        expected_configs = ["operations", "extraction", "legacy", "utils", "core"]
         for config in expected_configs:
             assert config in prompts
             assert isinstance(prompts[config], dict)
@@ -94,6 +94,86 @@ class TestPromptLoader:
         assert "templates" in prompts["operations"]
         assert "variables" in prompts["utils"]
     
+    def test_core_thinking_modes(self):
+        """Test that all core thinking modes load correctly."""
+        thinking_modes = ["analytical", "comparative", "systematic", "contextual"]
+        
+        for mode in thinking_modes:
+            prompt = get_prompt(f"core.thinking_modes.{mode}")
+            assert isinstance(prompt, str)
+            assert len(prompt) > 20
+            assert "<think>" in prompt
+            assert "</think>" in prompt
+    
+    def test_core_structured_json_wrapper(self):
+        """Test the structured JSON wrapper template."""
+        test_prompt = "Test prompt content"
+        test_schema = '{"type": "object"}'
+        
+        # Test without no_think_suffix
+        wrapper = get_prompt("core.templates.structured_json_wrapper",
+                           prompt=test_prompt,
+                           schema=test_schema,
+                           no_think_suffix="")
+        
+        assert test_prompt in wrapper
+        assert test_schema in wrapper
+        assert "IMPORTANT: Respond with valid JSON" in wrapper
+        assert "Respond ONLY with the JSON object" in wrapper
+        
+        # Test with no_think_suffix
+        wrapper_with_suffix = get_prompt("core.templates.structured_json_wrapper",
+                                       prompt=test_prompt,
+                                       schema=test_schema,
+                                       no_think_suffix=" /no_think")
+        
+        assert " /no_think" in wrapper_with_suffix
+    
+    def test_extraction_retry_prompts(self):
+        """Test the new extraction retry prompts."""
+        # Test retry system message
+        system_msg = get_prompt("extraction.system_messages.retry_extraction")
+        assert isinstance(system_msg, str)
+        assert len(system_msg) > 100
+        assert "Sie sind ein Experte" in system_msg
+        assert "KRITISCHE ANWEISUNG" in system_msg
+        
+        # Test retry chunk template
+        chunk_prompt = get_prompt("extraction.templates.retry_chunk",
+                                chunk_text="Test chunk content")
+        assert "Test chunk content" in chunk_prompt
+        assert "QUELLDOKUMENT:" in chunk_prompt
+        assert "ARBEITSSCHRITTE:" in chunk_prompt
+    
+    def test_extraction_accumulated_prompts(self):
+        """Test the accumulated enhancement prompts."""
+        # Test accumulated system message
+        system_msg = get_prompt("extraction.system_messages.accumulated_enhancement")
+        assert isinstance(system_msg, str)
+        assert len(system_msg) > 100
+        assert "Erweitere die bestehende Extraktion" in system_msg
+        assert "WICHTIGE REGELN:" in system_msg
+        
+        # Test accumulated template
+        accumulated_prompt = get_prompt("extraction.templates.accumulated_enhance",
+                                      count=5,
+                                      accumulated_json='{"test": "data"}',
+                                      chunk_text="New chunk text")
+        assert "5 action fields" in accumulated_prompt
+        assert '"test": "data"' in accumulated_prompt
+        assert "New chunk text" in accumulated_prompt
+        assert "ENHANCE and ADD, never remove" in accumulated_prompt
+    
+    def test_operations_context_rules(self):
+        """Test the operations context rules fragment."""
+        rules = get_prompt("operations.fragments.context_rules")
+        assert isinstance(rules, str)
+        assert len(rules) > 50
+        assert "KRITISCHE REGELN:" in rules
+        assert "IMMER prüfen ob Entity schon im REGISTRY existiert" in rules
+        assert "Bei ähnlichen Namen" in rules
+        assert "NUR CREATE wenn wirklich neu" in rules
+
     def test_list_available_prompts_single_config(self):
         """Test listing prompts for a specific config."""
         operations_prompts = list_available_prompts("operations")

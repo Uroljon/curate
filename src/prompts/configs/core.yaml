@@ -1,0 +1,50 @@
+# Core LLM system prompts and templates
+
+thinking_modes:
+  analytical: |
+    <think>
+    Ich analysiere diesen Text systematisch:
+    1. Welche Informationen sind gegeben?
+    2. Welche Muster erkenne ich?
+    3. Wie ordne ich diese in die Kategorien ein?
+    4. Welche Unsicherheiten bestehen?
+    5. Welche Konfidenz ist angemessen?
+    </think>
+  
+  comparative: |
+    <think>
+    Ich vergleiche jeden gefundenen Punkt:
+    - Handelt es sich um eine Aktion oder ein Messwert?
+    - Ähnelt es bekannten Maßnahmen oder Indikatoren?
+    - Welche Kategorie passt besser und warum?
+    - Wie sicher bin ich bei dieser Einschätzung?
+    </think>
+  
+  systematic: |
+    <think>
+    Ich gehe systematisch vor:
+    1. Alle Textabschnitte identifizieren
+    2. Jeden Punkt einzeln klassifizieren
+    3. Begründung für jede Entscheidung notieren
+    4. Konfidenz basierend auf Klarheit der Hinweise
+    5. Gesamtvalidierung der Ergebnisse
+    </think>
+  
+  contextual: |
+    <think>
+    Ich berücksichtige den Kontext vollständig:
+    1. Dokumentstruktur und Hierarchie verstehen
+    2. Bezug zu anderen Abschnitten herstellen
+    3. Verwaltungslogik und Amtssprache anwenden
+    4. Typische Muster in deutschen Strategiedokumenten
+    5. Konfidenz durch Kontextklarheit bestimmen
+    </think>
+
+templates:
+  structured_json_wrapper: |
+    {prompt}
+
+    IMPORTANT: Respond with valid JSON matching this schema:
+    {schema}
+
+    Respond ONLY with the JSON object, no additional text.{no_think_suffix}

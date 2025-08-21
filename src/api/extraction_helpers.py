@@ -200,18 +200,12 @@ def format_context_json(context_data) -> str:
     registry = format_entity_registry(context_data)
     id_mapping = format_entity_id_mapping(context_data)
 
+    rules = get_prompt("operations.fragments.context_rules")
     return f"""{registry}
 
 {id_mapping}
 
-KRITISCHE REGELN:
-1. IMMER prüfen ob Entity schon im REGISTRY existiert
-2. Bei ähnlichen Namen → UPDATE statt CREATE
-3. Beispiele für Duplikate:
-   - "Mobilität und Verkehr" = "Mobilität & Verkehr" = "Verkehrswesen"
-   - "Radwegeausbau" = "Ausbau Radwege" = "Radverkehrsnetz"
-   - "CO2-Reduktion" = "CO₂-Reduktion" = "Kohlendioxid-Reduktion"
-4. NUR CREATE wenn wirklich neu und einzigartig"""
+{rules}"""
 
 
 def create_extraction_prompt(
