@@ -148,7 +148,7 @@ INDICATOR_WINDOW_SIZE = 150  # Characters to check around split points
 
 # Fast Extraction Configuration
 FAST_EXTRACTION_ENABLED = True  # Enable fast single-pass extraction endpoint
-FAST_EXTRACTION_MAX_CHUNKS = 50  # Limit chunks for speed (0 = no limit)
+FAST_EXTRACTION_MAX_CHUNKS = 2  # Limit chunks for speed (0 = no limit)
 
 # Source Attribution Configuration
 

@@ -151,7 +151,7 @@ def prepare_chunks_for_extraction(
         raise ValueError(error_msg)
 
     # Apply chunk limit for performance
-    if len(chunks_with_pages) > max_chunks:
+    if max_chunks > 0 and len(chunks_with_pages) > max_chunks:
         print(f"⚡ Using first {max_chunks} chunks (performance mode)")
         chunks_with_pages = chunks_with_pages[:max_chunks]
 
