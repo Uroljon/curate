@@ -299,6 +299,15 @@ class OperationExecutor:
         self, state: EnrichedReviewJSON, operation: EntityOperation
     ) -> OperationResult:
         """Handle CONNECT operation - create connections between entities with partial success support."""
+        
+        # Debug logging to see what the LLM generated
+        print(f"🔍 CONNECT Debug - Operation structure:")
+        print(f"   - operation.connections type: {type(operation.connections)}")
+        print(f"   - operation.connections value: {operation.connections}")
+        if operation.connections:
+            print(f"   - connections count: {len(operation.connections)}")
+            for i, conn in enumerate(operation.connections):
+                print(f"   - connection {i+1}: {conn}")
 
         if not operation.connections:
             return OperationResult(
@@ -505,8 +514,23 @@ def validate_operations(
         if op.operation == OperationType.UPDATE and not op.entity_id:
             errors.append(f"{op_prefix}: {op.operation} requires entity_id")
 
-        if op.operation == OperationType.CONNECT and not op.connections:
-            errors.append(f"{op_prefix}: CONNECT requires connections")
+        if op.operation == OperationType.CONNECT:
+            if op.connections is None:
+                errors.append(f"{op_prefix}: CONNECT requires connections array (found: None)")
+            elif not isinstance(op.connections, list):
+                errors.append(f"{op_prefix}: CONNECT connections must be a list (found: {type(op.connections)})")
+            elif len(op.connections) == 0:
+                errors.append(f"{op_prefix}: CONNECT requires at least one connection (found empty array)")
+            else:
+                # Validate each connection structure
+                for i, conn in enumerate(op.connections):
+                    if not isinstance(conn, dict):
+                        errors.append(f"{op_prefix}: Connection {i+1} must be a dictionary (found: {type(conn)})")
+                        continue
+                    if not conn.get("from_id"):
+                        errors.append(f"{op_prefix}: Connection {i+1} missing required 'from_id' field")
+                    if not conn.get("to_id"):
+                        errors.append(f"{op_prefix}: Connection {i+1} missing required 'to_id' field")
 
         # Validate entity IDs exist in current state (if provided)
         # Note: CREATE operations should not be validated for entity existence

@@ -345,6 +345,20 @@ VERBINDUNGSREGELN (KRITISCH):
 - Verbindungen zu bestehenden UND neuen Entities sind gewünscht
 - Suchen Sie aktiv nach thematischen Zusammenhängen für Verbindungen
 
+CONNECT-OPERATION BEISPIEL:
+{{
+  "operation": "CONNECT",
+  "entity_type": "action_field",
+  "connections": [
+    {{
+      "from_id": "af_1",
+      "to_id": "proj_1",
+      "confidence": 0.8
+    }}
+  ],
+  "confidence": 0.7
+}}
+
 TEXTABSCHNITT (Seiten {page_list}):
 {chunk_text}
 
