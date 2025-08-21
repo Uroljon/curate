@@ -332,6 +332,12 @@ class OperationExecutor:
                     skipped_connections += 1
                     continue
 
+                # Validate that IDs are not temporary/placeholder IDs
+                if self._is_temporary_id(from_id) or self._is_temporary_id(to_id):
+                    print(f"   ⚠️  Skipping connection with temporary ID: {from_id} -> {to_id}")
+                    skipped_connections += 1
+                    continue
+
                 # Find source entity
                 source_entity = self._find_entity_by_id(state, from_id)
                 if not source_entity:
@@ -463,6 +469,24 @@ class OperationExecutor:
         self.entity_counters[prefix] += 1
 
         return f"{prefix}_{self.entity_counters[prefix]}"
+
+    def _is_temporary_id(self, entity_id: str) -> bool:
+        """Check if an entity ID is a temporary/placeholder ID that shouldn't exist."""
+        if not entity_id:
+            return False
+        
+        # Common temporary ID patterns that LLMs might generate
+        temporary_patterns = [
+            "temp_",
+            "placeholder_", 
+            "new_",
+            "created_",
+            "temporary_",
+            "tmp_",
+        ]
+        
+        entity_id_lower = entity_id.lower()
+        return any(entity_id_lower.startswith(pattern) for pattern in temporary_patterns)
 
     def get_operation_summary(self) -> dict[str, Any]:
         """Get a summary of all operations applied."""
