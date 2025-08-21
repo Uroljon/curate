@@ -300,15 +300,6 @@ class OperationExecutor:
     ) -> OperationResult:
         """Handle CONNECT operation - create connections between entities with partial success support."""
         
-        # Debug logging to see what the LLM generated
-        print(f"🔍 CONNECT Debug - Operation structure:")
-        print(f"   - operation.connections type: {type(operation.connections)}")
-        print(f"   - operation.connections value: {operation.connections}")
-        if operation.connections:
-            print(f"   - connections count: {len(operation.connections)}")
-            for i, conn in enumerate(operation.connections):
-                print(f"   - connection {i+1}: {conn}")
-
         if not operation.connections:
             return OperationResult(
                 operation=operation,
