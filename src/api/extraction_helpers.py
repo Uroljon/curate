@@ -22,6 +22,7 @@ from src.core.config import (
     AGGREGATION_CHUNK_SIZE,
 )
 from src.prompts import get_prompt
+from src.utils.text import estimate_tokens
 
 # ============================================================================
 # CONSTANTS AND TEMPLATES (Now loaded from YAML)
@@ -68,7 +69,15 @@ def prepare_chunks_for_extraction(
         print(f"⚡ Using first {max_chunks} chunks (performance mode)")
         chunks_with_pages = chunks_with_pages[:max_chunks]
 
-    print(f"📄 Processing {len(chunks_with_pages)} chunks")
+    # Calculate token statistics for chunks
+    chunk_tokens = [estimate_tokens(chunk) for chunk, _ in chunks_with_pages]
+    total_tokens = sum(chunk_tokens)
+    avg_tokens = total_tokens / len(chunk_tokens) if chunk_tokens else 0
+    min_tokens = min(chunk_tokens) if chunk_tokens else 0
+    max_tokens = max(chunk_tokens) if chunk_tokens else 0
+    
+    print(f"📄 Processing {len(chunks_with_pages)} chunks (~{total_tokens:,} tokens total)")
+    print(f"   🧩 Chunk distribution: {min_tokens}-{max_tokens} tokens (avg: {avg_tokens:.0f})")
     return chunks_with_pages
 
 
@@ -191,21 +200,90 @@ def format_entity_id_mapping(current_state) -> str:
     )
 
 
-def format_context_json(context_data) -> str:
-    """Format context as entity registry + ID mappings (not JSON dump)."""
+def _format_existing_connections(state) -> str:
+    """Create a compact, human-readable list of existing connections.
+
+    Structure (only shown if connections exist):
+    EXISTING CONNECTIONS
+    - ACTION FIELD:
+      af_1 → proj_2 (0.82), proj_5 (0.67)
+    - PROJECT:
+      proj_2 → msr_3 (0.75), ind_1 (0.80)
+    """
+    if not state:
+        return ""
+
+    lines: list[str] = []
+
+    # Helper to format a single edge with optional confidence
+    def fmt_edge(target_id: str, confidence: float | None) -> str:
+        if confidence is None:
+            return target_id
+        # Normalize to 2 decimal places
+        try:
+            return f"{target_id} ({float(confidence):.2f})"
+        except Exception:
+            return target_id
+
+    # ACTION FIELD → project
+    af_lines: list[str] = []
+    for af in getattr(state, "action_fields", []) or []:
+        if not getattr(af, "connections", None):
+            continue
+        # Only show allowed edge types for clarity
+        targets = [
+            fmt_edge(c.target_id, getattr(c, "confidence_score", None))
+            for c in af.connections
+            if isinstance(getattr(c, "target_id", ""), str)
+            and getattr(c, "target_id").startswith("proj_")
+        ]
+        if targets:
+            af_lines.append(f"{af.id} → {', '.join(targets)}")
+
+    # PROJECT → measure/indicator
+    proj_lines: list[str] = []
+    for proj in getattr(state, "projects", []) or []:
+        if not getattr(proj, "connections", None):
+            continue
+        targets = [
+            fmt_edge(c.target_id, getattr(c, "confidence_score", None))
+            for c in proj.connections
+            if isinstance(getattr(c, "target_id", ""), str)
+            and (getattr(c, "target_id").startswith("msr_") or getattr(c, "target_id").startswith("ind_"))
+        ]
+        if targets:
+            proj_lines.append(f"{proj.id} → {', '.join(targets)}")
+
+    if not af_lines and not proj_lines:
+        return ""
+
+    lines.append("EXISTING CONNECTIONS")
+    if af_lines:
+        lines.append("- ACTION FIELD:")
+        lines.extend([f"  {l}" for l in af_lines])
+    if proj_lines:
+        lines.append("- PROJECT:")
+        lines.extend([f"  {l}" for l in proj_lines])
+
+    return "\n".join(lines)
+
+
+def format_context_json(context_data, include_connections: bool = False) -> str:
+    """Format context as registry + ID mappings and optionally existing connections."""
     if not context_data:
         return "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
 
-    # Use the new compact registry format
     registry = format_entity_registry(context_data)
     id_mapping = format_entity_id_mapping(context_data)
+    connections = _format_existing_connections(context_data) if include_connections else ""
 
     rules = get_prompt("operations.fragments.context_rules")
-    return f"""{registry}
 
-{id_mapping}
-
-{rules}"""
+    parts = [registry, "", id_mapping]
+    if include_connections and connections:
+        parts.extend(["", connections])
+    parts.extend(["", rules])
+    return "\n".join(parts)
 
 
 def create_extraction_prompt(
@@ -244,25 +322,32 @@ def build_operations_prompt(
     chunk_text: str,
     state,
     page_numbers: list[int] | None = None,
+    iteration: int | None = None,
 ) -> str:
     """Build mode-aware operations prompt (nodes or connections)."""
     context_text = (
-        format_context_json(state)
+        format_context_json(state, include_connections=(mode == "connections"))
         if state and (state.action_fields or state.projects or state.measures or state.indicators)
         else "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
     )
     page_list = ", ".join(map(str, sorted(page_numbers))) if page_numbers else "N/A"
     
     if mode == "nodes":
-        return get_prompt("operations.templates.operations_nodes_chunk",
-                         context_text=context_text,
-                         page_list=page_list,
-                         chunk_text=chunk_text)
+        return get_prompt(
+            "operations.templates.operations_nodes_chunk",
+            context_text=context_text,
+            page_list=page_list,
+            chunk_text=chunk_text,
+            iteration=iteration or 1,
+        )
     elif mode == "connections":
-        return get_prompt("operations.templates.operations_connections_chunk",
-                         context_text=context_text,
-                         page_list=page_list,
-                         chunk_text=chunk_text)
+        return get_prompt(
+            "operations.templates.operations_connections_chunk",
+            context_text=context_text,
+            page_list=page_list,
+            chunk_text=chunk_text,
+            iteration=iteration or 1,
+        )
     else:
         error_msg = f"Unknown mode: {mode}. Must be 'nodes' or 'connections'"
         raise ValueError(error_msg)
@@ -1151,81 +1236,152 @@ def _process_two_pass_extraction(
     current_state = initial_state
     all_operation_logs = []
     
-    # PASS 1: NODES (CREATE/UPDATE only)
+    # PASS 1: NODES (CREATE/UPDATE only) with per-chunk iteration
     print("🔧 Pass 1: Extracting entities (CREATE/UPDATE operations)")
     for i, (chunk_text, page_numbers) in enumerate(chunks_with_pages):
         print(f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} - NODES (pages {page_numbers})")
-        
-        # Build nodes-only prompt
-        nodes_prompt = build_operations_prompt("nodes", chunk_text, current_state, page_numbers)
-        system_message = get_prompt("operations.system_messages.operations_extraction")
-        enhanced_log_context = f"nodes_{source_id}_chunk_{i+1}"
-        
-        # Execute LLM extraction for nodes
-        operations_result = execute_llm_extraction(
-            llm_provider,
-            nodes_prompt, 
-            ExtractionOperations,
-            system_message,
-            log_file_path,
-            enhanced_log_context,
-            i,
-        )
-        
-        if operations_result and operations_result.operations:
-            # Filter to only CREATE/UPDATE operations
-            entities_ops = filter_operations_by_mode(operations_result.operations, "nodes")
-            
-            if entities_ops:
-                # Apply entities operations
-                current_state, entities_ops, operation_log = _apply_validated_operations(
-                    current_state, entities_ops, executor, i, "nodes"
+
+        iteration = 1
+        consecutive_no_progress = 0
+        max_iterations = 8
+
+        while True:
+            # Build nodes-only prompt with iteration context
+            nodes_prompt = build_operations_prompt(
+                "nodes", chunk_text, current_state, page_numbers, iteration=iteration
+            )
+            system_message = get_prompt("operations.system_messages.operations_extraction")
+            enhanced_log_context = f"nodes_{source_id}_chunk_{i+1}_iter_{iteration}"
+
+            # Execute LLM extraction for nodes
+            operations_result = execute_llm_extraction(
+                llm_provider,
+                nodes_prompt,
+                ExtractionOperations,
+                system_message,
+                log_file_path,
+                enhanced_log_context,
+                i,
+            )
+
+            if operations_result and operations_result.operations:
+                # Filter to only CREATE/UPDATE operations
+                entities_ops = filter_operations_by_mode(
+                    operations_result.operations, "nodes"
                 )
-                all_operation_logs.append(operation_log)
+
+                if entities_ops:
+                    # Apply entities operations
+                    prev_entities_count = (
+                        len(current_state.action_fields)
+                        + len(current_state.projects)
+                        + len(current_state.measures)
+                        + len(current_state.indicators)
+                    )
+                    current_state, entities_ops, operation_log = _apply_validated_operations(
+                        current_state, entities_ops, executor, i, "nodes"
+                    )
+                    all_operation_logs.append(operation_log)
+
+                    new_entities_count = (
+                        len(current_state.action_fields)
+                        + len(current_state.projects)
+                        + len(current_state.measures)
+                        + len(current_state.indicators)
+                    )
+                    applied_any = operation_log.successful_operations > 0 or (
+                        new_entities_count > prev_entities_count
+                    )
+                    consecutive_no_progress = 0 if applied_any else consecutive_no_progress + 1
+                else:
+                    print(f"⚠️ Chunk {i+1} iter {iteration}: No valid entities operations")
+                    consecutive_no_progress += 1
             else:
-                print(f"⚠️ Chunk {i+1}: No valid entities operations")
-        else:
-            print(f"⚠️ No operations from chunk {i+1} (nodes pass)")
+                print(
+                    f"⚠️ No operations from chunk {i+1} iter {iteration} (nodes pass)"
+                )
+                consecutive_no_progress += 1
+
+            # Decide continuation
+            should_continue = bool(getattr(operations_result, "continue_flag", False))
+            if should_continue:
+                print(
+                    f"↪️ Chunk {i+1}: Model signaled continuation (nodes). Proceeding to iteration {iteration+1}."
+                )
+            # stop conditions
+            if not should_continue or consecutive_no_progress >= 2 or iteration >= max_iterations:
+                break
+            iteration += 1
     
     print(f"✅ Pass 1 completed: {len(current_state.action_fields)} action fields, "
           f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
           f"{len(current_state.indicators)} indicators")
     
-    # PASS 2: CONNECTIONS (CONNECT only) 
+    # PASS 2: CONNECTIONS (CONNECT only) with per-chunk iteration
     print("\n🔗 Pass 2: Creating connections (CONNECT operations)")
     for i, (chunk_text, page_numbers) in enumerate(chunks_with_pages):
-        print(f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} - CONNECTIONS (pages {page_numbers})")
-        
-        # Build connections-only prompt with fresh ID mapping
-        connections_prompt = build_operations_prompt("connections", chunk_text, current_state, page_numbers)
-        system_message = get_prompt("operations.system_messages.operations_extraction")
-        enhanced_log_context = f"connections_{source_id}_chunk_{i+1}"
-        
-        # Execute LLM extraction for connections
-        operations_result = execute_llm_extraction(
-            llm_provider,
-            connections_prompt,
-            ExtractionOperations,
-            system_message,
-            log_file_path,
-            enhanced_log_context,
-            i,
+        print(
+            f"🔍 Processing chunk {i+1}/{len(chunks_with_pages)} - CONNECTIONS (pages {page_numbers})"
         )
-        
-        if operations_result and operations_result.operations:
-            # Filter to only CONNECT operations
-            connect_ops = filter_operations_by_mode(operations_result.operations, "connections")
-            
-            if connect_ops:
-                # Apply connection operations
-                current_state, connect_ops, operation_log = _apply_validated_operations(
-                    current_state, connect_ops, executor, i, "connections"
+
+        iteration = 1
+        consecutive_no_progress = 0
+        max_iterations = 8
+
+        while True:
+            # Build connections-only prompt with fresh ID mapping and iteration context
+            connections_prompt = build_operations_prompt(
+                "connections", chunk_text, current_state, page_numbers, iteration=iteration
+            )
+            system_message = get_prompt("operations.system_messages.operations_extraction")
+            enhanced_log_context = f"connections_{source_id}_chunk_{i+1}_iter_{iteration}"
+
+            # Execute LLM extraction for connections
+            operations_result = execute_llm_extraction(
+                llm_provider,
+                connections_prompt,
+                ExtractionOperations,
+                system_message,
+                log_file_path,
+                enhanced_log_context,
+                i,
+            )
+
+            if operations_result and operations_result.operations:
+                # Filter to only CONNECT operations
+                connect_ops = filter_operations_by_mode(
+                    operations_result.operations, "connections"
                 )
-                all_operation_logs.append(operation_log)
+
+                if connect_ops:
+                    prev_edges_applied = 0
+                    current_state, connect_ops, operation_log = _apply_validated_operations(
+                        current_state, connect_ops, executor, i, "connections"
+                    )
+                    all_operation_logs.append(operation_log)
+                    applied_any = operation_log.successful_operations > 0
+                    consecutive_no_progress = 0 if applied_any else consecutive_no_progress + 1
+                else:
+                    print(
+                        f"⚠️ Chunk {i+1} iter {iteration}: No valid connection operations"
+                    )
+                    consecutive_no_progress += 1
             else:
-                print(f"⚠️ Chunk {i+1}: No valid connection operations")
-        else:
-            print(f"⚠️ No operations from chunk {i+1} (connections pass)")
+                print(
+                    f"⚠️ No operations from chunk {i+1} iter {iteration} (connections pass)"
+                )
+                consecutive_no_progress += 1
+
+            # Decide continuation
+            should_continue = bool(getattr(operations_result, "continue_flag", False))
+            if should_continue:
+                print(
+                    f"↪️ Chunk {i+1}: Model signaled continuation (connections). Proceeding to iteration {iteration+1}."
+                )
+            # stop conditions
+            if not should_continue or consecutive_no_progress >= 2 or iteration >= max_iterations:
+                break
+            iteration += 1
     
     print("✅ Pass 2 completed: Connections established")
     

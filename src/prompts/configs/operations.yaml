@@ -118,6 +118,12 @@ templates:
   operations_nodes_chunk: |
     Analysieren Sie diesen Textabschnitt und erstellen Sie NUR ENTITY-OPERATIONEN (CREATE/UPDATE).
 
+    ITERATION: {iteration}
+    - Maximal ca. 30 vollständige CREATE/UPDATE-Operationen pro Antwort (KEIN Hard-Limit).
+    - Wenn nach dieser Antwort weitere gültige Operationen verbleiben, MUSS das Top-Level-Feld "continue": true gesetzt werden.
+    - Niemals Items abschneiden/teilen, um die 30 zu erreichen – immer vollständige Items liefern (auch wenn dadurch >30 entstehen).
+    - IMMER genau EIN JSON-Objekt ohne Erklärtext zurückgeben: {{"operations": [...], "continue": true|false}}
+
     WICHTIG: Nur CREATE und UPDATE Operationen erlaubt - KEINE CONNECT Operationen!
     
     {context_text}
@@ -142,13 +148,19 @@ templates:
     - Bevorzugen Sie UPDATE über CREATE bei semantischer Nähe
     - Extrahieren Sie alle klar benannten Projekte, Maßnahmen und Indikatoren
 
-    Falls keine validen CREATE/UPDATE-Operationen ableitbar sind: Antworten Sie mit {{"operations": []}}.
+    Falls keine validen CREATE/UPDATE-Operationen ableitbar sind: Antworten Sie mit {{"operations": [], "continue": false}}.
 
-    Antworten Sie NUR mit der Operations-Liste im JSON-Format:
-    {{"operations": [...]}}
+    Antworten Sie NUR mit genau EINEM JSON-Objekt:
+    {{"operations": [...], "continue": true|false}}
 
   operations_connections_chunk: |
     Analysieren Sie diesen Textabschnitt und erstellen Sie NUR VERBINDUNGS-OPERATIONEN (CONNECT).
+
+    ITERATION: {iteration}
+    - Maximal ca. 30 Verbindungen gesamt pro Antwort (Summe aller connections-Arrays; KEIN Hard-Limit).
+    - Wenn nach dieser Antwort weitere gültige Verbindungen verbleiben, MUSS das Top-Level-Feld "continue": true gesetzt werden.
+    - Niemals Items abschneiden/teilen, um die 30 zu erreichen – immer vollständige Items liefern (auch wenn dadurch >30 entstehen).
+    - IMMER genau EIN JSON-Objekt ohne Erklärtext zurückgeben: {{"operations": [...], "continue": true|false}}
 
     WICHTIG: Nur CONNECT Operationen erlaubt - KEINE CREATE/UPDATE Operationen!
     
@@ -193,12 +205,13 @@ templates:
     - FALSCH: "to_id": "Mobilität und Verkehr" ❌
     - FALSCH: "from_id": "temp_af_1" ❌  
     - RICHTIG: "to_id": "af_1" (aus ID-MAPPING) ✅
+    - Bestehende Verbindungen sind unten aufgelistet – keine Duplikate erzeugen
     - Suchen Sie aktiv nach allen sinnvollen Verbindungen im Text
 
-    Falls keine validen CONNECT-Operationen ableitbar sind: Antworten Sie mit {{"operations": []}}.
+    Falls keine validen CONNECT-Operationen ableitbar sind: Antworten Sie mit {{"operations": [], "continue": false}}.
 
-    Antworten Sie NUR mit der Operations-Liste im JSON-Format:
-    {{"operations": [...]}}
+    Antworten Sie NUR mit genau EINEM JSON-Objekt:
+    {{"operations": [...], "continue": true|false}}
 
   operations_chunk: |
     Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.

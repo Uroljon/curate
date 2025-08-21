@@ -85,6 +85,14 @@ class ExtractionOperations(BaseModel):
         default=None, description="Page numbers processed in this chunk"
     )
 
+    # Optional continuation flag (JSON alias 'continue').
+    # Allows the LLM to signal that more operations remain for this chunk.
+    continue_flag: bool = Field(
+        default=False,
+        alias="continue",
+        description="Whether the model indicates more operations remain for this chunk",
+    )
+
 
 class ConnectionOperation(BaseModel):
     """
