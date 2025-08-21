@@ -60,11 +60,27 @@ class OperationExecutor:
         # Deep copy to avoid mutations
         new_state = copy.deepcopy(current_state)
 
+        # Reorder operations by type to ensure proper dependency resolution
+        operation_priority = {
+            OperationType.CREATE: 0,
+            OperationType.UPDATE: 1,
+            OperationType.CONNECT: 2
+        }
+        
+        # Sort operations by priority (safety measure in case reordering wasn't done upstream)
+        reordered_operations = sorted(operations, key=lambda op: operation_priority.get(op.operation, 3))
+        
+        # Log reordering for debugging transparency
+        if len(operations) > 1 and reordered_operations != operations:
+            original_types = [op.operation.value for op in operations]
+            reordered_types = [op.operation.value for op in reordered_operations]
+            print(f"🔄 Safety reordering: {' '.join(original_types)} → {' '.join(reordered_types)}")
+
         # Track operation results
         operation_results: list[OperationResult] = []
 
-        # Apply each operation
-        for operation in operations:
+        # Apply each operation (use reordered_operations)
+        for operation in reordered_operations:
             try:
                 result = self._apply_single_operation(new_state, operation)
                 operation_results.append(result)

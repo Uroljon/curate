@@ -1206,6 +1206,29 @@ def extract_direct_to_enhanced_with_operations(
         )
 
         if operations_result and operations_result.operations:
+            # Reorder operations by type to ensure proper dependency resolution
+            from src.core.operations_schema import OperationType
+            
+            operation_priority = {
+                OperationType.CREATE: 0,
+                OperationType.UPDATE: 1,
+                OperationType.CONNECT: 2
+            }
+            
+            # Sort operations by priority (CREATE first, then UPDATE, then CONNECT)
+            original_operations = operations_result.operations[:]
+            operations_result.operations = sorted(
+                operations_result.operations, 
+                key=lambda op: operation_priority.get(op.operation, 3)
+            )
+            
+            # Log reordering for debugging if operations were reordered
+            if len(operations_result.operations) > 1:
+                original_types = [op.operation.value for op in original_operations]
+                reordered_types = [op.operation.value for op in operations_result.operations]
+                if original_types != reordered_types:
+                    print(f"🔄 Reordered {len(operations_result.operations)} operations: {' '.join(original_types)} → {' '.join(reordered_types)}")
+            
             # Filter out invalid operations instead of skipping entire chunk
             from src.extraction.operations_executor import validate_operations
 
