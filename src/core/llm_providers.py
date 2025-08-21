@@ -455,6 +455,31 @@ class OpenRouterProvider(OpenAICompatibleProvider):
         self._init_openai_client()
         print(f"📡 OpenRouter client initialized for model: {self.model_name}")
 
+    def _fix_schema_for_openai_strict_mode(self, schema: dict) -> None:
+        """
+        Recursively fix schema to satisfy OpenAI's strict mode requirements:
+        1. Add 'additionalProperties': false to all object schemas
+        2. Ensure 'required' array includes ALL properties for objects
+        """
+        if isinstance(schema, dict):
+            # Add additionalProperties: false to any object type
+            if schema.get("type") == "object":
+                schema["additionalProperties"] = False
+                
+                # OpenAI strict mode requires ALL properties to be in required array
+                if "properties" in schema:
+                    all_properties = list(schema["properties"].keys())
+                    schema["required"] = all_properties
+            
+            # Recursively process all values in the schema
+            for key, value in schema.items():
+                if isinstance(value, dict):
+                    self._fix_schema_for_openai_strict_mode(value)
+                elif isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, dict):
+                            self._fix_schema_for_openai_strict_mode(item)
+
     def query_structured(
         self,
         prompt: str,
@@ -473,20 +498,15 @@ class OpenRouterProvider(OpenAICompatibleProvider):
             llm_start_time = time.time()
 
             # OpenRouter supports structured output for compatible models
+            # Use json_object mode instead of strict json_schema to avoid validation issues
             extra_params = {
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": response_model.__name__,
-                        "strict": True,
-                        "schema": response_model.model_json_schema(),
-                    },
-                },
-                "extra_body": {
-                    "provider": {
-                        "require_parameters": True  # Ensure structured output support
-                    }
-                },
+                "response_format": {"type": "json_object"},
+                # Temporarily disable require_parameters for compatibility
+                # "extra_body": {
+                #     "provider": {
+                #         "require_parameters": True  # Ensure structured output support
+                #     }
+                # },
             }
 
             response = self._make_openai_request(
