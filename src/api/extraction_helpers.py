@@ -128,11 +128,11 @@ def create_unique_entity_id(
 
 def format_entity_registry(current_state) -> str:
     """Create a complete, searchable entity registry showing ALL entities."""
-    # List ALL entity titles (no truncation)
-    action_fields = [af.content.get("title", "") for af in current_state.action_fields]
-    projects = [p.content.get("title", "") for p in current_state.projects]
-    measures = [m.content.get("title", "") for m in current_state.measures]
-    indicators = [i.content.get("title", "") for i in current_state.indicators]
+    # List ALL entity titles (no truncation) with safe handling of None values
+    action_fields = [af.content.get("title", "") or "" for af in current_state.action_fields]
+    projects = [p.content.get("title", "") or "" for p in current_state.projects]
+    measures = [m.content.get("title", "") or "" for m in current_state.measures]
+    indicators = [i.content.get("title", "") or "" for i in current_state.indicators]
 
     # Format as readable lists
     registry = f"""
@@ -161,26 +161,30 @@ def format_entity_id_mapping(current_state) -> str:
     """Create complete ID lookup table for UPDATE/CONNECT operations."""
     mappings = []
 
-    # Include ALL entities with their IDs
+    # Include ALL entities with their IDs (safe handling of None titles)
     if current_state.action_fields:
         mappings.append("ACTION FIELD IDs:")
         for af in current_state.action_fields:
-            mappings.append(f"  {af.id} → {af.content.get('title', '')}")
+            title = af.content.get('title', '') or ''
+            mappings.append(f"  {af.id} → {title}")
 
     if current_state.projects:
         mappings.append("\nPROJECT IDs:")
         for p in current_state.projects:
-            mappings.append(f"  {p.id} → {p.content.get('title', '')}")
+            title = p.content.get('title', '') or ''
+            mappings.append(f"  {p.id} → {title}")
 
     if current_state.measures:
         mappings.append("\nMEASURE IDs:")
         for m in current_state.measures:
-            mappings.append(f"  {m.id} → {m.content.get('title', '')}")
+            title = m.content.get('title', '') or ''
+            mappings.append(f"  {m.id} → {title}")
 
     if current_state.indicators:
         mappings.append("\nINDICATOR IDs:")
         for i in current_state.indicators:
-            mappings.append(f"  {i.id} → {i.content.get('title', '')}")
+            title = i.content.get('title', '') or ''
+            mappings.append(f"  {i.id} → {title}")
 
     return (
         "\n".join(mappings) if mappings else "No entities yet - use CREATE operations"
