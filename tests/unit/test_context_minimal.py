@@ -8,10 +8,7 @@ import sys
 from pathlib import Path
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-# Direct import of just the functions we need to test
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 def test_context_awareness_fix():
     """Test the context-awareness fix by directly importing and testing the functions."""
@@ -21,11 +18,11 @@ def test_context_awareness_fix():
     print("=" * 80)
 
     # Read the source file to verify our changes are present
-    helpers_file = Path(__file__).parent / "src" / "api" / "extraction_helpers.py"
+    helpers_file = Path(__file__).parent.parent.parent / "src" / "api" / "extraction_helpers.py"
 
     if not helpers_file.exists():
         print("❌ extraction_helpers.py not found")
-        return False
+        assert False, "extraction_helpers.py not found"
 
     with open(helpers_file, encoding='utf-8') as f:
         content = f.read()
@@ -92,10 +89,10 @@ def test_context_awareness_fix():
         print("  • 15-20% accuracy improvement in entity consistency")
         print("  • Zero additional API calls - just better prompts")
         print("  • Better entity connections due to improved discoverability")
-        return True
+        # All tests passed - no assertion needed
     else:
         print("❌ Some tests failed. The context-awareness fix may not be complete.")
-        return False
+        assert False, f"Context-awareness tests failed: {tests_passed}/{tests_total} passed"
 
     print("=" * 80)
 

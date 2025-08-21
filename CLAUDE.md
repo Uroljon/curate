@@ -125,12 +125,29 @@ python -m json_analyzer config --output strict_config.json
 
 **Testing:**
 ```bash
-# Run individual test files (limited test coverage currently)
-python test_operations_fixes.py  # Operations extraction fixes test
+# Recommended: Run all tests with pytest (35 tests, all categories)
+python -m pytest tests/ -v
 
-# JSON Analyzer tests
-python json_analyzer/tests/test_analyzer.py  # JSON quality analyzer tests
-python json_analyzer/tests/test_metrics.py   # Metrics calculation tests
+# Run by test category
+python -m pytest tests/unit/ -v        # Unit tests only (7 tests)
+python -m pytest tests/integration/ -v # Integration tests only (27 tests)
+python -m pytest tests/functional/ -v  # Functional tests only (1 test)
+
+# Run specific test file
+python -m pytest tests/unit/test_operations_fixes.py -v
+
+# Run with test markers
+python -m pytest tests/ -m "unit"        # Unit tests using markers
+python -m pytest tests/ -m "integration" # Integration tests using markers
+
+# Direct execution for quick testing
+python tests/unit/test_context_minimal.py
+python tests/unit/test_operations_fixes.py
+python tests/integration/test_api_integration.py
+
+# JSON Analyzer tests (separate structure)
+python json_analyzer/tests/test_analyzer.py
+python json_analyzer/tests/test_metrics.py
 
 # Quick import test (verify no import errors after changes)
 python -c "from src.api import routes; print('Import successful!')"
@@ -270,22 +287,59 @@ The project uses modern Python tooling configured in `pyproject.toml`:
 
 ## Testing
 
+The test suite has been reorganized into a proper Python project structure with pytest integration.
+
+**Test Structure:**
+```
+tests/
+├── conftest.py                      # Shared pytest fixtures and configuration
+├── test_utils.py                    # Shared test utilities and helpers
+├── unit/                            # Unit tests (7 tests)
+│   ├── test_operations_fixes.py     # Operations consolidation fixes
+│   ├── test_operations_reordering.py  # Operation dependency reordering
+│   └── test_context_minimal.py     # Context-awareness improvements
+├── integration/                     # Integration tests (27 tests)
+│   ├── test_api_integration.py      # Full API pipeline tests
+│   ├── test_critical_functions.py  # Entity registry, prompt generation
+│   └── test_context_awareness.py   # Context-awareness integration
+└── functional/                      # End-to-end tests (1 test)
+    └── test_context_functional.py  # Context generation workflows
+```
+
 **Run tests:**
 ```bash
-# Note: Limited test coverage, most tests use direct python execution
-# Run individual test files
-python test_operations_fixes.py  # Operations extraction fixes test
+# Recommended: Full test suite with pytest (35 tests pass, warning-free)
+python -m pytest tests/ -v
 
-# JSON Analyzer tests
-python json_analyzer/tests/test_analyzer.py  # JSON quality analyzer tests
-python json_analyzer/tests/test_metrics.py   # Metrics calculation tests
+# By category
+python -m pytest tests/unit/ -v        # Unit tests only
+python -m pytest tests/integration/ -v # Integration tests only
+python -m pytest tests/functional/ -v  # Functional tests only
 
-# Quick import test (verify no import errors after changes)
-python -c "from src.api import routes; print('Import successful!')"
+# Specific tests
+python -m pytest tests/unit/test_operations_fixes.py::test_fix_1_entity_counter_persistence
 
-# Test server startup (ensure no runtime errors)
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
+# Using pytest markers
+python -m pytest tests/ -m "unit"        # All unit tests
+python -m pytest tests/ -m "integration" # All integration tests
+
+# Legacy direct execution (still supported)
+python tests/unit/test_operations_fixes.py
+python tests/integration/test_api_integration.py
+
+# Coverage reporting
+python -m pytest tests/ --cov=src --cov-report=html
+
+# JSON Analyzer tests (separate module)
+python json_analyzer/tests/test_analyzer.py
+python json_analyzer/tests/test_metrics.py
 ```
+
+**Test Environment:**
+- Tests use mock LLM backend by default for fast execution
+- Set `LLM_BACKEND=openrouter` and `OPENROUTER_API_KEY` for real LLM testing
+- Shared fixtures in `conftest.py` provide common test utilities
+- Test markers automatically assigned based on directory location
 
 ## Configuration
 
@@ -376,6 +430,15 @@ When using vLLM, the system automatically maps Ollama model names to vLLM equiva
 - Monitor extraction quality regression with comparison functionality: `python -m json_analyzer compare baseline.json current.json`
 
 ## Recent Updates (August 2025)
+
+**Test Suite Reorganization (August 2025):**
+- Reorganized all test files into proper Python project structure
+- **New structure**: `tests/unit/`, `tests/integration/`, `tests/functional/`
+- **Pytest integration**: Full pytest compatibility with 35 passing tests
+- **Test markers**: Automatic categorization by directory location
+- **Shared fixtures**: `conftest.py` with common test utilities and configuration
+- **Warning-free execution**: Fixed all pytest warnings for clean CI/CD integration
+- **Flexible execution**: Run by category, individual tests, or full suite
 
 **Operations-Based Extraction System:**
 - NEW `/extract_enhanced_operations` endpoint using CREATE/UPDATE/CONNECT operations schema

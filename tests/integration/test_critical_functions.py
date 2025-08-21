@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 # Import the functions we want to test
 from src.api.extraction_helpers import (
@@ -35,7 +35,7 @@ from src.core.schemas import (
 from src.extraction.operations_executor import OperationExecutor, validate_operations
 
 
-class TestResult:
+class _TestResult:
     """Simple test result container."""
 
     def __init__(self, test_name: str, passed: bool, error_msg: str = "", details: str = ""):
@@ -45,7 +45,7 @@ class TestResult:
         self.details = details
 
 
-class TestRunner:
+class _TestRunner:
     """Simple test runner."""
 
     def __init__(self):
@@ -53,19 +53,19 @@ class TestRunner:
         self.passed = 0
         self.failed = 0
 
-    def run_test(self, test_func, test_name: str) -> TestResult:
+    def run_test(self, test_func, test_name: str) -> _TestResult:
         """Run a single test function."""
         try:
             test_func()
-            result = TestResult(test_name, True)
+            result = _TestResult(test_name, True)
             self.passed += 1
             print(f"✅ {test_name}")
         except AssertionError as e:
-            result = TestResult(test_name, False, str(e), "Assertion failed")
+            result = _TestResult(test_name, False, str(e), "Assertion failed")
             self.failed += 1
             print(f"❌ {test_name}: {e}")
         except Exception as e:
-            result = TestResult(test_name, False, str(e), "Unexpected error")
+            result = _TestResult(test_name, False, str(e), "Unexpected error")
             self.failed += 1
             print(f"💥 {test_name}: {e}")
 
@@ -747,7 +747,7 @@ def test_apply_operations_update_merge_strings():
 
 def run_all_tests():
     """Run all tests and report results."""
-    runner = TestRunner()
+    runner = _TestRunner()
 
     print("🧪 Running Critical Functions Test Suite")
     print("="*60)

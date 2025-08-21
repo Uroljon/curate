@@ -27,9 +27,9 @@ import traceback
 from pathlib import Path
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from test_utils import (
+from tests.test_utils import (
     APIClient,
     MockLLMProvider,
     TestEnvironment,
@@ -39,8 +39,8 @@ from test_utils import (
 )
 
 
-class TestAPIIntegration:
-    """Integration tests for the CURATE API."""
+class APIIntegrationRunner:
+    """Integration test runner for the CURATE API."""
 
     def __init__(self):
         self.client = APIClient()
@@ -410,7 +410,7 @@ def main():
     # Check if specific test requested
     if len(sys.argv) > 1:
         test_name = sys.argv[1]
-        tester = TestAPIIntegration()
+        tester = APIIntegrationRunner()
 
         if hasattr(tester, test_name):
             tester.run_test(getattr(tester, test_name), test_name)
@@ -423,7 +423,7 @@ def main():
             sys.exit(1)
     else:
         # Run all tests
-        tester = TestAPIIntegration()
+        tester = APIIntegrationRunner()
         tester.run_all_tests()
 
 

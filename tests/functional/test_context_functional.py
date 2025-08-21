@@ -327,11 +327,10 @@ def test_functional_context_generation():
         print("\nThis should significantly reduce duplicate entities across all types.")
     else:
         print("❌ Some functional tests failed. Review implementation.")
+        assert False, f"Functional tests failed: {tests_passed}/{tests_total} passed"
 
     print("=" * 80)
 
-    return tests_passed >= 8
-
 if __name__ == "__main__":
-    success = test_functional_context_generation()
-    sys.exit(0 if success else 1)
+    test_functional_context_generation()
+    sys.exit(0)

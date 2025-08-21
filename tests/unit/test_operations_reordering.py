@@ -11,7 +11,7 @@ import os
 import sys
 
 # Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from src.core.operations_schema import EntityOperation, OperationType
 from src.core.schemas import EnrichedReviewJSON
@@ -167,8 +167,7 @@ def test_operation_reordering():
     else:
         print("\n❌ Operation reordering test FAILED!")
         print("   - Check the implementation of operation reordering")
-
-    return success
+        assert False, "Operation reordering test failed - check implementation"
 
 
 def test_operation_reordering_edge_cases():
@@ -227,17 +226,13 @@ if __name__ == "__main__":
 
     try:
         # Run main test
-        main_success = test_operation_reordering()
+        test_operation_reordering()
 
         # Run edge case tests
         test_operation_reordering_edge_cases()
 
-        if main_success:
-            print("\n🎉 All tests PASSED! Operation reordering is working correctly.")
-            exit(0)
-        else:
-            print("\n💥 Some tests FAILED! Check the implementation.")
-            exit(1)
+        print("\n🎉 All tests PASSED! Operation reordering is working correctly.")
+        exit(0)
 
     except Exception as e:
         print(f"\n💥 Test execution failed with error: {e}")
