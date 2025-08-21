@@ -60,6 +60,13 @@ VERFÜGBARE OPERATIONEN:
 - UPDATE: Bestehende Entity anreichern (neue Felder hinzufügen, Texte erweitern, Listen ergänzen) - entity_id erforderlich
 - CONNECT: Verbindungen zwischen Entities erstellen (auch bestehende Entities können neue Verbindungen erhalten) - connections erforderlich
 
+DUPLIKAT-VERMEIDUNG (HÖCHSTE PRIORITÄT):
+- ALLE Entity-Typen im ENTITY REGISTRY prüfen (nicht nur Handlungsfelder!)
+- Semantisch ähnliche Entities → UPDATE verwenden
+- Verschiedene Schreibweisen des gleichen Konzepts → UPDATE verwenden
+- Teilweise Überlappungen → UPDATE verwenden
+- NUR CREATE wenn absolut sicher dass Entity neu ist
+
 HIERARCHISCHE STRUKTUR:
 - Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE
   → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
@@ -68,18 +75,19 @@ HIERARCHISCHE STRUKTUR:
 
 KRITISCHE VERBINDUNGSREGELN:
 - CONNECT-Operationen zu bestehenden UND neu erstellten Entities sind ERWÜNSCHT!
-- Verwenden Sie exakte Entity-IDs aus AKTUELLER EXTRAKTIONSSTAND
+- Verwenden Sie exakte Entity-IDs aus ENTITY REGISTRY
 - Neue Verbindungen zu bereits vorhandenen Entities sind ein ZIEL - nutzen Sie diese aktiv!
 - CONNECT-Operationen erfordern Konfidenz ≥ 0.7 und klaren thematischen Zusammenhang
 
-ENTSCHEIDUNGSLOGIK (in dieser Reihenfolge):
-1. Prüfen Sie AKTUELLER EXTRAKTIONSSTAND: Existiert ähnliche Entity? → UPDATE verwenden
-2. Falls keine Ähnlichkeit: CREATE mit kanonischem Titel
-3. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
-4. Bevorzugen Sie UPDATE über CREATE bei semantischer Überlappung
+ENTSCHEIDUNGSLOGIK (STRENG BEFOLGEN):
+1. Entity bereits im REGISTRY? → UPDATE verwenden
+2. Ähnlicher Name im REGISTRY? → UPDATE verwenden
+3. Teilweise Überlappung? → UPDATE verwenden
+4. Wirklich neu? → Erst dann CREATE
+5. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
 
 QUALITÄTSPRINZIPIEN:
-- Verwenden Sie exakte Entity-IDs aus dem gegebenen Kontext
+- Verwenden Sie exakte Entity-IDs aus dem ENTITY REGISTRY
 - Fügen Sie immer Quellenangaben (source_pages, source_quote) hinzu
 - Seien Sie konservativ bei neuen Handlungsfeldern
 - Bei Unsicherheit: UPDATE verwenden statt CREATE
@@ -203,26 +211,88 @@ def create_unique_entity_id(
     return candidate_id
 
 
-def format_context_json(context_data) -> str:
-    """Format context data as JSON string for prompts."""
-    if not context_data:
-        return "Noch keine Strukturen extrahiert - dies ist der erste Chunk."
+def format_entity_registry(current_state) -> str:
+    """Create a complete, searchable entity registry showing ALL entities."""
+    # List ALL entity titles (no truncation)
+    action_fields = [af.content.get("title", "") for af in current_state.action_fields]
+    projects = [p.content.get("title", "") for p in current_state.projects]
+    measures = [m.content.get("title", "") for m in current_state.measures]
+    indicators = [i.content.get("title", "") for i in current_state.indicators]
 
-    import json
+    # Format as readable lists
+    registry = f"""
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ ENTITY REGISTRY - CHECK BEFORE ANY CREATE OPERATION                         ║
+╚══════════════════════════════════════════════════════════════════════════════╝
 
-    context_json_str = json.dumps(
-        (
-            context_data.model_dump()
-            if hasattr(context_data, "model_dump")
-            else context_data
-        ),
-        indent=2,
-        ensure_ascii=False,
+ACTION FIELDS ({len(action_fields)} total):
+{', '.join(action_fields) if action_fields else '[None yet]'}
+
+PROJECTS ({len(projects)} total):
+{', '.join(projects) if projects else '[None yet]'}
+
+MEASURES ({len(measures)} total):
+{', '.join(measures) if measures else '[None yet]'}
+
+INDICATORS ({len(indicators)} total):
+{', '.join(indicators) if indicators else '[None yet]'}
+
+═══════════════════════════════════════════════════════════════════════════════
+"""
+    return registry
+
+
+def format_entity_id_mapping(current_state) -> str:
+    """Create complete ID lookup table for UPDATE/CONNECT operations."""
+    mappings = []
+
+    # Include ALL entities with their IDs
+    if current_state.action_fields:
+        mappings.append("ACTION FIELD IDs:")
+        for af in current_state.action_fields:
+            mappings.append(f"  {af.id} → {af.content.get('title', '')}")
+
+    if current_state.projects:
+        mappings.append("\nPROJECT IDs:")
+        for p in current_state.projects:
+            mappings.append(f"  {p.id} → {p.content.get('title', '')}")
+
+    if current_state.measures:
+        mappings.append("\nMEASURE IDs:")
+        for m in current_state.measures:
+            mappings.append(f"  {m.id} → {m.content.get('title', '')}")
+
+    if current_state.indicators:
+        mappings.append("\nINDICATOR IDs:")
+        for i in current_state.indicators:
+            mappings.append(f"  {i.id} → {i.content.get('title', '')}")
+
+    return (
+        "\n".join(mappings) if mappings else "No entities yet - use CREATE operations"
     )
-    return f"""AKTUELLER EXTRAKTIONSSTAND (bisher gefundene Strukturen):
-{context_json_str}
 
-WICHTIG: Erweitern Sie diese bestehende Struktur. Verwenden Sie exakte IDs und Namen aus dem obigen JSON. Erstellen Sie Verbindungen zu bestehenden Entities."""
+
+def format_context_json(context_data) -> str:
+    """Format context as entity registry + ID mappings (not JSON dump)."""
+    if not context_data:
+        return "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
+
+    # Use the new compact registry format
+    registry = format_entity_registry(context_data)
+    id_mapping = format_entity_id_mapping(context_data)
+
+    return f"""{registry}
+
+{id_mapping}
+
+KRITISCHE REGELN:
+1. IMMER prüfen ob Entity schon im REGISTRY existiert
+2. Bei ähnlichen Namen → UPDATE statt CREATE
+3. Beispiele für Duplikate:
+   - "Mobilität und Verkehr" = "Mobilität & Verkehr" = "Verkehrswesen"
+   - "Radwegeausbau" = "Ausbau Radwege" = "Radverkehrsnetz"
+   - "CO2-Reduktion" = "CO₂-Reduktion" = "Kohlendioxid-Reduktion"
+4. NUR CREATE wenn wirklich neu und einzigartig"""
 
 
 def create_extraction_prompt(
@@ -263,9 +333,10 @@ Erstellen Sie die 4-Bucket-Struktur mit KORREKTER HIERARCHIE und unter Verwendun
 {context_text}
 
 VERPFLICHTENDE PRÜFUNG vor jeder CREATE-Operation:
-1. Scannen Sie AKTUELLER EXTRAKTIONSSTAND vollständig nach ähnlichen Entities
-2. Bei semantischer Überlappung: UPDATE verwenden statt CREATE
-3. Nur CREATE wenn wirklich einzigartig und keine UPDATE-Möglichkeit besteht
+1. Entity bereits im ENTITY REGISTRY? → UPDATE verwenden
+2. Ähnlicher Name im REGISTRY? → UPDATE verwenden
+3. Teilweise Überlappung? → UPDATE verwenden
+4. Wirklich neu? → Erst dann CREATE
 
 VERBINDUNGSREGELN (KRITISCH):
 - CONNECT-Operationen sind das ZIEL - erstellen Sie sie aktiv!
@@ -276,7 +347,7 @@ TEXTABSCHNITT (Seiten {page_list}):
 {chunk_text}
 
 QUALITÄTSKONTROLLE:
-- Verwenden Sie NUR exakte Entity-IDs aus AKTUELLER EXTRAKTIONSSTAND
+- Verwenden Sie NUR exakte Entity-IDs aus ENTITY REGISTRY
 - Fügen Sie IMMER source_pages und source_quote hinzu (außer bei CONNECT)
 - Konfidenz ≥ 0.7 für CONNECT, ≥ 0.8 für CREATE
 - Bevorzugen Sie UPDATE über CREATE bei jeder semantischen Überlappung
