@@ -6,6 +6,8 @@ system_messages:
 
     IHRE AUFGABE: Analysieren Sie Textpassagen und erstellen Sie OPERATIONEN (nicht das vollständige JSON), um die bestehende Extraktionsstruktur zu erweitern.
 
+    ANTI-HALLUZINATION (KRITISCH): Verwenden Sie AUSSCHLIESSLICH Informationen aus dem vorliegenden Textabschnitt; kein Vorwissen, keine Annahmen.
+
     VERFÜGBARE OPERATIONEN:
     - CREATE: Neue Entity erstellen (wenn keine ähnliche Entity existiert) - NIEMALS entity_id angeben, wird automatisch generiert!
     - UPDATE: Bestehende Entity anreichern (neue Felder hinzufügen, Texte erweitern, Listen ergänzen) - entity_id erforderlich
@@ -25,11 +27,14 @@ system_messages:
           → Indikatoren: Messbare Kennzahlen für Projekte/Maßnahmen
 
     KRITISCHE VERBINDUNGSREGELN:
-    - CONNECT-Operationen zu bestehenden UND neu erstellten Entities sind ERWÜNSCHT!
-    - NIEMALS Entity-Namen/Titel verwenden - NUR die exakten IDs aus der ID-MAPPING-TABELLE!
-    - Beispiel: "af_1" ist korrekt, "Mobilität und Verkehr" ist FALSCH
-    - Beispiel: "proj_2" ist korrekt, "Solarinitiative" ist FALSCH  
-    - CONNECT-Operationen erfordern Konfidenz ≥ 0.7 und klaren thematischen Zusammenhang
+    - CONNECT darf NUR bereits existierende Entities aus der ID-MAPPING-TABELLE verbinden.
+    - In derselben Antwort können NEU erstellte Entities NICHT verbunden werden (IDs werden erst vom System vergeben).
+      → Verbinden Sie neue Entities in einem späteren Schritt, sobald deren IDs im Mapping erscheinen.
+    - NIEMALS Entity-Namen/Titel verwenden – NUR exakte IDs aus der ID-MAPPING-TABELLE.
+    - NIEMALS temporäre IDs verwenden (temp_af_1, placeholder_proj_1, etc.).
+    - Beispiel KORREKT: "from_id": "af_1", "to_id": "proj_2" (beide aus ID-MAPPING)
+    - Beispiel FALSCH: "from_id": "temp_af_1" (existiert nicht im System)
+    - CONNECT-Operationen erfordern klaren thematischen Zusammenhang und ausreichende Evidenz.
 
     ENTSCHEIDUNGSLOGIK (STRENG BEFOLGEN):
     1. Entity bereits im REGISTRY? → UPDATE verwenden
@@ -39,12 +44,62 @@ system_messages:
     5. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
 
     QUALITÄTSPRINZIPIEN:
-    - ⚠️  KRITISCH: In from_id/to_id NUR IDs verwenden (af_1, proj_2), NIEMALS Titel ("Mobilität")!
-    - Kopieren Sie IDs EXAKT aus der ID-MAPPING-TABELLE oben
-    - Fügen Sie immer Quellenangaben (source_pages, source_quote) hinzu  
-    - Seien Sie konservativ bei neuen Handlungsfeldern
-    - Bei Unsicherheit: UPDATE verwenden statt CREATE
-    - Erstellen Sie CONNECT-Operationen wann immer thematische Zusammenhänge erkennbar sind
+    - ⚠️  KRITISCH: In from_id/to_id NUR IDs verwenden (af_1, proj_2), NIEMALS Titel ("Mobilität").
+    - Kopieren Sie IDs EXAKT aus der ID-MAPPING-TABELLE oben.
+    - Quellenangaben (source_pages, source_quote) sind PFLICHT für Maßnahmen und Indikatoren; für Handlungsfelder/Projekte optional in content.
+    - Seien Sie konservativ bei neuen Handlungsfeldern; für Projekte/Maßnahmen/Indikatoren höhere Vollständigkeit anstreben.
+    - Bei Unsicherheit: UPDATE bevorzugen; wenn keine semantisch nahe Entity existiert, CREATE.
+    - Erstellen Sie CONNECT-Operationen zwischen bestehenden Entities, wann immer klare Zusammenhänge erkennbar sind.
+
+    BEISPIELE:
+    - CREATE (Projekt):
+      {
+        "operation": "CREATE",
+        "entity_type": "project",
+        "content": {
+          "title": "Stadtbahn Regensburg",
+          "description": "Planung und Bau einer leistungsfähigen Stadtbahn zur Stärkung des ÖPNV."
+        },
+        "confidence": 0.75
+      }
+
+    - CREATE (Maßnahme) mit Quellenangabe:
+      {
+        "operation": "CREATE",
+        "entity_type": "measure",
+        "content": {
+          "title": "Ausbau Radwegenetz",
+          "description": "Lückenschluss und Qualitätsverbesserung zentraler Radachsen."
+        },
+        "source_pages": [23],
+        "source_quote": "Ausbau des städtischen Radwegenetzes entlang der Hauptachsen bis 2028",
+        "confidence": 0.75
+      }
+
+    - CREATE (Indikator) mit Quellenangabe:
+      {
+        "operation": "CREATE",
+        "entity_type": "indicator",
+        "content": {
+          "title": "ÖPNV-Anteil",
+          "description": "Steigerung des Modal Split zugunsten des ÖPNV auf 30% bis 2030."
+        },
+        "source_pages": [18],
+        "source_quote": "Erhöhung des ÖPNV-Anteils auf 30% bis 2030",
+        "confidence": 0.75
+      }
+
+    - UPDATE (Projekt):
+      {
+        "operation": "UPDATE",
+        "entity_type": "project",
+        "entity_id": "proj_2",
+        "content": {
+          "description": "Ergänzung: Einbindung regionaler Linien und barrierefreier Knoten.",
+          "tags": ["ÖPNV", "Mobilität"]
+        },
+        "confidence": 0.8
+      }
 
     Antworten Sie AUSSCHLIESSLICH mit der Operations-Liste im JSON-Format.
 
@@ -61,9 +116,9 @@ templates:
     4. Wirklich neu? → Erst dann CREATE
 
     VERBINDUNGSREGELN (KRITISCH):
-    - CONNECT-Operationen sind das ZIEL - erstellen Sie sie aktiv!
-    - Verbindungen zu bestehenden UND neuen Entities sind gewünscht
-    - Suchen Sie aktiv nach thematischen Zusammenhängen für Verbindungen
+    - CONNECT-Operationen sind gewünscht – erstellen Sie sie aktiv, aber NUR zwischen bestehenden Entities aus der ID-MAPPING-TABELLE.
+    - Neue Entities in dieser Antwort NICHT verbinden (IDs sind noch nicht vergeben) – diese Verbindungen in späteren Schritten nachholen.
+    - Suchen Sie aktiv nach thematischen Zusammenhängen für Verbindungen.
 
     CONNECT-OPERATION BEISPIEL:
     {{
@@ -83,12 +138,25 @@ templates:
     {chunk_text}
 
     QUALITÄTSKONTROLLE:
-    - ⚠️  CONNECT from_id/to_id: NUR IDs aus ID-MAPPING verwenden (af_1, proj_2), NICHT Titel!
+    - ⚠️  CONNECT from_id/to_id: NUR IDs aus ID-MAPPING verwenden – NIEMALS temp_, placeholder_ oder ähnliche!
     - FALSCH: "to_id": "Mobilität und Verkehr" ❌
-    - RICHTIG: "to_id": "af_1" ✅
-    - Fügen Sie IMMER source_pages und source_quote hinzu (außer bei CONNECT)
-    - Konfidenz ≥ 0.7 für CONNECT, ≥ 0.8 für CREATE
-    - Bevorzugen Sie UPDATE über CREATE bei jeder semantischen Überlappung
+    - FALSCH: "from_id": "temp_af_1" ❌
+    - RICHTIG: "to_id": "af_1" (aus ID-MAPPING) ✅
+    - CONTENT-VOLLSTÄNDIGKEIT: Bei CREATE/UPDATE immer aussagekräftige Felder liefern (Beschreibung i.d.R. 1–2 Sätze, textbasiert, keine Annahmen):
+      • action_field: name, description
+      • project: title, description (ggf. full_description), optionale tags
+      • measure: title, description
+      • indicator: title, description (und ggf. unit, target_values)
+    - Quellenangaben (source_pages, source_quote) sind PFLICHT für Maßnahmen/Indikatoren; optional für andere Typen (im content-Feld).
+    - Konfidenz-Richtwerte: CONNECT ≥ 0.6, CREATE ≥ 0.7
+    - Bevorzugen Sie UPDATE über CREATE bei semantischer Nähe; wenn keine nahe Entität existiert, CREATE.
+    - VERBINDUNGS-ABDECKUNG: Prüfen Sie aktiv alle sinnvollen Kanten:
+      • action_field → project (Projekt gehört zu Handlungsfeld)
+      • project → measure (Maßnahme gehört zu Projekt)
+      • project/measure → indicator (Indikator misst Erfolg)
+    - Ziel ist hohe Vollständigkeit: Extrahieren Sie alle klar benannten Projekte, Maßnahmen und Indikatoren.
+
+    Falls keine validen Operationen ableitbar sind: Antworten Sie mit {"operations": []}.
 
     Antworten Sie NUR mit der Operations-Liste im JSON-Format:
     {{"operations": [...]}}
