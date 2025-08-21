@@ -27,6 +27,7 @@ from src.utils import (
     log_api_request,
     log_api_response,
 )
+from src.utils.token_tracker import calculate_json_tokens
 
 
 async def upload_pdf(request: Request, file: UploadFile):
@@ -69,12 +70,24 @@ async def upload_pdf(request: Request, file: UploadFile):
                     await txt_file.write(text)
 
             total_text_length = sum(len(text) for text, _ in page_aware_text)
+            all_text = " ".join(text for text, _ in page_aware_text)
+            total_tokens = estimate_tokens(all_text)
+            
+            # Calculate per-page token breakdown
+            page_tokens = [estimate_tokens(text) for text, _ in page_aware_text]
+            avg_tokens_per_page = total_tokens / len(page_aware_text) if page_aware_text else 0
 
         # No more semantic chunking - pages are already saved to file for later retrieval
 
         response_data = {
             "pages_extracted": len(page_aware_text),
             "total_text_length": total_text_length,
+            "total_tokens": total_tokens,
+            "avg_tokens_per_page": round(avg_tokens_per_page, 1),
+            "token_distribution": {
+                "min_tokens_per_page": min(page_tokens) if page_tokens else 0,
+                "max_tokens_per_page": max(page_tokens) if page_tokens else 0,
+            },
             "page_attribution_enabled": True,
             "extraction_metadata": extraction_metadata,
             "source_id": safe_filename,  # Return the safe filename for subsequent API calls
@@ -181,9 +194,14 @@ async def extract_enhanced(
 
         # Stage 4: Prepare response
         with monitor_stage(monitor, "response_preparation", source_id=source_id):
+            # Calculate final JSON token metrics
+            final_json_tokens, final_json_str = calculate_json_tokens(enhanced_data, "Final JSON")
+            
             additional_fields = {
                 "enhanced_file": enhanced_filename,  # Add filename for reference
                 "metadata": extraction_result["metadata"],
+                "final_json_tokens": final_json_tokens,
+                "final_json_size": len(final_json_str),
                 "processing_stages": [
                     "file_loading",
                     "enhanced_extraction",
@@ -314,8 +332,10 @@ async def extract_enhanced_operations(
                 error_msg = "Operations-based extraction returned no results"
                 raise ValueError(error_msg)
 
-        # Save result to file
+        # Calculate final JSON token metrics and save result to file
         try:
+            final_json_tokens, final_json_str = calculate_json_tokens(extraction_result, "Final operations JSON")
+            
             upload_dir = PROJECT_ROOT / "data" / "uploads"
             upload_dir.mkdir(exist_ok=True)
             result_filename = f"{source_id}_operations_result.json"

@@ -13,6 +13,7 @@ from src.core import (
 )
 
 from src.prompts import get_prompt
+from src.utils.token_tracker import estimate_tokens
 
 # prepare_llm_chunks is imported from semantic_llm_chunker
 
@@ -38,7 +39,7 @@ def extract_action_fields_only(
             continue
 
         print(
-            f"🔍 Stage 1: Scanning chunk {i+1}/{len(chunks)} for action fields ({len(chunk)} chars)"
+            f"🔍 Stage 1: Scanning chunk {i+1}/{len(chunks)} for action fields ({estimate_tokens(chunk)} tokens)"
         )
 
         prompt = get_prompt("legacy.templates.stage1_chunk", chunk=chunk)
@@ -50,9 +51,9 @@ def extract_action_fields_only(
             temperature=MODEL_TEMPERATURE,
             log_file_path=log_file_path,
             log_context=(
-                f"{log_context_prefix} - Stage 1: Action Field Discovery, Chunk {i+1}/{len(chunks)} ({len(chunk)} chars)"
+                f"{log_context_prefix} - Stage 1: Action Field Discovery, Chunk {i+1}/{len(chunks)} ({estimate_tokens(chunk)} tokens)"
                 if log_context_prefix
-                else f"Stage 1: Action Field Discovery, Chunk {i+1}/{len(chunks)} ({len(chunk)} chars)"
+                else f"Stage 1: Action Field Discovery, Chunk {i+1}/{len(chunks)} ({estimate_tokens(chunk)} tokens)"
             ),
         )
 
@@ -242,14 +243,14 @@ def extract_structures_with_retry(
     # Validate chunk size
     if len(chunk_text) > CHUNK_WARNING_THRESHOLD:
         print(
-            f"⚠️ WARNING: Chunk size ({len(chunk_text)} chars) exceeds recommended limit "
+            f"⚠️ WARNING: Chunk size ({estimate_tokens(chunk_text)} tokens) exceeds recommended limit "
             f"of {CHUNK_WARNING_THRESHOLD} chars!"
         )
         print("   This may cause JSON parsing issues or incomplete responses.")
 
     for attempt in range(max_retries):
         print(
-            f"📝 Extraction attempt {attempt + 1}/{max_retries} for chunk ({len(chunk_text)} chars)"
+            f"📝 Extraction attempt {attempt + 1}/{max_retries} for chunk ({estimate_tokens(chunk_text)} tokens)"
         )
 
         # Use structured output with Pydantic model
@@ -315,13 +316,13 @@ def extract_with_accumulation(
     if chunk_index == 0:
         # First chunk uses regular extraction
         print(
-            f"📝 Initial extraction for chunk 1/{total_chunks} ({len(chunk_text)} chars)"
+            f"📝 Initial extraction for chunk 1/{total_chunks} ({estimate_tokens(chunk_text)} tokens)"
         )
         result = extract_structures_with_retry(chunk_text)
         return {"action_fields": result}
 
     print(
-        f"🔄 Progressive extraction for chunk {chunk_index + 1}/{total_chunks} ({len(chunk_text)} chars)"
+        f"🔄 Progressive extraction for chunk {chunk_index + 1}/{total_chunks} ({estimate_tokens(chunk_text)} tokens)"
     )
 
     system_message = get_prompt("extraction.system_messages.accumulated_enhancement")

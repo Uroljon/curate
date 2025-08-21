@@ -14,6 +14,7 @@ import requests
 from pydantic import BaseModel
 
 from ..prompts import get_prompt
+from ..utils.token_tracker import estimate_tokens, log_llm_response_tokens
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -329,6 +330,10 @@ class VLLMProvider(OpenAICompatibleProvider):
             self.max_model_len = 16384
             self.max_tokens = min(max_tokens, 8192)
 
+    def _log_response_with_tokens(self, response, input_tokens: int, response_time: float) -> int:
+        """Log LLM response with token metrics - consolidates duplicate logging logic."""
+        return log_llm_response_tokens(response, input_tokens, response_time)
+
     def query_structured(
         self,
         prompt: str,
@@ -345,6 +350,10 @@ class VLLMProvider(OpenAICompatibleProvider):
                 prompt, response_model, disable_thinking=True
             )
             messages = self._build_messages(structured_prompt, system_message)
+            
+            # Calculate input token count for efficiency tracking
+            input_text = " ".join(msg["content"] for msg in messages)
+            input_tokens = estimate_tokens(input_text)
 
             # Use Qwen3-specific parameters if applicable
             temperature = self.temperature
@@ -375,7 +384,7 @@ class VLLMProvider(OpenAICompatibleProvider):
                     messages, response_model, override_num_predict, extra_params
                 )
                 llm_response_time = time.time() - llm_start_time
-                print(f"      🤖 LLM response in {llm_response_time:.2f}s")
+                self._log_response_with_tokens(response, input_tokens, llm_response_time)
             except Exception:
                 try:
                     # Second try: Use response_format with json_schema
@@ -396,7 +405,7 @@ class VLLMProvider(OpenAICompatibleProvider):
                         messages, response_model, override_num_predict, extra_params
                     )
                     llm_response_time = time.time() - llm_start_time
-                    print(f"      🤖 LLM response in {llm_response_time:.2f}s")
+                    self._log_response_with_tokens(response, input_tokens, llm_response_time)
                 except Exception:
                     # Final fallback: Use prompt-based JSON generation
                     print(
@@ -412,7 +421,7 @@ class VLLMProvider(OpenAICompatibleProvider):
                         messages, response_model, override_num_predict, extra_params
                     )
                     llm_response_time = time.time() - llm_start_time
-                    print(f"      🤖 LLM response in {llm_response_time:.2f}s")
+                    self._log_response_with_tokens(response, input_tokens, llm_response_time)
 
             content = response.choices[0].message.content.strip()
 

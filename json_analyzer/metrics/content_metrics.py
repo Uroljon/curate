@@ -13,6 +13,13 @@ from typing import Any
 from ..config import ContentThresholds
 from ..models import ContentStats
 
+# Token estimation function (from src.utils.text)
+def estimate_tokens(text: str) -> int:
+    """Estimate tokens using 1 token ≈ 3.5 characters for German text."""
+    if not text:
+        return 0
+    return int(len(text) / 3.5)
+
 
 class ContentMetrics:
     """Calculator for content quality and text analysis metrics."""
@@ -456,7 +463,7 @@ class ContentMetrics:
                     for i, line in enumerate(lines):
                         if len(line) > 200:
                             issues.append(
-                                f"{entity_id}.{field} line {i+1}: Very long line ({len(line)} chars)"
+                                f"{entity_id}.{field} line {i+1}: Very long line ({estimate_tokens(line)} tokens)"
                             )
 
         return issues

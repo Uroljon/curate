@@ -37,6 +37,7 @@ from tests.test_utils import (
     TestValidator,
     full_pipeline_test,
 )
+from src.utils.token_tracker import estimate_tokens
 
 
 class APIIntegrationRunner:
@@ -119,7 +120,7 @@ class APIIntegrationRunner:
         print("✅ Minimal PDF uploaded successfully")
         print(f"   - Source ID: {response['source_id']}")
         print(f"   - Pages: {response['pages_extracted']}")
-        print(f"   - Text length: {response['total_text_length']} chars")
+        print(f"   - Text length: {estimate_tokens(str(response['total_text_length']))} tokens (from {response['total_text_length']} chars)")
 
     def test_upload_pdf_realistic(self):
         """Test PDF upload with realistic German municipal content."""
@@ -136,7 +137,7 @@ class APIIntegrationRunner:
 
         print("✅ German municipal PDF uploaded successfully")
         print(f"   - Pages: {response['pages_extracted']}")
-        print(f"   - Text length: {response['total_text_length']} chars")
+        print(f"   - Text length: {estimate_tokens(str(response['total_text_length']))} tokens (from {response['total_text_length']} chars)")
 
         return response["source_id"]
 

@@ -346,3 +346,20 @@ def remove_structural_noise(
         cleaned_lines.append(line)
 
     return "\n".join(cleaned_lines)
+
+
+def estimate_tokens(text: str) -> int:
+    """
+    Estimate the number of tokens in a text string.
+    
+    Uses the established conversion ratio of 1 token ≈ 3.5 characters for German text.
+    
+    Args:
+        text: Text to estimate tokens for
+        
+    Returns:
+        Estimated number of tokens
+    """
+    if not text:
+        return 0
+    return int(len(text) / 3.5)

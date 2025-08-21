@@ -22,7 +22,7 @@ from src.core.config import (
     AGGREGATION_CHUNK_SIZE,
 )
 from src.prompts import get_prompt
-from src.utils.text import estimate_tokens
+from src.utils.token_tracker import estimate_tokens
 
 # ============================================================================
 # CONSTANTS AND TEMPLATES (Now loaded from YAML)
@@ -568,7 +568,8 @@ def perform_single_aggregation(
     try:
         # Check input size
         data_size = len(chunk_data)
-        print(f"   🔍 Attempting aggregation with {data_size} characters of JSON")
+        data_tokens = estimate_tokens(chunk_data)
+        print(f"   🔍 Attempting aggregation with {data_tokens:,} tokens ({data_size:,} chars) of JSON")
 
         # Calculate dynamic num_predict based on input size
         # Improved token estimation: 1 token ≈ 3.5 characters for German text
@@ -932,6 +933,40 @@ def _get_english_pattern():
     return re.compile(pattern, re.IGNORECASE)
 
 
+def _print_pipeline_token_summary(page_aware_text, chunks_with_pages, final_result):
+    """Print comprehensive token summary across the entire pipeline."""
+    import json
+    
+    # Calculate PDF tokens
+    all_pdf_text = " ".join(text for text, _ in page_aware_text)
+    pdf_tokens = estimate_tokens(all_pdf_text)
+    pdf_pages = len(page_aware_text)
+    
+    # Calculate total chunk tokens
+    chunk_tokens = [estimate_tokens(chunk) for chunk, _ in chunks_with_pages]
+    total_chunk_tokens = sum(chunk_tokens)
+    avg_chunk_tokens = total_chunk_tokens / len(chunk_tokens) if chunk_tokens else 0
+    
+    # Calculate final JSON tokens
+    if hasattr(final_result, 'model_dump'):
+        final_json = json.dumps(final_result.model_dump(), ensure_ascii=False)
+    else:
+        final_json = json.dumps(final_result, ensure_ascii=False)
+    json_tokens = estimate_tokens(final_json)
+    
+    # Calculate compression ratio
+    compression_ratio = (json_tokens / pdf_tokens * 100) if pdf_tokens > 0 else 0
+    
+    print("\n" + "="*80)
+    print("📊 COMPREHENSIVE TOKEN SUMMARY")
+    print("="*80)
+    print(f"📄 PDF Input:      {pdf_tokens:>8,} tokens ({pdf_pages} pages)")
+    print(f"🧩 Chunks:         {total_chunk_tokens:>8,} tokens ({len(chunks_with_pages)} chunks, avg: {avg_chunk_tokens:.0f})")
+    print(f"📋 Final JSON:     {json_tokens:>8,} tokens ({len(final_json):,} chars)")
+    print(f"⚡ Compression:    {compression_ratio:>8.1f}% (PDF→JSON token ratio)")
+    print("="*80)
+
+
 def simple_deduplication_fallback(
     all_chunk_results: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -1105,6 +1140,9 @@ def extract_direct_to_enhanced(
         f"{len(final_result.projects)} projects, {len(final_result.measures)} measures, "
         f"{len(final_result.indicators)} indicators"
     )
+    
+    # Calculate and print comprehensive token summary
+    _print_pipeline_token_summary(page_aware_text, chunks_with_pages, final_result)
 
     return {
         "extraction_result": final_result.model_dump(),
@@ -1217,6 +1255,9 @@ def extract_direct_to_enhanced_with_operations(
         f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
         f"{len(current_state.indicators)} indicators"
     )
+    
+    # Calculate and print comprehensive token summary
+    _print_pipeline_token_summary(page_aware_text, chunks_with_pages, current_state)
 
     # Return in same format as other endpoints for visualization tool compatibility
     return current_state.model_dump()
