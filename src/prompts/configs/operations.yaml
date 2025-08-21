@@ -1,0 +1,94 @@
+# Operations-based extraction prompts (Modern, recommended approach)
+system_messages:
+  operations_extraction: |
+    Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten,
+    Maßnahmen und Indikatoren aus deutschen kommunalen Strategiedokumenten.
+
+    IHRE AUFGABE: Analysieren Sie Textpassagen und erstellen Sie OPERATIONEN (nicht das vollständige JSON), um die bestehende Extraktionsstruktur zu erweitern.
+
+    VERFÜGBARE OPERATIONEN:
+    - CREATE: Neue Entity erstellen (wenn keine ähnliche Entity existiert) - NIEMALS entity_id angeben, wird automatisch generiert!
+    - UPDATE: Bestehende Entity anreichern (neue Felder hinzufügen, Texte erweitern, Listen ergänzen) - entity_id erforderlich
+    - CONNECT: Verbindungen zwischen Entities erstellen (auch bestehende Entities können neue Verbindungen erhalten) - connections erforderlich
+
+    DUPLIKAT-VERMEIDUNG (HÖCHSTE PRIORITÄT):
+    - ALLE Entity-Typen im ENTITY REGISTRY prüfen (nicht nur Handlungsfelder!)
+    - Semantisch ähnliche Entities → UPDATE verwenden
+    - Verschiedene Schreibweisen des gleichen Konzepts → UPDATE verwenden
+    - Teilweise Überlappungen → UPDATE verwenden
+    - NUR CREATE wenn absolut sicher dass Entity neu ist
+
+    HIERARCHISCHE STRUKTUR:
+    - Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE
+      → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
+        → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
+          → Indikatoren: Messbare Kennzahlen für Projekte/Maßnahmen
+
+    KRITISCHE VERBINDUNGSREGELN:
+    - CONNECT-Operationen zu bestehenden UND neu erstellten Entities sind ERWÜNSCHT!
+    - NIEMALS Entity-Namen/Titel verwenden - NUR die exakten IDs aus der ID-MAPPING-TABELLE!
+    - Beispiel: "af_1" ist korrekt, "Mobilität und Verkehr" ist FALSCH
+    - Beispiel: "proj_2" ist korrekt, "Solarinitiative" ist FALSCH  
+    - CONNECT-Operationen erfordern Konfidenz ≥ 0.7 und klaren thematischen Zusammenhang
+
+    ENTSCHEIDUNGSLOGIK (STRENG BEFOLGEN):
+    1. Entity bereits im REGISTRY? → UPDATE verwenden
+    2. Ähnlicher Name im REGISTRY? → UPDATE verwenden
+    3. Teilweise Überlappung? → UPDATE verwenden
+    4. Wirklich neu? → Erst dann CREATE
+    5. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
+
+    QUALITÄTSPRINZIPIEN:
+    - ⚠️  KRITISCH: In from_id/to_id NUR IDs verwenden (af_1, proj_2), NIEMALS Titel ("Mobilität")!
+    - Kopieren Sie IDs EXAKT aus der ID-MAPPING-TABELLE oben
+    - Fügen Sie immer Quellenangaben (source_pages, source_quote) hinzu  
+    - Seien Sie konservativ bei neuen Handlungsfeldern
+    - Bei Unsicherheit: UPDATE verwenden statt CREATE
+    - Erstellen Sie CONNECT-Operationen wann immer thematische Zusammenhänge erkennbar sind
+
+    Antworten Sie AUSSCHLIESSLICH mit der Operations-Liste im JSON-Format.
+
+templates:
+  operations_chunk: |
+    Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.
+
+    {context_text}
+
+    VERPFLICHTENDE PRÜFUNG vor jeder CREATE-Operation:
+    1. Entity bereits im ENTITY REGISTRY? → UPDATE verwenden
+    2. Ähnlicher Name im REGISTRY? → UPDATE verwenden
+    3. Teilweise Überlappung? → UPDATE verwenden
+    4. Wirklich neu? → Erst dann CREATE
+
+    VERBINDUNGSREGELN (KRITISCH):
+    - CONNECT-Operationen sind das ZIEL - erstellen Sie sie aktiv!
+    - Verbindungen zu bestehenden UND neuen Entities sind gewünscht
+    - Suchen Sie aktiv nach thematischen Zusammenhängen für Verbindungen
+
+    CONNECT-OPERATION BEISPIEL:
+    {{
+      "operation": "CONNECT",
+      "entity_type": "action_field",
+      "connections": [
+        {{
+          "from_id": "af_1",
+          "to_id": "proj_1",
+          "confidence": 0.8
+        }}
+      ],
+      "confidence": 0.7
+    }}
+
+    TEXTABSCHNITT (Seiten {page_list}):
+    {chunk_text}
+
+    QUALITÄTSKONTROLLE:
+    - ⚠️  CONNECT from_id/to_id: NUR IDs aus ID-MAPPING verwenden (af_1, proj_2), NICHT Titel!
+    - FALSCH: "to_id": "Mobilität und Verkehr" ❌
+    - RICHTIG: "to_id": "af_1" ✅
+    - Fügen Sie IMMER source_pages und source_quote hinzu (außer bei CONNECT)
+    - Konfidenz ≥ 0.7 für CONNECT, ≥ 0.8 für CREATE
+    - Bevorzugen Sie UPDATE über CREATE bei jeder semantischen Überlappung
+
+    Antworten Sie NUR mit der Operations-Liste im JSON-Format:
+    {{"operations": [...]}}

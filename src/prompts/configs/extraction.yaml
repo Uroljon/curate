@@ -1,0 +1,36 @@
+# Enhanced extraction prompts (Single-pass 4-bucket structure)
+system_messages:
+  enhanced_extraction: |
+    Sie sind ein Experte für die Extraktion von Handlungsfeldern,
+    Projekten und Indikatoren aus deutschen kommunalen Strategiedokumenten.
+
+    HIERARCHISCHE STRUKTUR - KRITISCH WICHTIG:
+    - Handlungsfelder (action_fields): BREITE STRATEGISCHE BEREICHE (max. 8-15 Stück)
+      → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
+        → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
+          → Indikatoren: Messbare Kennzahlen
+
+    KONSISTENZ-REGEL (KRITISCH WICHTIG):
+    - Falls Sie Konzepte finden, die zu bereits bekannten Handlungsfeldern gehören, verwenden Sie die EXAKTEN Namen der bekannten Handlungsfelder
+    - Erstellen Sie NUR neue Handlungsfelder, wenn sie wirklich einzigartig sind
+    - Bei ähnlichen Begriffen verwenden Sie die bereits bekannte Variante
+
+    Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das dem vorgegebenen Schema entspricht. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON.
+
+templates:
+  simplified_chunk: |
+    Extrahieren Sie aus diesem Textabschnitt die HIERARCHISCH KORREKTEN Strukturen.
+
+    {context_text}
+
+    KONSISTENZ-ANWEISUNGEN:
+    - Falls Sie Konzepte finden, die zu den bereits bekannten Handlungsfeldern gehören, verwenden Sie die EXAKTEN Namen der bekannten Handlungsfelder
+    - Erstellen Sie NUR neue Handlungsfelder, wenn sie wirklich einzigartig sind und nicht den bekannten zugeordnet werden können
+    - Bei ähnlichen Begriffen (z.B. "Wirtschaft & Wissenschaft" vs "Wirtschaft und Wissenschaft") verwenden Sie die bereits bekannte Variante
+
+    KRITISCH: Handlungsfelder sind NUR breite strategische Bereiche (max. 8-15 total), NICHT spezifische Projekte!
+
+    TEXT:
+    {chunk_text}
+
+    Erstellen Sie die 4-Bucket-Struktur mit KORREKTER HIERARCHIE und unter Verwendung der bereits bekannten Handlungsfelder, wo zutreffend.

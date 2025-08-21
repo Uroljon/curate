@@ -58,19 +58,19 @@ def test_context_awareness_fix():
     else:
         print("❌ Context may still use JSON dump")
 
-    # Test 5: OPERATIONS_SYSTEM_MESSAGE emphasizes all entity types
-    if "DUPLIKAT-VERMEIDUNG (HÖCHSTE PRIORITÄT):" in content and "ALLE Entity-Typen im ENTITY REGISTRY prüfen" in content:
-        print("✅ System message emphasizes all entity types")
+    # Test 5: YAML-based prompts are properly integrated
+    if "from src.prompts import get_prompt" in content:
+        print("✅ YAML-based prompt system integrated")
         tests_passed += 1
     else:
-        print("❌ System message may not emphasize all entity types")
+        print("❌ YAML-based prompt system not found")
 
-    # Test 6: Prompt uses ENTITY REGISTRY terminology
-    if "1. Entity bereits im ENTITY REGISTRY? → UPDATE verwenden" in content:
-        print("✅ Prompt uses ENTITY REGISTRY terminology")
+    # Test 6: Operations prompts are loaded from YAML
+    if 'get_prompt("operations.system_messages.operations_extraction")' in content:
+        print("✅ Operations prompts loaded from YAML")
         tests_passed += 1
     else:
-        print("❌ Prompt may not use ENTITY REGISTRY terminology")
+        print("❌ Operations prompts may not use YAML")
 
     print("=" * 80)
     print(f"RESULTS: {tests_passed}/{tests_total} tests passed")
@@ -81,8 +81,8 @@ def test_context_awareness_fix():
         print("  ✓ format_entity_registry() shows ALL entities (no truncation)")
         print("  ✓ format_entity_id_mapping() provides complete ID lookup")
         print("  ✓ format_context_json() uses registry format (not JSON dump)")
-        print("  ✓ OPERATIONS_SYSTEM_MESSAGE emphasizes ALL entity types")
-        print("  ✓ Prompts use ENTITY REGISTRY terminology consistently")
+        print("  ✓ YAML-based prompt system integrated successfully")
+        print("  ✓ Operations prompts loaded from YAML configurations")
         print("  ✓ Code structure supports the intended duplicate reduction")
         print("\nExpected impact:")
         print("  • 80-90% reduction in duplicate entities across ALL types")

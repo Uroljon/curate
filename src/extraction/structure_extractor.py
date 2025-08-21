@@ -12,14 +12,7 @@ from src.core import (
     query_ollama_structured,
 )
 
-from .prompts import (
-    STAGE1_SYSTEM_MESSAGE,
-    get_stage1_prompt,
-    get_stage2_prompt,
-    get_stage2_system_message,
-    get_stage3_prompt,
-    get_stage3_system_message,
-)
+from src.prompts import get_prompt
 
 # prepare_llm_chunks is imported from semantic_llm_chunker
 
@@ -38,7 +31,7 @@ def extract_action_fields_only(
     all_action_fields = set()  # Use set to automatically deduplicate
 
     # Use enhanced prompt for mixed-topic robustness
-    system_message = STAGE1_SYSTEM_MESSAGE
+    system_message = get_prompt("legacy.system_messages.stage1_action_fields")
 
     for i, chunk in enumerate(chunks):
         if not chunk.strip():
@@ -48,7 +41,7 @@ def extract_action_fields_only(
             f"🔍 Stage 1: Scanning chunk {i+1}/{len(chunks)} for action fields ({len(chunk)} chars)"
         )
 
-        prompt = get_stage1_prompt(chunk)
+        prompt = get_prompt("legacy.templates.stage1_chunk", chunk=chunk)
 
         result = query_ollama_structured(
             prompt=prompt,
@@ -146,7 +139,7 @@ def extract_projects_for_field(chunks: list[str], action_field: str) -> list[str
     all_projects = set()
 
     # Use enhanced prompt for mixed-topic robustness
-    system_message = get_stage2_system_message(action_field)
+    system_message = get_prompt("legacy.system_messages.stage2_projects", action_field=action_field)
 
     for i, chunk in enumerate(chunks):
         if not chunk.strip():
@@ -158,7 +151,7 @@ def extract_projects_for_field(chunks: list[str], action_field: str) -> list[str
             f"🔎 Stage 2: Searching chunk {i+1}/{len(chunks)} for {action_field} projects"
         )
 
-        prompt = get_stage2_prompt(chunk, action_field)
+        prompt = get_prompt("legacy.templates.stage2_chunk", chunk=chunk, action_field=action_field)
 
         result = query_ollama_structured(
             prompt=prompt,
@@ -193,7 +186,8 @@ def extract_project_details(
     all_indicators = set()
 
     # Use enhanced prompt for mixed-topic robustness
-    system_message = get_stage3_system_message(action_field, project_title)
+    system_message = get_prompt("legacy.system_messages.stage3_measures_indicators", 
+                                action_field=action_field, project_title=project_title)
 
     # Process ALL chunks - indicators might be separated from project mentions
     # in mixed-topic chunks
@@ -203,7 +197,7 @@ def extract_project_details(
         if not chunk.strip():
             continue
 
-        prompt = get_stage3_prompt(chunk, project_title)
+        prompt = get_prompt("legacy.templates.stage3_chunk", chunk=chunk, project_title=project_title)
 
         result = query_ollama_structured(
             prompt=prompt,

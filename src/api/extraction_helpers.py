@@ -21,98 +21,11 @@ from fastapi.responses import JSONResponse
 from src.core.config import (
     AGGREGATION_CHUNK_SIZE,
 )
+from src.prompts import get_prompt
 
 # ============================================================================
-# CONSTANTS AND TEMPLATES
+# CONSTANTS AND TEMPLATES (Now loaded from YAML)
 # ============================================================================
-
-# System message templates
-DEDUPLICATION_SYSTEM_MESSAGE = """Sie sind ein Experte für die KONSERVATIVE Deduplizierung von Handlungsfeldern aus deutschen kommunalen Strategiedokumenten.
-Ihre Hauptaufgabe ist es, DUPLIKATE zu entfernen und die GRANULARITÄT zu erhalten.
-Konsolidieren Sie NUR offensichtliche Duplikate oder fast identische Felder.
-Behalten Sie die meisten Handlungsfelder bei - Reduzierung um maximal 30-40%.
-Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der vorgegebenen Struktur entspricht.
-KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
-
-EXTRACTION_SYSTEM_MESSAGE = """Sie sind ein Experte für die Extraktion von Handlungsfeldern,
-Projekten und Indikatoren aus deutschen kommunalen Strategiedokumenten.
-
-HIERARCHISCHE STRUKTUR - KRITISCH WICHTIG:
-- Handlungsfelder (action_fields): BREITE STRATEGISCHE BEREICHE (max. 8-15 Stück)
-  → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
-    → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
-      → Indikatoren: Messbare Kennzahlen
-
-KONSISTENZ-REGEL (KRITISCH WICHTIG):
-- Falls Sie Konzepte finden, die zu bereits bekannten Handlungsfeldern gehören, verwenden Sie die EXAKTEN Namen der bekannten Handlungsfelder
-- Erstellen Sie NUR neue Handlungsfelder, wenn sie wirklich einzigartig sind
-- Bei ähnlichen Begriffen verwenden Sie die bereits bekannte Variante
-
-Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das dem vorgegebenen Schema entspricht. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON."""
-
-OPERATIONS_SYSTEM_MESSAGE = """Sie sind ein Experte für die Extraktion von Handlungsfeldern, Projekten,
-Maßnahmen und Indikatoren aus deutschen kommunalen Strategiedokumenten.
-
-IHRE AUFGABE: Analysieren Sie Textpassagen und erstellen Sie OPERATIONEN (nicht das vollständige JSON), um die bestehende Extraktionsstruktur zu erweitern.
-
-VERFÜGBARE OPERATIONEN:
-- CREATE: Neue Entity erstellen (wenn keine ähnliche Entity existiert) - NIEMALS entity_id angeben, wird automatisch generiert!
-- UPDATE: Bestehende Entity anreichern (neue Felder hinzufügen, Texte erweitern, Listen ergänzen) - entity_id erforderlich
-- CONNECT: Verbindungen zwischen Entities erstellen (auch bestehende Entities können neue Verbindungen erhalten) - connections erforderlich
-
-DUPLIKAT-VERMEIDUNG (HÖCHSTE PRIORITÄT):
-- ALLE Entity-Typen im ENTITY REGISTRY prüfen (nicht nur Handlungsfelder!)
-- Semantisch ähnliche Entities → UPDATE verwenden
-- Verschiedene Schreibweisen des gleichen Konzepts → UPDATE verwenden
-- Teilweise Überlappungen → UPDATE verwenden
-- NUR CREATE wenn absolut sicher dass Entity neu ist
-
-HIERARCHISCHE STRUKTUR:
-- Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE
-  → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
-    → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
-      → Indikatoren: Messbare Kennzahlen für Projekte/Maßnahmen
-
-KRITISCHE VERBINDUNGSREGELN:
-- CONNECT-Operationen zu bestehenden UND neu erstellten Entities sind ERWÜNSCHT!
-- NIEMALS Entity-Namen/Titel verwenden - NUR die exakten IDs aus der ID-MAPPING-TABELLE!
-- Beispiel: "af_1" ist korrekt, "Mobilität und Verkehr" ist FALSCH
-- Beispiel: "proj_2" ist korrekt, "Solarinitiative" ist FALSCH  
-- CONNECT-Operationen erfordern Konfidenz ≥ 0.7 und klaren thematischen Zusammenhang
-
-ENTSCHEIDUNGSLOGIK (STRENG BEFOLGEN):
-1. Entity bereits im REGISTRY? → UPDATE verwenden
-2. Ähnlicher Name im REGISTRY? → UPDATE verwenden
-3. Teilweise Überlappung? → UPDATE verwenden
-4. Wirklich neu? → Erst dann CREATE
-5. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
-
-QUALITÄTSPRINZIPIEN:
-- ⚠️  KRITISCH: In from_id/to_id NUR IDs verwenden (af_1, proj_2), NIEMALS Titel ("Mobilität")!
-- Kopieren Sie IDs EXAKT aus der ID-MAPPING-TABELLE oben
-- Fügen Sie immer Quellenangaben (source_pages, source_quote) hinzu  
-- Seien Sie konservativ bei neuen Handlungsfeldern
-- Bei Unsicherheit: UPDATE verwenden statt CREATE
-- Erstellen Sie CONNECT-Operationen wann immer thematische Zusammenhänge erkennbar sind
-
-Antworten Sie AUSSCHLIESSLICH mit der Operations-Liste im JSON-Format."""
-
-# Common exclusion rules for action fields
-NOT_CONSOLIDATE_EXAMPLES = """DIESE FÄLLE NICHT konsolidieren:
-❌ "Klimaschutz" und "Energie" → Bleiben getrennt (verschiedene Schwerpunkte)
-❌ "Umwelt" und "Nachhaltigkeit" → Bleiben getrennt (unterschiedliche Aspekte)
-❌ "Mobilität" und "ÖPNV" → Bleiben getrennt (allgemein vs. spezifisch)
-❌ "Verkehr" und "Radverkehr" → Bleiben getrennt (allgemein vs. spezifisch)
-❌ "Wirtschaft" und "Innovation" → Bleiben getrennt (verschiedene Bereiche)
-❌ "Kultur" und "Bildung" → Bleiben getrennt (verschiedene Ressorts)
-❌ "Wohnen" und "Stadtentwicklung" → Bleiben getrennt (verschiedene Planungsebenen)
-❌ "Soziales" und "Gesundheit" → Bleiben getrennt (verschiedene Zuständigkeiten)
-❌ "Integration" und "Teilhabe" → Bleiben getrennt (verschiedene Konzepte)"""
-
-CONSOLIDATE_EXAMPLES = """NUR DIESE FÄLLE konsolidieren:
-✅ "Mobilität" + "Mobilität" → "Mobilität" (exaktes Duplikat)
-✅ "Verkehr und Mobilität" + "Mobilität und Verkehr" → "Mobilität und Verkehr" (fast identisch)
-✅ "Klimaschutz" + "Klimaschutz und Energie" → "Klimaschutz und Energie" (eines ist Teilmenge)"""
 
 # ============================================================================
 # SHARED UTILITY FUNCTIONS
@@ -303,24 +216,12 @@ def create_extraction_prompt(
     context_data=None,
     page_numbers: list[int] | None = None,
 ) -> str:
-    """Create extraction prompts using templates."""
+    """Create extraction prompts using YAML templates."""
     if template_type == "simplified":
         context_text = format_context_json(context_data)
-        return f"""Extrahieren Sie aus diesem Textabschnitt die HIERARCHISCH KORREKTEN Strukturen.
-
-{context_text}
-
-KONSISTENZ-ANWEISUNGEN:
-- Falls Sie Konzepte finden, die zu den bereits bekannten Handlungsfeldern gehören, verwenden Sie die EXAKTEN Namen der bekannten Handlungsfelder
-- Erstellen Sie NUR neue Handlungsfelder, wenn sie wirklich einzigartig sind und nicht den bekannten zugeordnet werden können
-- Bei ähnlichen Begriffen (z.B. "Wirtschaft & Wissenschaft" vs "Wirtschaft und Wissenschaft") verwenden Sie die bereits bekannte Variante
-
-KRITISCH: Handlungsfelder sind NUR breite strategische Bereiche (max. 8-15 total), NICHT spezifische Projekte!
-
-TEXT:
-{chunk_text}
-
-Erstellen Sie die 4-Bucket-Struktur mit KORREKTER HIERARCHIE und unter Verwendung der bereits bekannten Handlungsfelder, wo zutreffend."""
+        return get_prompt("extraction.templates.simplified_chunk",
+                         context_text=context_text,
+                         chunk_text=chunk_text)
 
     elif template_type == "operations":
         context_text = (
@@ -330,48 +231,10 @@ Erstellen Sie die 4-Bucket-Struktur mit KORREKTER HIERARCHIE und unter Verwendun
         )
         page_list = ", ".join(map(str, sorted(page_numbers))) if page_numbers else "N/A"
 
-        return f"""Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.
-
-{context_text}
-
-VERPFLICHTENDE PRÜFUNG vor jeder CREATE-Operation:
-1. Entity bereits im ENTITY REGISTRY? → UPDATE verwenden
-2. Ähnlicher Name im REGISTRY? → UPDATE verwenden
-3. Teilweise Überlappung? → UPDATE verwenden
-4. Wirklich neu? → Erst dann CREATE
-
-VERBINDUNGSREGELN (KRITISCH):
-- CONNECT-Operationen sind das ZIEL - erstellen Sie sie aktiv!
-- Verbindungen zu bestehenden UND neuen Entities sind gewünscht
-- Suchen Sie aktiv nach thematischen Zusammenhängen für Verbindungen
-
-CONNECT-OPERATION BEISPIEL:
-{{
-  "operation": "CONNECT",
-  "entity_type": "action_field",
-  "connections": [
-    {{
-      "from_id": "af_1",
-      "to_id": "proj_1",
-      "confidence": 0.8
-    }}
-  ],
-  "confidence": 0.7
-}}
-
-TEXTABSCHNITT (Seiten {page_list}):
-{chunk_text}
-
-QUALITÄTSKONTROLLE:
-- ⚠️  CONNECT from_id/to_id: NUR IDs aus ID-MAPPING verwenden (af_1, proj_2), NICHT Titel!
-- FALSCH: "to_id": "Mobilität und Verkehr" ❌
-- RICHTIG: "to_id": "af_1" ✅
-- Fügen Sie IMMER source_pages und source_quote hinzu (außer bei CONNECT)
-- Konfidenz ≥ 0.7 für CONNECT, ≥ 0.8 für CREATE
-- Bevorzugen Sie UPDATE über CREATE bei jeder semantischen Überlappung
-
-Antworten Sie NUR mit der Operations-Liste im JSON-Format:
-{{"operations": [...]}}"""
+        return get_prompt("operations.templates.operations_chunk",
+                         context_text=context_text,
+                         page_list=page_list,
+                         chunk_text=chunk_text)
 
     else:
         error_msg = f"Unknown template type: {template_type}"
@@ -546,7 +409,7 @@ def perform_single_aggregation(
     from src.core.llm_providers import get_llm_provider
     from src.core.schemas import ExtractionResult
 
-    system_message = DEDUPLICATION_SYSTEM_MESSAGE
+    system_message = get_prompt("utils.system_messages.deduplication")
 
     # Count the actual action fields
     action_field_count = chunk_data.count('"action_field"')
@@ -555,29 +418,17 @@ def perform_single_aggregation(
     min_target = int(action_field_count * 0.7)
     max_target = int(action_field_count * 0.8)
 
-    prompt = f"""Sie erhalten {action_field_count} Handlungsfelder zur Konsolidierung.
-
-KRITISCH: Sie MÜSSEN mindestens {min_target} bis {max_target} Handlungsfelder in Ihrer Antwort zurückgeben!
-
-Ihre Aufgabe:
-1. Entfernen Sie NUR exakte Duplikate (identischer Name)
-2. Konsolidieren Sie NUR fast identische Felder (>90% Überlappung)
-3. ALLE anderen Felder müssen SEPARAT bleiben
-
-STRENGE VORGABE:
-- Input: {action_field_count} Felder
-- Output: MINDESTENS {min_target} Felder (besser {max_target})
-- Wenn Sie weniger als {min_target} Felder zurückgeben, ist die Aufgabe NICHT erfüllt!
-
-{NOT_CONSOLIDATE_EXAMPLES}
-
-{CONSOLIDATE_EXAMPLES}
-
-Hier sind die Handlungsfelder zur Konsolidierung:
-{chunk_data}
-
-Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das die konsolidierten Handlungsfelder enthält. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON.
-"""
+    # Build prompt using YAML template
+    not_consolidate_examples = get_prompt("utils.variables.not_consolidate_examples")
+    consolidate_examples = get_prompt("utils.variables.consolidate_examples")
+    
+    prompt = get_prompt("utils.templates.deduplication_chunk", 
+                       action_field_count=action_field_count,
+                       min_target=min_target,
+                       max_target=max_target,
+                       not_consolidate_examples=not_consolidate_examples,
+                       consolidate_examples=consolidate_examples,
+                       chunk_data=chunk_data)
 
     try:
         # Check input size
@@ -1045,7 +896,7 @@ def extract_direct_to_enhanced(
         accumulated_json = merge_enhanced_results(all_results) if all_results else None
 
         # Create context-aware extraction prompt with full JSON structure
-        system_message = EXTRACTION_SYSTEM_MESSAGE
+        system_message = get_prompt("extraction.system_messages.enhanced_extraction")
         main_prompt = create_extraction_prompt(
             "simplified", chunk_text, accumulated_json
         )
@@ -1201,7 +1052,7 @@ def extract_direct_to_enhanced_with_operations(
         )
 
         # Create operations-focused prompt
-        system_message = OPERATIONS_SYSTEM_MESSAGE
+        system_message = get_prompt("operations.system_messages.operations_extraction")
         main_prompt = create_extraction_prompt(
             "operations", chunk_text, current_state, page_numbers
         )
