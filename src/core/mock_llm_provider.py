@@ -9,20 +9,21 @@ import json
 import os
 from typing import TypeVar
 
+from pydantic import BaseModel
+
 from .llm_providers import LLMProvider
 from .operations_schema import ExtractionOperations
-from pydantic import BaseModel
 
 T = TypeVar("T", bound=BaseModel)
 
 
 class MockLLMProvider(LLMProvider):
     """Mock LLM provider that returns predictable test responses."""
-    
+
     def __init__(self, model_name: str = "mock", temperature: float = 0.2):
         super().__init__(model_name, temperature)
         self.call_count = 0
-    
+
     def query_structured(
         self,
         prompt: str,
@@ -34,7 +35,7 @@ class MockLLMProvider(LLMProvider):
     ) -> T | None:
         """Return mock structured response based on prompt content."""
         self.call_count += 1
-        
+
         # Log the call for debugging
         if log_file_path:
             try:
@@ -51,7 +52,7 @@ class MockLLMProvider(LLMProvider):
                     f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
             except Exception:
                 pass  # Ignore logging errors in tests
-        
+
         # Return different responses based on the response model type
         if response_model == ExtractionOperations:
             return self._generate_mock_operations(prompt)
@@ -61,14 +62,14 @@ class MockLLMProvider(LLMProvider):
                 return response_model()
             except Exception:
                 return None
-    
+
     def _generate_mock_operations(self, prompt: str) -> ExtractionOperations:
         """Generate mock operations based on prompt content."""
         operations = []
-        
+
         # Detect content patterns and generate appropriate operations
         prompt_lower = prompt.lower()
-        
+
         # Action Field creation
         if "mobilität" in prompt_lower or "verkehr" in prompt_lower:
             operations.append({
@@ -82,11 +83,11 @@ class MockLLMProvider(LLMProvider):
                 "source_pages": [1],
                 "source_quote": "Mobilität und Verkehr"
             })
-        
+
         if "energie" in prompt_lower or "klimaschutz" in prompt_lower:
             operations.append({
                 "operation": "CREATE",
-                "entity_type": "action_field", 
+                "entity_type": "action_field",
                 "content": {
                     "title": "Energie und Klimaschutz",
                     "description": "Energieeffizienz und erneuerbare Energien"
@@ -95,7 +96,7 @@ class MockLLMProvider(LLMProvider):
                 "source_pages": [1, 2],
                 "source_quote": "Energie und Klimaschutz"
             })
-        
+
         # Project creation
         if "radweg" in prompt_lower or "fahrrad" in prompt_lower:
             operations.append({
@@ -111,7 +112,7 @@ class MockLLMProvider(LLMProvider):
                 "source_pages": [1],
                 "source_quote": "Ausbau des Radwegenetzes um 50 km"
             })
-        
+
         if "elektrobus" in prompt_lower or "öpnv" in prompt_lower:
             operations.append({
                 "operation": "CREATE",
@@ -126,7 +127,7 @@ class MockLLMProvider(LLMProvider):
                 "source_pages": [1],
                 "source_quote": "Einführung von Elektrobussen"
             })
-        
+
         # Measure creation
         if "sanierung" in prompt_lower or "gebäude" in prompt_lower:
             operations.append({
@@ -141,7 +142,7 @@ class MockLLMProvider(LLMProvider):
                 "source_pages": [2],
                 "source_quote": "Sanierung von 20 Schulgebäuden"
             })
-        
+
         # Indicator creation
         if "co2" in prompt_lower or "emission" in prompt_lower:
             operations.append({
@@ -160,7 +161,7 @@ class MockLLMProvider(LLMProvider):
                 "source_pages": [1, 2],
                 "source_quote": "CO2-Emissionen bis 2030 um 40% reduziert"
             })
-        
+
         if "erneuerbar" in prompt_lower or "solar" in prompt_lower or "photovoltaik" in prompt_lower:
             operations.append({
                 "operation": "CREATE",
@@ -178,13 +179,13 @@ class MockLLMProvider(LLMProvider):
                 "source_pages": [2],
                 "source_quote": "Anteil erneuerbarer Energien"
             })
-        
+
         # Add connections if we have entities to connect
         if len(operations) >= 2:
             # Check if we have action fields and projects to connect
             action_fields = [op for op in operations if op.get("entity_type") == "action_field"]
             projects = [op for op in operations if op.get("entity_type") == "project"]
-            
+
             if action_fields and projects:
                 operations.append({
                     "operation": "CONNECT",
@@ -199,7 +200,7 @@ class MockLLMProvider(LLMProvider):
                     ],
                     "confidence": 0.75
                 })
-        
+
         # If no specific patterns matched, create some minimal operations
         if not operations:
             operations.append({
@@ -213,7 +214,7 @@ class MockLLMProvider(LLMProvider):
                 "source_pages": [1],
                 "source_quote": "Test content"
             })
-        
+
         # Handle UPDATE operations if entity registry is present in prompt
         if "af_" in prompt and "proj_" in prompt:
             # This suggests we have existing entities - add some UPDATE operations
@@ -228,7 +229,7 @@ class MockLLMProvider(LLMProvider):
                 "source_pages": [2],
                 "source_quote": "Zusätzliche Informationen"
             })
-        
+
         return ExtractionOperations(operations=operations)
 
 
@@ -240,19 +241,19 @@ def patch_llm_provider_for_testing():
     MockLLMProvider when LLM_BACKEND is set to 'mock'.
     """
     from . import llm_providers
-    
+
     original_get_llm_provider = llm_providers.get_llm_provider
-    
+
     def mock_get_llm_provider(*args, **kwargs):
         backend = kwargs.get("backend") or os.getenv("LLM_BACKEND", "mock")
         if backend == "mock":
             return MockLLMProvider()
         else:
             return original_get_llm_provider(*args, **kwargs)
-    
+
     # Replace the function
     llm_providers.get_llm_provider = mock_get_llm_provider
-    
+
     # Also patch in the extraction helpers module if it's imported
     try:
         from . import llm_providers as helpers_llm
@@ -262,6 +263,5 @@ def patch_llm_provider_for_testing():
 
 
 # Auto-patch if mock backend is requested
-import os
 if os.getenv("LLM_BACKEND") == "mock":
     patch_llm_provider_for_testing()

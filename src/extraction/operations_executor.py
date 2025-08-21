@@ -66,10 +66,10 @@ class OperationExecutor:
             OperationType.UPDATE: 1,
             OperationType.CONNECT: 2
         }
-        
+
         # Sort operations by priority (safety measure in case reordering wasn't done upstream)
         reordered_operations = sorted(operations, key=lambda op: operation_priority.get(op.operation, 3))
-        
+
         # Log reordering for debugging transparency
         if len(operations) > 1 and reordered_operations != operations:
             original_types = [op.operation.value for op in operations]

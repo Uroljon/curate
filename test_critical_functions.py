@@ -37,7 +37,7 @@ from src.extraction.operations_executor import OperationExecutor, validate_opera
 
 class TestResult:
     """Simple test result container."""
-    
+
     def __init__(self, test_name: str, passed: bool, error_msg: str = "", details: str = ""):
         self.test_name = test_name
         self.passed = passed
@@ -47,12 +47,12 @@ class TestResult:
 
 class TestRunner:
     """Simple test runner."""
-    
+
     def __init__(self):
         self.results = []
         self.passed = 0
         self.failed = 0
-    
+
     def run_test(self, test_func, test_name: str) -> TestResult:
         """Run a single test function."""
         try:
@@ -68,17 +68,17 @@ class TestRunner:
             result = TestResult(test_name, False, str(e), "Unexpected error")
             self.failed += 1
             print(f"💥 {test_name}: {e}")
-        
+
         self.results.append(result)
         return result
-    
+
     def summary(self):
         """Print test summary."""
         total = self.passed + self.failed
         print(f"\n{'='*60}")
         print(f"TEST SUMMARY: {self.passed}/{total} passed")
         print(f"{'='*60}")
-        
+
         if self.failed > 0:
             print(f"\n❌ FAILED TESTS ({self.failed}):")
             for result in self.results:
@@ -101,7 +101,7 @@ def create_sample_state() -> EnrichedReviewJSON:
                 sources=None
             ),
             EnhancedActionField(
-                id="af_2", 
+                id="af_2",
                 content={"title": "Klimaschutz & Umwelt", "description": "Umweltschutzmaßnahmen"},
                 connections=[],
                 sources=None
@@ -150,7 +150,7 @@ def create_large_state() -> EnrichedReviewJSON:
     projects = []
     measures = []
     indicators = []
-    
+
     # Create 50 entities of each type
     for i in range(50):
         action_fields.append(EnhancedActionField(
@@ -159,28 +159,28 @@ def create_large_state() -> EnrichedReviewJSON:
             connections=[],
             sources=None
         ))
-        
+
         projects.append(EnhancedProject(
             id=f"proj_{i+1}",
             content={"title": f"Project {i+1}", "description": f"Project description {i+1}"},
             connections=[],
             sources=None
         ))
-        
+
         measures.append(EnhancedMeasure(
             id=f"msr_{i+1}",
             content={"title": f"Measure {i+1}", "description": f"Measure description {i+1}"},
             connections=[],
             sources=None
         ))
-        
+
         indicators.append(EnhancedIndicator(
             id=f"ind_{i+1}",
             content={"title": f"Indicator {i+1}", "unit": "Units", "target_values": f"Target {i+1}"},
             connections=[],
             sources=None
         ))
-    
+
     return EnrichedReviewJSON(
         action_fields=action_fields,
         projects=projects,
@@ -256,7 +256,7 @@ def test_format_entity_registry_empty():
     """Test format_entity_registry with empty state."""
     empty_state = create_empty_state()
     result = format_entity_registry(empty_state)
-    
+
     assert "ACTION FIELDS (0 total):" in result
     assert "[None yet]" in result
     assert "PROJECTS (0 total):" in result
@@ -268,7 +268,7 @@ def test_format_entity_registry_sample():
     """Test format_entity_registry with sample state."""
     sample_state = create_sample_state()
     result = format_entity_registry(sample_state)
-    
+
     assert "ACTION FIELDS (2 total):" in result
     assert "Mobilität und Verkehr" in result
     assert "Klimaschutz & Umwelt" in result
@@ -284,17 +284,17 @@ def test_format_entity_registry_large():
     """Test format_entity_registry with many entities (no truncation)."""
     large_state = create_large_state()
     result = format_entity_registry(large_state)
-    
+
     # Should show all 50 entities, no truncation
     assert "ACTION FIELDS (50 total):" in result
     assert "PROJECTS (50 total):" in result
     assert "MEASURES (50 total):" in result
     assert "INDICATORS (50 total):" in result
-    
+
     # Check that first and last entities are both present
     assert "Action Field 1" in result
     assert "Action Field 50" in result
-    assert "Project 1" in result  
+    assert "Project 1" in result
     assert "Project 50" in result
 
 
@@ -302,7 +302,7 @@ def test_format_entity_registry_unicode():
     """Test format_entity_registry with Unicode characters."""
     unicode_state = create_unicode_state()
     result = format_entity_registry(unicode_state)
-    
+
     assert "Mobilität & Verkehr" in result
     assert "Energieeffizienz" in result
     assert "Fahrradwege erweitern" in result
@@ -312,7 +312,7 @@ def test_format_entity_registry_edge_cases():
     """Test format_entity_registry with edge case data."""
     edge_state = create_edge_case_state()
     result = format_entity_registry(edge_state)
-    
+
     assert "ACTION FIELDS (3 total):" in result
     # Should handle empty titles gracefully
     assert result is not None
@@ -328,7 +328,7 @@ def test_format_entity_id_mapping_empty():
     """Test format_entity_id_mapping with empty state."""
     empty_state = create_empty_state()
     result = format_entity_id_mapping(empty_state)
-    
+
     assert result == "No entities yet - use CREATE operations"
 
 
@@ -336,7 +336,7 @@ def test_format_entity_id_mapping_sample():
     """Test format_entity_id_mapping with sample state."""
     sample_state = create_sample_state()
     result = format_entity_id_mapping(sample_state)
-    
+
     assert "ACTION FIELD IDs:" in result
     assert "af_1 → Mobilität und Verkehr" in result
     assert "af_2 → Klimaschutz & Umwelt" in result
@@ -360,7 +360,7 @@ def test_format_entity_id_mapping_duplicates():
                 sources=None
             ),
             EnhancedActionField(
-                id="af_2", 
+                id="af_2",
                 content={"title": "Mobilität & Verkehr"},  # Similar but different
                 connections=[],
                 sources=None
@@ -370,9 +370,9 @@ def test_format_entity_id_mapping_duplicates():
         measures=[],
         indicators=[]
     )
-    
+
     result = format_entity_id_mapping(state)
-    
+
     # Both should be listed with different IDs
     assert "af_1 → Mobilität und Verkehr" in result
     assert "af_2 → Mobilität & Verkehr" in result
@@ -387,7 +387,7 @@ def test_format_context_json_empty():
     result = format_context_json(None)
     expected = "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
     assert result == expected
-    
+
     result = format_context_json(create_empty_state())
     # Should call format_entity_registry and format_entity_id_mapping
     assert "No entities yet" in result or "None yet" in result
@@ -397,7 +397,7 @@ def test_format_context_json_sample():
     """Test format_context_json with sample state."""
     sample_state = create_sample_state()
     result = format_context_json(sample_state)
-    
+
     # Should contain registry and ID mapping
     assert "ENTITY REGISTRY" in result
     assert "ACTION FIELD IDs:" in result
@@ -414,9 +414,9 @@ def test_create_extraction_prompt_simplified():
     sample_state = create_sample_state()
     chunk_text = "Test chunk text about mobility."
     page_numbers = [1, 2]
-    
+
     result = create_extraction_prompt("simplified", chunk_text, sample_state, page_numbers)
-    
+
     assert "Extrahieren Sie aus diesem Textabschnitt" in result
     assert "KONSISTENZ-ANWEISUNGEN:" in result
     assert chunk_text in result
@@ -428,9 +428,9 @@ def test_create_extraction_prompt_operations():
     sample_state = create_sample_state()
     chunk_text = "Test chunk text about climate protection."
     page_numbers = [3, 4, 5]
-    
+
     result = create_extraction_prompt("operations", chunk_text, sample_state, page_numbers)
-    
+
     assert "Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN" in result
     assert "VERPFLICHTENDE PRÜFUNG vor jeder CREATE-Operation:" in result
     assert "Seiten 3, 4, 5" in result
@@ -442,9 +442,9 @@ def test_create_extraction_prompt_operations_empty_context():
     """Test create_extraction_prompt with operations template and empty context."""
     chunk_text = "First chunk text."
     page_numbers = [1]
-    
+
     result = create_extraction_prompt("operations", chunk_text, None, page_numbers)
-    
+
     assert "ERSTER CHUNK: Noch keine Entities extrahiert" in result
     assert chunk_text in result
 
@@ -452,7 +452,7 @@ def test_create_extraction_prompt_operations_empty_context():
 def test_create_extraction_prompt_invalid_template():
     """Test create_extraction_prompt with invalid template type."""
     sample_state = create_sample_state()
-    
+
     try:
         create_extraction_prompt("invalid_template", "text", sample_state, [1])
         assert False, "Should have raised ValueError for invalid template"
@@ -464,9 +464,9 @@ def test_create_extraction_prompt_no_page_numbers():
     """Test create_extraction_prompt without page numbers."""
     sample_state = create_sample_state()
     chunk_text = "Test chunk text."
-    
+
     result = create_extraction_prompt("operations", chunk_text, sample_state, None)
-    
+
     assert "Seiten N/A" in result or "N/A" in result
 
 
@@ -491,10 +491,10 @@ def test_validate_operations_valid():
             confidence=0.8
         )
     ]
-    
+
     sample_state = create_sample_state()
     errors = validate_operations(operations, sample_state)
-    
+
     assert errors == [], f"Expected no errors, got: {errors}"
 
 
@@ -508,9 +508,9 @@ def test_validate_operations_create_without_content():
             confidence=0.9
         )
     ]
-    
+
     errors = validate_operations(operations)
-    
+
     assert len(errors) == 1
     assert "CREATE requires content" in errors[0]
 
@@ -526,9 +526,9 @@ def test_validate_operations_update_without_entity_id():
             confidence=0.8
         )
     ]
-    
+
     errors = validate_operations(operations)
-    
+
     assert len(errors) == 1
     assert "UPDATE requires entity_id" in errors[0]
 
@@ -544,9 +544,9 @@ def test_validate_operations_connect_without_connections():
             confidence=0.7
         )
     ]
-    
+
     errors = validate_operations(operations)
-    
+
     assert len(errors) == 1
     assert "CONNECT requires connections" in errors[0]
 
@@ -562,10 +562,10 @@ def test_validate_operations_nonexistent_entity():
             confidence=0.8
         )
     ]
-    
+
     sample_state = create_sample_state()
     errors = validate_operations(operations, sample_state)
-    
+
     assert len(errors) == 1
     assert "Entity nonexistent_id not found in current state" in errors[0]
 
@@ -594,10 +594,10 @@ def test_validate_operations_mixed():
             confidence=0.7
         )
     ]
-    
+
     sample_state = create_sample_state()
     errors = validate_operations(operations, sample_state)
-    
+
     assert len(errors) == 1
     assert "UPDATE requires entity_id" in errors[0]
 
@@ -610,7 +610,7 @@ def test_apply_operations_create():
     """Test apply_operations with CREATE operations."""
     executor = OperationExecutor()
     empty_state = create_empty_state()
-    
+
     operations = [
         EntityOperation(
             operation=OperationType.CREATE,
@@ -619,9 +619,9 @@ def test_apply_operations_create():
             confidence=0.9
         )
     ]
-    
+
     new_state, log = executor.apply_operations(empty_state, operations)
-    
+
     assert len(new_state.action_fields) == 1
     assert new_state.action_fields[0].content["title"] == "New Action Field"
     assert log.successful_operations == 1
@@ -632,7 +632,7 @@ def test_apply_operations_update():
     """Test apply_operations with UPDATE operations."""
     executor = OperationExecutor()
     sample_state = create_sample_state()
-    
+
     operations = [
         EntityOperation(
             operation=OperationType.UPDATE,
@@ -642,9 +642,9 @@ def test_apply_operations_update():
             confidence=0.8
         )
     ]
-    
+
     new_state, log = executor.apply_operations(sample_state, operations)
-    
+
     # Find the updated entity
     updated_af = next(af for af in new_state.action_fields if af.id == "af_1")
     assert "Updated description" in updated_af.content["description"]
@@ -653,9 +653,9 @@ def test_apply_operations_update():
 
 def test_apply_operations_connect():
     """Test apply_operations with CONNECT operations."""
-    executor = OperationExecutor() 
+    executor = OperationExecutor()
     sample_state = create_sample_state()
-    
+
     operations = [
         EntityOperation(
             operation=OperationType.CONNECT,
@@ -671,9 +671,9 @@ def test_apply_operations_connect():
             confidence=0.7
         )
     ]
-    
+
     new_state, log = executor.apply_operations(sample_state, operations)
-    
+
     # Find the connected entity
     connected_af = next(af for af in new_state.action_fields if af.id == "af_1")
     assert len(connected_af.connections) == 1
@@ -685,7 +685,7 @@ def test_apply_operations_invalid_entity_id():
     """Test apply_operations with invalid entity ID."""
     executor = OperationExecutor()
     sample_state = create_sample_state()
-    
+
     operations = [
         EntityOperation(
             operation=OperationType.UPDATE,
@@ -695,9 +695,9 @@ def test_apply_operations_invalid_entity_id():
             confidence=0.8
         )
     ]
-    
+
     new_state, log = executor.apply_operations(sample_state, operations)
-    
+
     # Should not modify state and should log failure
     assert new_state == sample_state  # State unchanged
     assert log.successful_operations == 0
@@ -708,11 +708,11 @@ def test_apply_operations_empty_list():
     """Test apply_operations with empty operations list."""
     executor = OperationExecutor()
     sample_state = create_sample_state()
-    
+
     operations = []
-    
+
     new_state, log = executor.apply_operations(sample_state, operations)
-    
+
     assert new_state == sample_state
     assert log.successful_operations == 0
     assert log.total_operations == 0
@@ -722,7 +722,7 @@ def test_apply_operations_update_merge_strings():
     """Test apply_operations UPDATE merges string fields correctly."""
     executor = OperationExecutor()
     sample_state = create_sample_state()
-    
+
     operations = [
         EntityOperation(
             operation=OperationType.UPDATE,
@@ -732,9 +732,9 @@ def test_apply_operations_update_merge_strings():
             confidence=0.8
         )
     ]
-    
+
     new_state, log = executor.apply_operations(sample_state, operations)
-    
+
     updated_af = next(af for af in new_state.action_fields if af.id == "af_1")
     # Should merge, not replace
     assert "Nachhaltige Verkehrslösungen" in updated_af.content["description"]
@@ -748,33 +748,33 @@ def test_apply_operations_update_merge_strings():
 def run_all_tests():
     """Run all tests and report results."""
     runner = TestRunner()
-    
+
     print("🧪 Running Critical Functions Test Suite")
     print("="*60)
-    
+
     # Entity Registry Tests
     print("\n📋 Entity Registry Functions:")
     runner.run_test(test_format_entity_registry_empty, "format_entity_registry_empty")
-    runner.run_test(test_format_entity_registry_sample, "format_entity_registry_sample") 
+    runner.run_test(test_format_entity_registry_sample, "format_entity_registry_sample")
     runner.run_test(test_format_entity_registry_large, "format_entity_registry_large")
     runner.run_test(test_format_entity_registry_unicode, "format_entity_registry_unicode")
     runner.run_test(test_format_entity_registry_edge_cases, "format_entity_registry_edge_cases")
-    
+
     runner.run_test(test_format_entity_id_mapping_empty, "format_entity_id_mapping_empty")
     runner.run_test(test_format_entity_id_mapping_sample, "format_entity_id_mapping_sample")
     runner.run_test(test_format_entity_id_mapping_duplicates, "format_entity_id_mapping_duplicates")
-    
+
     runner.run_test(test_format_context_json_empty, "format_context_json_empty")
     runner.run_test(test_format_context_json_sample, "format_context_json_sample")
-    
-    # Prompt Generation Tests  
+
+    # Prompt Generation Tests
     print("\n📝 Prompt Generation Functions:")
     runner.run_test(test_create_extraction_prompt_simplified, "create_extraction_prompt_simplified")
     runner.run_test(test_create_extraction_prompt_operations, "create_extraction_prompt_operations")
     runner.run_test(test_create_extraction_prompt_operations_empty_context, "create_extraction_prompt_operations_empty_context")
     runner.run_test(test_create_extraction_prompt_invalid_template, "create_extraction_prompt_invalid_template")
     runner.run_test(test_create_extraction_prompt_no_page_numbers, "create_extraction_prompt_no_page_numbers")
-    
+
     # Operations Processing Tests
     print("\n⚙️ Operations Processing Functions:")
     runner.run_test(test_validate_operations_valid, "validate_operations_valid")
@@ -783,20 +783,20 @@ def run_all_tests():
     runner.run_test(test_validate_operations_connect_without_connections, "validate_operations_connect_without_connections")
     runner.run_test(test_validate_operations_nonexistent_entity, "validate_operations_nonexistent_entity")
     runner.run_test(test_validate_operations_mixed, "validate_operations_mixed")
-    
+
     runner.run_test(test_apply_operations_create, "apply_operations_create")
     runner.run_test(test_apply_operations_update, "apply_operations_update")
     runner.run_test(test_apply_operations_connect, "apply_operations_connect")
     runner.run_test(test_apply_operations_invalid_entity_id, "apply_operations_invalid_entity_id")
     runner.run_test(test_apply_operations_empty_list, "apply_operations_empty_list")
     runner.run_test(test_apply_operations_update_merge_strings, "apply_operations_update_merge_strings")
-    
+
     runner.summary()
     return runner
 
 
 if __name__ == "__main__":
     runner = run_all_tests()
-    
+
     # Exit with error code if tests failed
     sys.exit(1 if runner.failed > 0 else 0)

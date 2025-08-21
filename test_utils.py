@@ -19,18 +19,18 @@ from reportlab.pdfgen import canvas
 
 class TestPDFGenerator:
     """Simple PDF generation for testing."""
-    
+
     @staticmethod
     def create_german_municipal_pdf() -> bytes:
         """Create a realistic German municipal strategy PDF."""
         buffer = io.BytesIO()
         p = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
-        
+
         # Page 1: Title and Introduction
         p.setFont("Helvetica-Bold", 16)
         p.drawString(50, height - 50, "Klimaschutzkonzept Stadt Musterstadt 2030")
-        
+
         p.setFont("Helvetica", 12)
         content_page1 = [
             "",
@@ -55,13 +55,13 @@ class TestPDFGenerator:
             "• Förderprogramm für private Wärmedämmung",
             "• Installation von 100 Photovoltaik-Anlagen auf städtischen Dächern"
         ]
-        
+
         y_position = height - 80
         for line in content_page1:
             if y_position < 50:  # Start new page
                 p.showPage()
                 y_position = height - 50
-            
+
             if line.startswith("•"):
                 p.drawString(70, y_position, line)
             elif line.startswith("1."):
@@ -70,14 +70,14 @@ class TestPDFGenerator:
                 p.setFont("Helvetica", 12)
             else:
                 p.drawString(50, y_position, line)
-            
+
             y_position -= 15
-        
+
         # Page 2: More content
         p.showPage()
         p.setFont("Helvetica-Bold", 14)
         p.drawString(50, height - 50, "2. Indikatoren und Zielwerte")
-        
+
         p.setFont("Helvetica", 12)
         content_page2 = [
             "",
@@ -100,12 +100,12 @@ class TestPDFGenerator:
             "Umweltamt: Monitoring und Datenerfassung",
             "Tiefbauamt: Umsetzung Infrastrukturmaßnahmen"
         ]
-        
+
         y_position = height - 80
         for line in content_page2:
             if y_position < 50:
                 break
-            
+
             if line.startswith("Indikator:"):
                 p.setFont("Helvetica-Bold", 12)
                 p.drawString(50, y_position, line)
@@ -116,28 +116,28 @@ class TestPDFGenerator:
                 p.setFont("Helvetica", 12)
             else:
                 p.drawString(50, y_position, line)
-            
+
             y_position -= 15
-        
+
         p.save()
         buffer.seek(0)
         return buffer.read()
-    
+
     @staticmethod
     def create_minimal_pdf() -> bytes:
         """Create minimal PDF for basic testing."""
         buffer = io.BytesIO()
         p = canvas.Canvas(buffer, pagesize=letter)
-        
+
         p.setFont("Helvetica", 12)
         p.drawString(50, 750, "Test Document")
         p.drawString(50, 730, "Handlungsfeld: Test Action Field")
         p.drawString(50, 710, "Projekt: Test Project")
-        
+
         p.save()
         buffer.seek(0)
         return buffer.read()
-    
+
     @staticmethod
     def create_empty_pdf() -> bytes:
         """Create empty PDF for edge case testing."""
@@ -150,40 +150,40 @@ class TestPDFGenerator:
 
 class APIClient:
     """Simple API client for testing."""
-    
+
     def __init__(self, base_url: str = "http://127.0.0.1:8000"):
         self.base_url = base_url
         self.session = requests.Session()
-    
-    def upload_pdf(self, pdf_content: bytes, filename: str = "test.pdf") -> Dict[str, Any]:
+
+    def upload_pdf(self, pdf_content: bytes, filename: str = "test.pdf") -> dict[str, Any]:
         """Upload PDF and return response."""
         files = {"file": (filename, io.BytesIO(pdf_content), "application/pdf")}
-        
+
         response = self.session.post(f"{self.base_url}/upload", files=files)
         response.raise_for_status()
-        
+
         return response.json()
-    
-    def extract_operations(self, source_id: str) -> Dict[str, Any]:
+
+    def extract_operations(self, source_id: str) -> dict[str, Any]:
         """Call operations-based extraction endpoint."""
         response = self.session.get(
             f"{self.base_url}/extract_enhanced_operations",
             params={"source_id": source_id}
         )
         response.raise_for_status()
-        
+
         return response.json()
-    
-    def extract_enhanced(self, source_id: str) -> Dict[str, Any]:
+
+    def extract_enhanced(self, source_id: str) -> dict[str, Any]:
         """Call enhanced extraction endpoint."""
         response = self.session.get(
             f"{self.base_url}/extract_enhanced",
             params={"source_id": source_id}
         )
         response.raise_for_status()
-        
+
         return response.json()
-    
+
     def health_check(self) -> bool:
         """Check if API is running."""
         try:
@@ -195,157 +195,87 @@ class APIClient:
 
 class MockLLMProvider:
     """Mock LLM provider for fast testing."""
-    
-    @staticmethod
-    def get_mock_operations(chunk_text: str, current_entities: int = 0) -> Dict[str, Any]:
-        """Return predictable operations based on chunk content."""
-        operations = []
-        
-        # Detect content patterns and return appropriate operations
-        if "mobilität" in chunk_text.lower() or "verkehr" in chunk_text.lower():
-            operations.append({
-                "operation": "CREATE",
-                "entity_type": "action_field",
-                "content": {
-                    "title": "Mobilität und Verkehr",
-                    "description": "Nachhaltige Verkehrslösungen"
-                },
-                "confidence": 0.9,
-                "source_pages": [1],
-                "source_quote": "Mobilität und Verkehr"
-            })
-        
-        if "radweg" in chunk_text.lower() or "fahrrad" in chunk_text.lower():
-            operations.append({
-                "operation": "CREATE",
-                "entity_type": "project",
-                "content": {
-                    "title": "Ausbau Radwegenetz",
-                    "description": "Erweiterung der Fahrradinfrastruktur"
-                },
-                "confidence": 0.8,
-                "source_pages": [1],
-                "source_quote": "Ausbau des Radwegenetzes"
-            })
-        
-        if "co2" in chunk_text.lower() or "emission" in chunk_text.lower():
-            operations.append({
-                "operation": "CREATE",
-                "entity_type": "indicator",
-                "content": {
-                    "title": "CO2-Reduktion Verkehrssektor",
-                    "description": "Jährliche CO2-Einsparung im Verkehrsbereich",
-                    "unit": "Tonnen CO2/Jahr",
-                    "target_values": "5.000 Tonnen bis 2030"
-                },
-                "confidence": 0.85,
-                "source_pages": [1, 2],
-                "source_quote": "CO2-Emissionen bis 2030 um 40% reduziert"
-            })
-        
-        # Add connections if multiple entities exist
-        if len(operations) >= 2 and current_entities > 0:
-            operations.append({
-                "operation": "CONNECT",
-                "entity_type": "action_field",
-                "entity_id": "af_1",
-                "connections": [
-                    {
-                        "from_id": "af_1",
-                        "to_id": "proj_1",
-                        "confidence": 0.8
-                    }
-                ],
-                "confidence": 0.7
-            })
-        
-        return {"operations": operations}
+
 
 
 class TestValidator:
     """Validation utilities for test results."""
-    
+
     @staticmethod
-    def validate_upload_response(response: Dict[str, Any]) -> None:
+    def validate_upload_response(response: dict[str, Any]) -> None:
         """Validate upload endpoint response."""
         required_fields = [
-            "pages_extracted", "total_text_length", "source_id", 
+            "pages_extracted", "total_text_length", "source_id",
             "original_filename", "page_attribution_enabled"
         ]
-        
+
         for field in required_fields:
             assert field in response, f"Missing field: {field}"
-        
+
         assert isinstance(response["pages_extracted"], int)
         assert response["pages_extracted"] > 0, "No pages extracted"
         assert isinstance(response["total_text_length"], int)
         assert response["total_text_length"] > 0, "No text extracted"
         assert isinstance(response["source_id"], str)
         assert len(response["source_id"]) > 0, "Empty source_id"
-    
+
     @staticmethod
-    def validate_extraction_response(response: Dict[str, Any]) -> None:
+    def validate_extraction_response(response: dict[str, Any]) -> None:
         """Validate extraction endpoint response."""
         # Check response structure - newer API format doesn't have 'success' field
         assert "extraction_result" in response, "Missing extraction_result"
         assert "source_id" in response, "Missing source_id"
         assert "timestamp" in response, "Missing timestamp"
-        
+
         result = response["extraction_result"]
-        
+
         # Validate 4-bucket structure
         required_buckets = ["action_fields", "projects", "measures", "indicators"]
         for bucket in required_buckets:
             assert bucket in result, f"Missing bucket: {bucket}"
             assert isinstance(result[bucket], list), f"{bucket} should be a list"
-        
+
         # At least one entity should exist
         total_entities = sum(len(result[bucket]) for bucket in required_buckets)
         assert total_entities > 0, "No entities extracted"
-        
+
         print(f"✅ Extraction validated: {total_entities} total entities")
         print(f"   - Action Fields: {len(result['action_fields'])}")
         print(f"   - Projects: {len(result['projects'])}")
         print(f"   - Measures: {len(result['measures'])}")
         print(f"   - Indicators: {len(result['indicators'])}")
-    
+
     @staticmethod
-    def validate_entity_structure(entity: Dict[str, Any], entity_type: str) -> None:
+    def validate_entity_structure(entity: dict[str, Any], entity_type: str) -> None:
         """Validate individual entity structure."""
         assert "id" in entity, f"{entity_type} missing id field"
         assert "content" in entity, f"{entity_type} missing content field"
         assert "connections" in entity, f"{entity_type} missing connections field"
-        
+
         # Validate content has title
         assert "title" in entity["content"], f"{entity_type} content missing title"
         assert len(entity["content"]["title"]) > 0, f"{entity_type} has empty title"
-        
+
         # Validate connections structure
         assert isinstance(entity["connections"], list), f"{entity_type} connections should be list"
 
 
 class TestEnvironment:
     """Test environment setup and cleanup."""
-    
+
     @staticmethod
     def setup_mock_llm():
         """Setup mock LLM environment."""
         os.environ["LLM_BACKEND"] = "mock"
-    
-    @staticmethod
-    def setup_real_llm():
-        """Setup real LLM environment."""
-        if "OPENROUTER_API_KEY" not in os.environ:
-            raise ValueError("OPENROUTER_API_KEY not set for real LLM testing")
-        os.environ["LLM_BACKEND"] = "openrouter"
-    
+
+
     @staticmethod
     def cleanup_test_files():
         """Clean up test files from uploads directory."""
         upload_dir = Path("data/uploads")
         if not upload_dir.exists():
             return
-        
+
         # Remove test files (those starting with test_)
         for file in upload_dir.glob("*test_*"):
             try:
@@ -353,23 +283,23 @@ class TestEnvironment:
                 print(f"Cleaned up: {file.name}")
             except Exception as e:
                 print(f"Failed to clean up {file.name}: {e}")
-    
+
     @staticmethod
     def wait_for_api(client: APIClient, timeout: int = 30) -> bool:
         """Wait for API to be ready."""
         start_time = time.time()
-        
+
         while time.time() - start_time < timeout:
             if client.health_check():
                 return True
-            
+
             print("Waiting for API to start...")
             time.sleep(2)
-        
+
         return False
 
 
-def full_pipeline_test(pdf_content: bytes, use_mock: bool = False) -> Dict[str, Any]:
+def full_pipeline_test(pdf_content: bytes, use_mock: bool = False) -> dict[str, Any]:
     """
     Complete pipeline test helper.
     
@@ -382,22 +312,22 @@ def full_pipeline_test(pdf_content: bytes, use_mock: bool = False) -> Dict[str, 
     """
     if use_mock:
         TestEnvironment.setup_mock_llm()
-    
+
     client = APIClient()
-    
+
     # Step 1: Upload
     print("📤 Testing PDF upload...")
     upload_response = client.upload_pdf(pdf_content, "test_document.pdf")
     TestValidator.validate_upload_response(upload_response)
     print(f"✅ Upload successful. Source ID: {upload_response['source_id']}")
-    
+
     # Step 2: Extract
     print("🔄 Testing operations-based extraction...")
     source_id = upload_response["source_id"]
     extraction_response = client.extract_operations(source_id)
     TestValidator.validate_extraction_response(extraction_response)
     print("✅ Extraction successful")
-    
+
     return {
         "upload": upload_response,
         "extraction": extraction_response,
