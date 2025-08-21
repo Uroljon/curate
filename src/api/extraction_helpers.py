@@ -333,12 +333,15 @@ def build_operations_prompt(
     page_list = ", ".join(map(str, sorted(page_numbers))) if page_numbers else "N/A"
     
     if mode == "nodes":
+        # Inject merge-policy fragment so UPDATE aligns with executor semantics
+        update_merge_rules = get_prompt("operations.fragments.update_merge_rules")
         return get_prompt(
             "operations.templates.operations_nodes_chunk",
             context_text=context_text,
             page_list=page_list,
             chunk_text=chunk_text,
             iteration=iteration or 1,
+            update_merge_rules=update_merge_rules,
         )
     elif mode == "connections":
         return get_prompt(
@@ -933,9 +936,33 @@ def _get_english_pattern():
     return re.compile(pattern, re.IGNORECASE)
 
 
+def _count_total_connections(current_state) -> int:
+    """Count total connections across all entity types."""
+    total_connections = 0
+    
+    # Count connections in action fields
+    for af in current_state.action_fields:
+        total_connections += len(af.connections)
+    
+    # Count connections in projects  
+    for project in current_state.projects:
+        total_connections += len(project.connections)
+        
+    # Count connections in measures
+    for measure in current_state.measures:
+        total_connections += len(measure.connections)
+        
+    # Count connections in indicators
+    for indicator in current_state.indicators:
+        total_connections += len(indicator.connections)
+    
+    return total_connections
+
+
 def _print_pipeline_token_summary(page_aware_text, chunks_with_pages, final_result):
     """Print comprehensive token summary across the entire pipeline."""
     import json
+    from src.utils.token_tracker import get_llm_token_summary
     
     # Calculate PDF tokens
     all_pdf_text = " ".join(text for text, _ in page_aware_text)
@@ -946,6 +973,13 @@ def _print_pipeline_token_summary(page_aware_text, chunks_with_pages, final_resu
     chunk_tokens = [estimate_tokens(chunk) for chunk, _ in chunks_with_pages]
     total_chunk_tokens = sum(chunk_tokens)
     avg_chunk_tokens = total_chunk_tokens / len(chunk_tokens) if chunk_tokens else 0
+    
+    # Get LLM token summary
+    llm_summary = get_llm_token_summary()
+    llm_input_tokens = llm_summary["total_input_tokens"]
+    llm_output_tokens = llm_summary["total_output_tokens"]
+    llm_total_tokens = llm_input_tokens + llm_output_tokens
+    llm_calls = llm_summary["total_calls"]
     
     # Calculate final JSON tokens
     if hasattr(final_result, 'model_dump'):
@@ -962,6 +996,7 @@ def _print_pipeline_token_summary(page_aware_text, chunks_with_pages, final_resu
     print("="*80)
     print(f"📄 PDF Input:      {pdf_tokens:>8,} tokens ({pdf_pages} pages)")
     print(f"🧩 Chunks:         {total_chunk_tokens:>8,} tokens ({len(chunks_with_pages)} chunks, avg: {avg_chunk_tokens:.0f})")
+    print(f"🤖 LLM Usage:      {llm_total_tokens:>8,} tokens ({llm_calls} calls, {llm_input_tokens:,} in → {llm_output_tokens:,} out)")
     print(f"📋 Final JSON:     {json_tokens:>8,} tokens ({len(final_json):,} chars)")
     print(f"⚡ Compression:    {compression_ratio:>8.1f}% (PDF→JSON token ratio)")
     print("="*80)
@@ -1021,6 +1056,10 @@ def extract_direct_to_enhanced(
     Returns:
         Enhanced JSON structure or None if extraction fails
     """
+    from src.utils.token_tracker import reset_llm_token_tracking
+
+    # Reset LLM token tracking for this extraction run
+    reset_llm_token_tracking()
 
     from src.core.config import (
         ENHANCED_CHUNK_MAX_CHARS,
@@ -1135,10 +1174,11 @@ def extract_direct_to_enhanced(
     # Step 6: Return as dictionary for API response
     extraction_time = time.time() - start_time
     print(f"✅ Direct enhanced extraction completed in {extraction_time:.1f}s")
+    total_connections = _count_total_connections(final_result)
     print(
         f"📊 Final: {len(final_result.action_fields)} action fields, "
         f"{len(final_result.projects)} projects, {len(final_result.measures)} measures, "
-        f"{len(final_result.indicators)} indicators"
+        f"{len(final_result.indicators)} indicators, {total_connections} connections"
     )
     
     # Calculate and print comprehensive token summary
@@ -1182,6 +1222,10 @@ def extract_direct_to_enhanced_with_operations(
     Returns:
         Enhanced JSON structure or None if extraction fails
     """
+    from src.utils.token_tracker import reset_llm_token_tracking
+
+    # Reset LLM token tracking for this extraction run
+    reset_llm_token_tracking()
 
     from src.core.config import (
         ENHANCED_CHUNK_MAX_CHARS,
@@ -1250,10 +1294,11 @@ def extract_direct_to_enhanced_with_operations(
     print(f"   - Successful: {operation_summary['successful_operations']}")
     print(f"   - Success rate: {operation_summary['success_rate']:.1%}")
     print(f"   - Entities created: {operation_summary['entities_created']}")
+    total_connections = _count_total_connections(current_state)
     print(
         f"📊 Final: {len(current_state.action_fields)} action fields, "
         f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
-        f"{len(current_state.indicators)} indicators"
+        f"{len(current_state.indicators)} indicators, {total_connections} connections"
     )
     
     # Calculate and print comprehensive token summary
@@ -1597,10 +1642,11 @@ def _apply_validated_operations(
                 print(
                     f"✅ Chunk {chunk_index+1} ({mode}): {operation_log.successful_operations}/{operation_log.total_operations} operations applied"
                 )
+                total_connections = _count_total_connections(current_state)
                 print(
                     f"📊 Current state: {len(current_state.action_fields)} action fields, "
                     f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
-                    f"{len(current_state.indicators)} indicators"
+                    f"{len(current_state.indicators)} indicators, {total_connections} connections"
                 )
                 return current_state, operations, operation_log
             else:

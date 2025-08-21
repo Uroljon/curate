@@ -9,6 +9,29 @@ import json
 from typing import Any
 
 
+# Global token tracking for pipeline summaries
+_llm_token_accumulator = {
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "total_calls": 0
+}
+
+
+def reset_llm_token_tracking():
+    """Reset the global LLM token accumulator for a new extraction run."""
+    global _llm_token_accumulator
+    _llm_token_accumulator = {
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "total_calls": 0
+    }
+
+
+def get_llm_token_summary() -> dict[str, int]:
+    """Get the current LLM token usage summary."""
+    return _llm_token_accumulator.copy()
+
+
 def estimate_tokens(text: str) -> int:
     """
     Estimate the number of tokens in a text string.
@@ -38,10 +61,17 @@ def log_llm_response_tokens(response, input_tokens: int, response_time: float) -
     Returns:
         Number of output tokens
     """
+    global _llm_token_accumulator
+    
     # Get content for token calculation
     temp_content = response.choices[0].message.content.strip()
     output_tokens = estimate_tokens(temp_content)
     efficiency = output_tokens / input_tokens if input_tokens > 0 else 0
+    
+    # Accumulate tokens for pipeline summary
+    _llm_token_accumulator["total_input_tokens"] += input_tokens
+    _llm_token_accumulator["total_output_tokens"] += output_tokens
+    _llm_token_accumulator["total_calls"] += 1
     
     print(f"      🤖 LLM: {input_tokens:,} → {output_tokens:,} tokens ({efficiency:.1f}x expansion) in {response_time:.2f}s")
     
