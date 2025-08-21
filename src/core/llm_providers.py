@@ -768,6 +768,13 @@ def get_llm_provider(
             max_tokens=kwargs.get("max_tokens", VLLM_MAX_TOKENS),
             timeout=kwargs.get("timeout", MODEL_TIMEOUT),
         )
+    elif backend == "mock":
+        # Import mock provider for testing
+        try:
+            from .mock_llm_provider import MockLLMProvider
+            return MockLLMProvider(model_name=model_name or "mock", temperature=temperature)
+        except ImportError:
+            raise ValueError("Mock LLM provider not available. Ensure mock_llm_provider.py is in the project root.")
     elif backend in ["openai", "gemini"]:
         from .config import (
             EXTERNAL_API_KEY,

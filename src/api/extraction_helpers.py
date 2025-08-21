@@ -75,8 +75,9 @@ HIERARCHISCHE STRUKTUR:
 
 KRITISCHE VERBINDUNGSREGELN:
 - CONNECT-Operationen zu bestehenden UND neu erstellten Entities sind ERWÜNSCHT!
-- Verwenden Sie exakte Entity-IDs aus ENTITY REGISTRY
-- Neue Verbindungen zu bereits vorhandenen Entities sind ein ZIEL - nutzen Sie diese aktiv!
+- NIEMALS Entity-Namen/Titel verwenden - NUR die exakten IDs aus der ID-MAPPING-TABELLE!
+- Beispiel: "af_1" ist korrekt, "Mobilität und Verkehr" ist FALSCH
+- Beispiel: "proj_2" ist korrekt, "Solarinitiative" ist FALSCH  
 - CONNECT-Operationen erfordern Konfidenz ≥ 0.7 und klaren thematischen Zusammenhang
 
 ENTSCHEIDUNGSLOGIK (STRENG BEFOLGEN):
@@ -87,8 +88,9 @@ ENTSCHEIDUNGSLOGIK (STRENG BEFOLGEN):
 5. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
 
 QUALITÄTSPRINZIPIEN:
-- Verwenden Sie exakte Entity-IDs aus dem ENTITY REGISTRY
-- Fügen Sie immer Quellenangaben (source_pages, source_quote) hinzu
+- ⚠️  KRITISCH: In from_id/to_id NUR IDs verwenden (af_1, proj_2), NIEMALS Titel ("Mobilität")!
+- Kopieren Sie IDs EXAKT aus der ID-MAPPING-TABELLE oben
+- Fügen Sie immer Quellenangaben (source_pages, source_quote) hinzu  
 - Seien Sie konservativ bei neuen Handlungsfeldern
 - Bei Unsicherheit: UPDATE verwenden statt CREATE
 - Erstellen Sie CONNECT-Operationen wann immer thematische Zusammenhänge erkennbar sind
@@ -347,11 +349,12 @@ TEXTABSCHNITT (Seiten {page_list}):
 {chunk_text}
 
 QUALITÄTSKONTROLLE:
-- Verwenden Sie NUR exakte Entity-IDs aus ENTITY REGISTRY
+- ⚠️  CONNECT from_id/to_id: NUR IDs aus ID-MAPPING verwenden (af_1, proj_2), NICHT Titel!
+- FALSCH: "to_id": "Mobilität und Verkehr" ❌
+- RICHTIG: "to_id": "af_1" ✅
 - Fügen Sie IMMER source_pages und source_quote hinzu (außer bei CONNECT)
 - Konfidenz ≥ 0.7 für CONNECT, ≥ 0.8 für CREATE
 - Bevorzugen Sie UPDATE über CREATE bei jeder semantischen Überlappung
-- Kanonische Titel verwenden für bessere spätere Verknüpfung
 
 Antworten Sie NUR mit der Operations-Liste im JSON-Format:
 {{"operations": [...]}}"""
