@@ -160,7 +160,7 @@ templates:
 
     ITERATION: {iteration}
     - Maximal ca. 30 Verbindungen gesamt pro Antwort (Summe aller connections-Arrays; KEIN Hard-Limit).
-    - Wenn nach dieser Antwort weitere gültige Verbindungen verbleiben, MUSS das Top-Level-Feld "continue": true gesetzt werden.
+    - WICHTIG: Setzen Sie "continue": false sobald der Chunk erschöpft ist - das ist NORMAL und ERWÜNSCHT!
     - Niemals Items abschneiden/teilen, um die 30 zu erreichen – immer vollständige Items liefern (auch wenn dadurch >30 entstehen).
     - IMMER genau EIN JSON-Objekt ohne Erklärtext zurückgeben: {{"operations": [...], "continue": true|false}}
 
@@ -173,21 +173,37 @@ templates:
     - ❌ UPDATE: VERBOTEN in diesem Pass - Entities bereits vollständig
     - ✅ CONNECT: Verbindungen zwischen bestehenden Entities aus ID-MAPPING-TABELLE
 
-    VERBINDUNGS-CHECKLISTE (aktiv prüfen):
-    - action_field → project (Projekt gehört zu Handlungsfeld)
-    - project → measure (Maßnahme gehört zu Projekt)
-    - project/measure → indicator (Indikator misst Erfolg)
-    - action_field → action_field (Hierarchie: Ober-/Unterthema; nur bei expliziter Evidenz)
-    - project → project (Hierarchie: Projekt → Teilprojekt; nur bei expliziter Evidenz)
+    VERBINDUNGSREGELN BASIEREND AUF DATENBANKSCHEMA:
 
-    KRITISCHE VERBINDUNGSREGELN:
+    ERLAUBTE VERBINDUNGEN (NUR DIESE!):
+    1. Dimensions → Measures (via dimensionIds in MeasuresExtended)
+       - Handlungsfeld enthält Projekt/Maßnahme
+       - Richtung: af_X → proj_Y
+    
+    2. Measures → Indicators (via indicatorIds in MeasuresExtended)
+       - Projekt/Maßnahme hat zugehörige Indikatoren
+       - Richtung: proj_X → ind_Y oder msr_X → ind_Y
+    
+    3. Dimensions → Indicators (via dimensionIds in Indicators)
+       - Handlungsfeld hat direkte Indikatoren
+       - Richtung: af_X → ind_Y
+    
+    4. Hierarchien (nur bei expliziter Evidenz):
+       - Dimensions → Dimensions (via parentDimensionId)
+       - Measures → Measures (via parentMeasure)
+       - Richtung: parent → child
+
+    KEINE VERBINDUNGEN FÜR:
+    - Strategies (diese sind CONTAINER, keine hierarchischen Eltern!)
+    - Rückwärts-Verbindungen (child → parent)
+    - Quer-Verbindungen zwischen gleichen Typen (außer Hierarchien)
+
+    KRITISCHE REGELN:
     - NUR exakte IDs aus ID-MAPPING-TABELLE verwenden (af_1, proj_2, etc.)
     - NIEMALS Entity-Namen/Titel verwenden
     - NIEMALS temporäre IDs (temp_, placeholder_)
     - Bestehende Verbindungen sind unten aufgelistet – keine Duplikate erzeugen
     - Konfidenz-Richtwert: CONNECT ≥ 0.6
-    - Klarer thematischer/Hierarchie-Zusammenhang erforderlich (z. B. „Unterthema“, „Teilprojekt“)
-    - Richtung für Hierarchie-Kanten: parent → child (AF→AF, project→project)
 
     TEXTABSCHNITT (Seiten {page_list}):
     {chunk_text}
@@ -217,7 +233,8 @@ templates:
     - FALSCH: "to_id": "Mobilität und Verkehr" ❌
     - FALSCH: "from_id": "temp_af_1" ❌  
     - RICHTIG: "to_id": "af_1" (aus ID-MAPPING) ✅
-    - Fortsetzung: Setzen Sie "continue": false, wenn in diesem Chunk < 3 neue, nicht-duplizierte Verbindungen verbleiben
+    - Der Chunk ist ENDLICH - irgendwann sind alle Verbindungen extrahiert
+    - Fortsetzung: Setzen Sie "continue": false, wenn kaum noch neue, nicht-duplizierte Verbindungen verbleiben
 
     Falls keine validen CONNECT-Operationen ableitbar sind: Antworten Sie mit {{"operations": [], "continue": false}}.
 
