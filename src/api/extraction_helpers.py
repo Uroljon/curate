@@ -1347,6 +1347,16 @@ def extract_direct_to_enhanced_with_operations(
     from src.processing.parent_resolver import resolve_parent_references
     current_state = resolve_parent_references(current_state)
     
+    # Step 3.6: Post-process graph to prune redundant shortcut edges
+    try:
+        from src.processing.graph_postprocessing import (
+            remove_redundant_af_measure_shortcuts,
+        )
+        current_state = remove_redundant_af_measure_shortcuts(current_state)
+    except Exception as gp_err:
+        # Non-fatal: continue even if post-processing fails
+        print(f"⚠️ Graph post-processing skipped due to error: {gp_err}")
+    
     # Step 4: Final statistics and return
     extraction_time = time.time() - start_time
     operation_summary = executor.get_operation_summary()
