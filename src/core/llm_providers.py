@@ -489,6 +489,10 @@ class OpenRouterProvider(OpenAICompatibleProvider):
                         if isinstance(item, dict):
                             self._fix_schema_for_openai_strict_mode(item)
 
+    def _log_response_with_tokens(self, response, input_tokens: int, response_time: float) -> int:
+        """Log LLM response with token metrics - consolidates duplicate logging logic."""
+        return log_llm_response_tokens(response, input_tokens, response_time)
+
     def query_structured(
         self,
         prompt: str,
@@ -503,6 +507,10 @@ class OpenRouterProvider(OpenAICompatibleProvider):
             # Build structured prompt and messages
             structured_prompt = self._build_structured_prompt(prompt, response_model)
             messages = self._build_messages(structured_prompt, system_message)
+            
+            # Calculate input token count for efficiency tracking
+            input_text = " ".join(msg["content"] for msg in messages)
+            input_tokens = estimate_tokens(input_text)
 
             llm_start_time = time.time()
 
@@ -522,7 +530,7 @@ class OpenRouterProvider(OpenAICompatibleProvider):
                 messages, response_model, override_num_predict, extra_params
             )
             llm_response_time = time.time() - llm_start_time
-            print(f"      🤖 OpenRouter response in {llm_response_time:.2f}s")
+            self._log_response_with_tokens(response, input_tokens, llm_response_time)
 
             content = response.choices[0].message.content.strip()
 

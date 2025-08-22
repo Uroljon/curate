@@ -27,7 +27,7 @@ from src.utils import (
     log_api_request,
     log_api_response,
 )
-from src.utils.token_tracker import calculate_json_tokens
+from src.utils.token_tracker import calculate_json_tokens, estimate_tokens
 
 
 async def upload_pdf(request: Request, file: UploadFile):
