@@ -95,3 +95,70 @@ def calculate_json_tokens(data: Any, label: str = "JSON") -> tuple[int, str]:
     print(f"📋 {label}: {tokens:,} tokens ({len(json_str):,} chars)")
     
     return tokens, json_str
+
+
+def track_json_state_change(
+    before_data: Any, 
+    after_data: Any, 
+    context: str = "Operation",
+    verbose: bool = True
+) -> dict[str, Any]:
+    """
+    Track and log JSON size changes between two states.
+    
+    Args:
+        before_data: State before changes
+        after_data: State after changes
+        context: Context label for the change (e.g., "Chunk 1", "Operations")
+        verbose: Whether to print detailed logs
+        
+    Returns:
+        Dictionary with detailed metrics about the change
+    """
+    # Calculate sizes before
+    before_json = json.dumps(before_data, ensure_ascii=False) if isinstance(before_data, dict) else str(before_data)
+    before_tokens = estimate_tokens(before_json)
+    before_chars = len(before_json)
+    
+    # Calculate sizes after
+    after_json = json.dumps(after_data, ensure_ascii=False) if isinstance(after_data, dict) else str(after_data)
+    after_tokens = estimate_tokens(after_json)
+    after_chars = len(after_json)
+    
+    # Calculate deltas
+    token_delta = after_tokens - before_tokens
+    char_delta = after_chars - before_chars
+    token_growth_pct = (token_delta / before_tokens * 100) if before_tokens > 0 else 0
+    char_to_token_before = before_chars / before_tokens if before_tokens > 0 else 0
+    char_to_token_after = after_chars / after_tokens if after_tokens > 0 else 0
+    
+    metrics = {
+        "before_tokens": before_tokens,
+        "after_tokens": after_tokens,
+        "token_delta": token_delta,
+        "token_growth_pct": token_growth_pct,
+        "before_chars": before_chars,
+        "after_chars": after_chars,
+        "char_delta": char_delta,
+        "char_to_token_before": char_to_token_before,
+        "char_to_token_after": char_to_token_after,
+    }
+    
+    if verbose:
+        # Color coding for growth
+        if token_delta > 0:
+            delta_str = f"+{token_delta:,}"
+            emoji = "📈"
+        elif token_delta < 0:
+            delta_str = f"{token_delta:,}"
+            emoji = "📉"
+        else:
+            delta_str = "0"
+            emoji = "➡️"
+        
+        print(f"\n{emoji} JSON State Change [{context}]:")
+        print(f"   📊 Tokens: {before_tokens:,} → {after_tokens:,} ({delta_str} tokens, {token_growth_pct:+.1f}%)")
+        print(f"   📝 Chars:  {before_chars:,} → {after_chars:,} ({char_delta:+,} chars)")
+        print(f"   🔤 Ratio:  {char_to_token_before:.2f} → {char_to_token_after:.2f} chars/token")
+        
+    return metrics

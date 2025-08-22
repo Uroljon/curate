@@ -1255,6 +1255,11 @@ def extract_direct_to_enhanced_with_operations(
     executor = OperationExecutor()
     llm_provider = get_llm_provider()
     all_operation_logs = []
+    
+    # Initialize cumulative token tracking
+    from src.utils.token_tracker import calculate_json_tokens
+    initial_tokens, _ = calculate_json_tokens(current_state.model_dump(), "Initial empty state")
+    cumulative_token_growth = 0
 
     # Check if two-pass mode is enabled
     from src.core.config import OPERATIONS_TWO_PASS_ENABLED, OPERATIONS_CONNECTION_SWEEP_ENABLED
@@ -1294,6 +1299,18 @@ def extract_direct_to_enhanced_with_operations(
         f"{len(current_state.projects)} projects, {len(current_state.measures)} measures, "
         f"{len(current_state.indicators)} indicators, {total_connections} connections"
     )
+    
+    # Calculate final token metrics
+    final_tokens, final_json = calculate_json_tokens(current_state.model_dump(), "Final state")
+    total_growth = final_tokens - initial_tokens
+    growth_pct = (total_growth / initial_tokens * 100) if initial_tokens > 0 else 0
+    
+    print(f"\n📊 Token Growth Summary:")
+    print(f"   - Initial state: {initial_tokens:,} tokens")
+    print(f"   - Final state: {final_tokens:,} tokens")
+    print(f"   - Total growth: +{total_growth:,} tokens ({growth_pct:+.1f}%)")
+    print(f"   - Avg growth per chunk: {total_growth / len(chunks_with_pages):,.0f} tokens")
+    print(f"   - Character/Token ratio: {len(final_json) / final_tokens:.2f} chars/token")
     
     # Calculate and print comprehensive token summary
     _print_pipeline_token_summary(page_aware_text, chunks_with_pages, current_state)
@@ -1632,12 +1649,24 @@ def _apply_validated_operations(
     if operations:  # Only proceed if we have valid operations
         # Apply validated operations to current state
         try:
+            # Track JSON state before operations
+            from src.utils.token_tracker import track_json_state_change
+            
             new_state, operation_log = executor.apply_operations(
                 current_state, operations, chunk_index=chunk_index
             )
 
             # Only update current_state if operations were successfully applied
             if operation_log.successful_operations > 0:
+                # Track JSON size change
+                chunk_label = f"Chunk {chunk_index+1} ({mode})"
+                track_json_state_change(
+                    current_state.model_dump() if hasattr(current_state, 'model_dump') else current_state,
+                    new_state.model_dump() if hasattr(new_state, 'model_dump') else new_state,
+                    context=chunk_label,
+                    verbose=True
+                )
+                
                 current_state = new_state
 
                 print(

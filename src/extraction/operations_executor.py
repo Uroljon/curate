@@ -43,6 +43,7 @@ class OperationExecutor:
         current_state: EnrichedReviewJSON,
         operations: list[EntityOperation],
         chunk_index: int | None = None,
+        track_size: bool = False,
     ) -> tuple[EnrichedReviewJSON, OperationLog]:
         """
         Apply a list of operations to the current extraction state.
@@ -51,6 +52,7 @@ class OperationExecutor:
             current_state: Current extraction state
             operations: List of operations to apply
             chunk_index: Optional chunk index for logging
+            track_size: Whether to track JSON size changes per operation
 
         Returns:
             Tuple of (new_state, operation_log)
@@ -78,12 +80,30 @@ class OperationExecutor:
 
         # Track operation results
         operation_results: list[OperationResult] = []
+        
+        # Optional per-operation size tracking
+        if track_size:
+            from src.utils.token_tracker import track_json_state_change
 
         # Apply each operation (use reordered_operations)
-        for operation in reordered_operations:
+        for idx, operation in enumerate(reordered_operations):
             try:
+                # Track state before operation if size tracking enabled
+                if track_size:
+                    state_before = copy.deepcopy(new_state)
+                
                 result = self._apply_single_operation(new_state, operation)
                 operation_results.append(result)
+                
+                # Track size change if enabled and operation succeeded
+                if track_size and result.success:
+                    op_label = f"Op {idx+1}/{len(reordered_operations)}: {operation.operation.value} {operation.entity_type}"
+                    track_json_state_change(
+                        state_before.model_dump(),
+                        new_state.model_dump(),
+                        context=op_label,
+                        verbose=False  # Less verbose for individual operations
+                    )
 
                 if result.success:
                     if operation.operation == OperationType.CONNECT:
@@ -280,7 +300,16 @@ class OperationExecutor:
                 ]
 
                 if entity.sources:
-                    entity.sources.extend(new_sources)
+                    # Deduplicate sources by (page_number, quote) tuple
+                    existing_sources = {
+                        (s.page_number, s.quote.strip() if s.quote else None)
+                        for s in entity.sources
+                    }
+                    unique_new_sources = [
+                        s for s in new_sources
+                        if (s.page_number, s.quote.strip() if s.quote else None) not in existing_sources
+                    ]
+                    entity.sources.extend(unique_new_sources)
                 else:
                     entity.sources = new_sources
 
