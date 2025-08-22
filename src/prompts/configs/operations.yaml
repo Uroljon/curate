@@ -183,10 +183,10 @@ templates:
     Analysieren Sie diesen Textabschnitt und erstellen Sie NUR ENTITY-OPERATIONEN (CREATE/UPDATE).
 
     ITERATION: {iteration}
-    - Maximal ca. 30 vollständige CREATE/UPDATE-Operationen pro Antwort (KEIN Hard-Limit).
+    - Geben Sie höchstens 30 vollständige CREATE/UPDATE-Operationen pro Antwort zurück.
     - Wenn nach dieser Antwort weitere gültige Operationen verbleiben, MUSS das Top-Level-Feld "continue": true gesetzt werden.
-    - Niemals Items abschneiden/teilen, um die 30 zu erreichen – immer vollständige Items liefern (auch wenn dadurch >30 entstehen).
-    - IMMER genau EIN JSON-Objekt ohne Erklärtext zurückgeben: {{"operations": [...], "continue": true|false}}
+    - Schneiden Sie niemals Items, um das Limit zu treffen – liefern Sie vollständige Items und setzen Sie "continue": true, wenn noch mehr valide Items verbleiben.
+    - IMMER genau EIN JSON-Objekt ohne Erklärtext zurückgeben: {{"operations": [...], "continue": true|false}} ("continue" ist verpflichtend und am Root-Level).
 
     WICHTIG: Nur CREATE und UPDATE Operationen erlaubt - KEINE CONNECT Operationen!
     
@@ -211,38 +211,24 @@ templates:
     {chunk_text}
 
     QUALITÄTSKONTROLLE:
-    - CONTENT-VOLLSTÄNDIGKEIT: Aussagekräftige Beschreibungen (1-2 Sätze, textbasiert)
+    - CONTENT-VOLLSTÄNDIGKEIT: Aussagekräftige Beschreibungen (1–2 Sätze, textbasiert)
     - Entity-Felder: action_field (title, description), project (title, description), measure (title, description), indicator (title, description, unit, target_values, actual_values)
     - Bevorzugen Sie UPDATE über CREATE bei semantischer Nähe
     - Extrahieren Sie alle klar benannten Projekte, Maßnahmen und Indikatoren
+    - Setzen Sie "continue": false NUR wenn in diesem Chunk keine klar neuen, nicht-duplizierten Entities mehr verbleiben.
 
     Falls keine validen CREATE/UPDATE-Operationen ableitbar sind: Antworten Sie mit {{"operations": [], "continue": false}}.
 
-    KRITISCHE JSON-STRUKTUR (EXAKT BEFOLGEN):
-    {{
-      "operations": [
-        /* EntityOperation-Objekte hier */
-      ],
-      "continue": false  /* MUSS am Root-Level sein, NICHT im operations-Array! */
-    }}
-
-    BEISPIEL ANTWORT:
-    {{
-      "operations": [
-        {{"operation": "CREATE", "entity_type": "action_field", "content": {{"title": "...", "description": "..."}}, "confidence": 0.8}},
-        {{"operation": "UPDATE", "entity_type": "project", "entity_id": "proj_1", "content": {{"budget": "..."}}, "confidence": 0.7}}
-      ],
-      "continue": false
-    }}
+    
 
   operations_connections_chunk: |
     Analysieren Sie diesen Textabschnitt und erstellen Sie NUR VERBINDUNGS-OPERATIONEN (CONNECT).
 
     ITERATION: {iteration}
-    - Maximal ca. 30 Verbindungen gesamt pro Antwort (Summe aller connections-Arrays; KEIN Hard-Limit).
-    - WICHTIG: Setzen Sie "continue": false sobald der Chunk erschöpft ist - das ist NORMAL und ERWÜNSCHT!
-    - Niemals Items abschneiden/teilen, um die 30 zu erreichen – immer vollständige Items liefern (auch wenn dadurch >30 entstehen).
-    - IMMER genau EIN JSON-Objekt ohne Erklärtext zurückgeben: {{"operations": [...], "continue": true|false}}
+    - Geben Sie höchstens 30 Verbindungen gesamt pro Antwort zurück (Summe aller connections-Arrays).
+    - Wenn nach dieser Antwort weitere valide Verbindungen verbleiben, MUSS das Top-Level-Feld "continue": true gesetzt werden.
+    - Schneiden Sie niemals Items, um das Limit zu treffen – liefern Sie vollständige Items und setzen Sie "continue": true, wenn noch mehr valide Items verbleiben.
+    - IMMER genau EIN JSON-Objekt ohne Erklärtext zurückgeben: {{"operations": [...], "continue": true|false}} ("continue" ist verpflichtend und am Root-Level).
 
     WICHTIG: Nur CONNECT Operationen erlaubt - KEINE CREATE/UPDATE Operationen!
     
@@ -337,26 +323,11 @@ templates:
     - FALSCH: "to_id": "Mobilität und Verkehr" ❌
     - FALSCH: "from_id": "temp_af_1" ❌  
     - RICHTIG: "to_id": "af_1" (aus ID-MAPPING) ✅
-    - Der Chunk ist ENDLICH - irgendwann sind alle Verbindungen extrahiert
-    - Fortsetzung: Setzen Sie "continue": false, wenn kaum noch neue, nicht-duplizierte Verbindungen verbleiben
+    - Setzen Sie "continue": false NUR wenn in diesem Chunk kaum noch neue, nicht-duplizierte Verbindungen verbleiben.
 
     Falls keine validen CONNECT-Operationen ableitbar sind: Antworten Sie mit {{"operations": [], "continue": false}}.
 
-    KRITISCHE JSON-STRUKTUR (EXAKT BEFOLGEN):
-    {{
-      "operations": [
-        /* CONNECT-Operationen hier */
-      ],
-      "continue": false  /* MUSS am Root-Level sein, NICHT im operations-Array! */
-    }}
-
-    BEISPIEL ANTWORT:
-    {{
-      "operations": [
-        {{"operation": "CONNECT", "entity_type": "action_field", "connections": [{{"from_id": "af_1", "to_id": "proj_2", "confidence": 0.8}}], "confidence": 0.7}}
-      ],
-      "continue": false
-    }}
+    
 
   operations_chunk: |
     Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.
