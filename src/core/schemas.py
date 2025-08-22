@@ -86,6 +86,7 @@ class ConnectionWithConfidence(BaseModel):
     """Represents a connection between entities with confidence scoring."""
 
     target_id: str = Field(..., description="ID of the target entity")
+    confidence_score: float = Field(default=0.8, ge=0.0, le=1.0, description="Confidence in this connection")
 
 
 class EnhancedActionField(BaseModel):

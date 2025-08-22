@@ -1379,6 +1379,10 @@ def _process_two_pass_extraction(
                         new_entities_count > prev_entities_count
                     )
                     consecutive_no_progress = 0 if applied_any else consecutive_no_progress + 1
+                    
+                    # Log when operations were attempted but none succeeded
+                    if not applied_any:
+                        print(f"   ⚠️  Iteration {iteration}: 0 operations applied (all failed: duplicates/invalid IDs)")
                 else:
                     print(f"⚠️ Chunk {i+1} iter {iteration}: No valid entities operations")
                     consecutive_no_progress += 1
@@ -1447,6 +1451,10 @@ def _process_two_pass_extraction(
                     all_operation_logs.append(operation_log)
                     applied_any = operation_log.successful_operations > 0
                     consecutive_no_progress = 0 if applied_any else consecutive_no_progress + 1
+                    
+                    # Log when operations were attempted but none succeeded
+                    if not applied_any:
+                        print(f"   ⚠️  Iteration {iteration}: 0 operations applied (all failed: duplicates/invalid IDs)")
                 else:
                     print(
                         f"⚠️ Chunk {i+1} iter {iteration}: No valid connection operations"

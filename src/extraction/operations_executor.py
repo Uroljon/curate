@@ -104,9 +104,13 @@ class OperationExecutor:
                     else:
                         print(f"   ✅ {operation.operation}: {operation.entity_type} - {result.new_entity_id or operation.entity_id}")
                 else:
-                    print(
-                        f"   ❌ {operation.operation}: {operation.entity_type} - {result.error_message}"
-                    )
+                    # Handle verbose error messages for connection failures
+                    if operation.operation == OperationType.CONNECT and "\n" in (result.error_message or ""):
+                        print(f"   ❌ {operation.operation}: {operation.entity_type} - {result.error_message}")
+                    else:
+                        print(
+                            f"   ❌ {operation.operation}: {operation.entity_type} - {result.error_message}"
+                        )
 
             except Exception as e:
                 error_result = OperationResult(
@@ -312,7 +316,7 @@ class OperationExecutor:
             )
 
         affected_entities = []
-        skipped_connections = 0
+        failed_connections = []  # Track detailed failure reasons
         total_connections = len(operation.connections)
 
         try:
@@ -322,49 +326,55 @@ class OperationExecutor:
                 confidence = conn_data.get("confidence", operation.confidence)
 
                 if not from_id or not to_id:
-                    skipped_connections += 1
+                    failed_connections.append((from_id or "null", to_id or "null", "missing ID"))
                     continue
 
                 # Validate that IDs are not temporary/placeholder IDs
-                if self._is_temporary_id(from_id) or self._is_temporary_id(to_id):
-                    print(f"   ⚠️  Skipping connection with temporary ID: {from_id} -> {to_id}")
-                    skipped_connections += 1
+                if self._is_temporary_id(from_id):
+                    failed_connections.append((from_id, to_id, "temporary source ID"))
+                    continue
+                if self._is_temporary_id(to_id):
+                    failed_connections.append((from_id, to_id, "temporary target ID"))
                     continue
 
                 # Find source entity
                 source_entity = self._find_entity_by_id(state, from_id)
                 if not source_entity:
-                    skipped_connections += 1
+                    failed_connections.append((from_id, to_id, "source not found"))
                     continue
 
                 # Verify target entity exists
                 target_entity = self._find_entity_by_id(state, to_id)
                 if not target_entity:
-                    skipped_connections += 1
+                    failed_connections.append((from_id, to_id, "target not found"))
                     continue
 
-                # Create connection
+                # Check if connection already exists
+                existing_connections = [c.target_id for c in source_entity.connections]
+                if to_id in existing_connections:
+                    failed_connections.append((from_id, to_id, "duplicate connection"))
+                    continue
+
+                # Create connection with confidence score
                 connection = ConnectionWithConfidence(
                     target_id=to_id, confidence_score=confidence
                 )
-
-                # Add connection if it doesn't already exist
-                existing_connections = [c.target_id for c in source_entity.connections]
-                if to_id not in existing_connections:
-                    source_entity.connections.append(connection)
-                    affected_entities.extend([from_id, to_id])
-                else:
-                    skipped_connections += 1  # Already exists
+                source_entity.connections.append(connection)
+                affected_entities.extend([from_id, to_id])
 
             # Determine success - succeed if we created at least one connection
-            successful_connections = total_connections - skipped_connections
+            successful_connections = total_connections - len(failed_connections)
             is_success = successful_connections > 0
 
+            # Build detailed error message if needed
             error_msg = None
-            if skipped_connections > 0 and successful_connections > 0:
-                error_msg = f"Partial success: {skipped_connections}/{total_connections} connections skipped"
-            elif skipped_connections == total_connections:
-                error_msg = f"All {total_connections} connections failed (invalid IDs or duplicates)"
+            if failed_connections:
+                if successful_connections > 0:
+                    error_msg = f"Partial success: {len(failed_connections)}/{total_connections} connections failed"
+                else:
+                    # Store failure details for verbose logging
+                    failure_details = "\n".join([f"     • {from_id} → {to_id} ({reason})" for from_id, to_id, reason in failed_connections])
+                    error_msg = f"{len(failed_connections)} failed connections:\n{failure_details}"
 
             return OperationResult(
                 operation=operation,
@@ -507,7 +517,7 @@ class OperationExecutor:
         return ", ".join(field_names)
 
     def _format_connections(self, state: EnrichedReviewJSON, operation: EntityOperation, result: OperationResult) -> str:
-        """Format connections with entity names and arrows."""
+        """Format connections with hierarchical structure and bullet points."""
         if not operation.connections or not result.entities_affected:
             return f"{operation.entity_type} - no connections"
         
@@ -523,21 +533,39 @@ class OperationExecutor:
                 if source_entity:
                     source_name = self._get_entity_name(source_entity.content)
         
-        # Collect all target connections
-        targets = []
+        # Collect successful target connections (only those that were actually created)
+        successful_targets = []
         for conn_data in operation.connections:
+            from_id = conn_data.get("from_id")
             to_id = conn_data.get("to_id")
-            if to_id:
+            
+            # Only include if both entities exist and connection was created
+            if from_id and to_id:
+                source_entity = self._find_entity_by_id(state, from_id)
                 target_entity = self._find_entity_by_id(state, to_id)
-                if target_entity:
-                    target_name = self._get_entity_name(target_entity.content)
-                    targets.append(f'{to_id} "{target_name}"')
+                
+                if source_entity and target_entity:
+                    # Check if connection actually exists in source entity
+                    existing_connections = [c.target_id for c in source_entity.connections]
+                    if to_id in existing_connections:
+                        target_name = self._get_entity_name(target_entity.content)
+                        # Truncate long names for cleaner display
+                        if len(target_name) > 50:
+                            target_name = target_name[:47] + "..."
+                        successful_targets.append(f"{to_id} \"{target_name}\"")
         
-        if not targets:
+        if not successful_targets:
             return f'{source_id} "{source_name}" → no valid targets'
         
-        targets_str = ", ".join(targets)
-        return f'{source_id} "{source_name}" → {targets_str}'
+        # Format with hierarchical structure - show individual connections
+        if len(successful_targets) == 1:
+            return f'{source_id} "{source_name}" → {successful_targets[0]}'
+        
+        # Multiple connections - show each connection with source → target arrows
+        truncated_source_name = source_name[:50] + "..." if len(source_name) > 50 else source_name
+        connection_lines = [f"     • {source_id} → {target}" for target in successful_targets]
+        targets_formatted = "\n".join(connection_lines)
+        return f'{source_id} "{truncated_source_name}"\n{targets_formatted}'
 
     def get_operation_summary(self) -> dict[str, Any]:
         """Get a summary of all operations applied."""
