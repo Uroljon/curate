@@ -1477,13 +1477,9 @@ def _process_two_pass_extraction(
                     f"↪️ Chunk {i+1}: Model signaled continuation (nodes). Proceeding to iteration {iteration+1}."
                 )
             
-            # Stop conditions - only stop if we've tried enough times or made no progress repeatedly
-            # Allow retries on empty results unless we've hit max iterations
+            # Stop conditions - retry up to max iterations
             if iteration >= max_iterations:
                 print(f"   ⚠️ Max iterations ({max_iterations}) reached for chunk {i+1}")
-                break
-            elif consecutive_no_progress >= 2 and iteration > 1:
-                print(f"   ⚠️ No progress for 2 consecutive iterations, stopping chunk {i+1}")
                 break
             elif not should_continue and operations_result is not None:
                 # Only stop on explicit non-continuation if we got a result
@@ -1563,13 +1559,9 @@ def _process_two_pass_extraction(
                     f"↪️ Chunk {i+1}: Model signaled continuation (connections). Proceeding to iteration {iteration+1}."
                 )
             
-            # Stop conditions - only stop if we've tried enough times or made no progress repeatedly
-            # Allow retries on empty results unless we've hit max iterations
+            # Stop conditions - retry up to max iterations
             if iteration >= max_iterations:
                 print(f"   ⚠️ Max iterations ({max_iterations}) reached for chunk {i+1}")
-                break
-            elif consecutive_no_progress >= 2 and iteration > 1:
-                print(f"   ⚠️ No progress for 2 consecutive iterations, stopping chunk {i+1}")
                 break
             elif not should_continue and operations_result is not None:
                 # Only stop on explicit non-continuation if we got a result
