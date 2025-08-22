@@ -10,6 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Extraction Pipeline Architecture**: See `docs/extraction_pipeline.mmd` for the complete technical architecture diagram showing the actual implementation flow from PDF upload through LLM processing to structured output. This diagram accurately reflects the current codebase and should be updated when architectural changes are made to the extraction system.
 
+**Database Schema & Entity Relationships**: See `docs/database.md` for Appwrite schema analysis and understanding of how extraction targets map to the production database structure.
+
 ## Project Overview
 
 CURATE is a PDF Strategy Extractor that processes German municipal strategy documents using advanced LLMs via OpenRouter (default) or local providers. It extracts structured data (action fields, projects, measures, indicators) from PDFs through a multi-stage extraction pipeline. The system uses intelligent text extraction with OCR fallback, structure-aware chunking, and progressive LLM-based extraction with Pydantic schemas.
@@ -199,6 +201,12 @@ Phase 2: **Enhanced Extraction** (recommended endpoints)
   - `extract_with_accumulation()`: Progressive extraction with context (unused by current APIs)
   - Contains 3-stage functions (`extract_action_fields_only`, `extract_projects_for_field`, `extract_project_details`) that are available but not used by current endpoints
 
+- **`src/extraction/operations_executor.py`**: Executes operations with intelligent merging:
+  - CREATE: Generates unique IDs and creates new entities
+  - UPDATE: Additive merge strategy - appends to descriptions, extends lists, never replaces
+  - CONNECT: Creates bidirectional relationships between entities
+  - Smart punctuation handling when merging text fields
+
 - **`src/core/llm.py`**: Multi-provider LLM integration with OpenRouter (default), Ollama, vLLM, and OpenAI support:
   - Unstructured generation for discovery phases
   - Structured output with Pydantic schemas for extraction
@@ -242,6 +250,13 @@ Phase 2: **Enhanced Extraction** (recommended endpoints)
 - Semantic chunking preserves document hierarchy
 - Context window optimization for LLM efficiency (8K-30K character chunks)
 
+**UPDATE Operation Merge Strategy:**
+- **String fields**: Appends new text if not already present, with smart punctuation
+- **Lists**: Extends with unique items only
+- **Dicts**: Updates with new key-value pairs
+- **Title stability**: Titles are NEVER changed via UPDATE
+- **Additive only**: Never removes or replaces existing content
+
 ## Dependencies
 
 **System Requirements:**
@@ -270,6 +285,9 @@ Phase 2: **Enhanced Extraction** (recommended endpoints)
 - black (code formatter)
 - mypy (static type checker)
 - pre-commit (git hooks for code quality)
+- pytest (test framework)
+- vulture/dead (dead code detection)
+- unimport (unused import removal)
 
 ## Code Quality Configuration
 
@@ -441,7 +459,18 @@ When using vLLM, the system automatically maps Ollama model names to vLLM equiva
 - Validate source quotes against original `*_pages.txt` files
 - Monitor extraction quality regression with comparison functionality: `python -m json_analyzer compare baseline.json current.json`
 
+**JSON Malformation in Operations:**
+- System automatically repairs malformed JSON where metadata ends up in operations array
+- Check logs for "⚠️ Detected and cleaned malformed metadata in operations array"
+- Prompts explicitly instruct LLM about correct JSON structure with `continue` at root level
+
 ## Recent Updates (August 2025)
+
+**JSON Malformation Fix (August 2025):**
+- Enhanced prompts in `operations.yaml` to explicitly show correct JSON structure
+- Added automatic repair logic for malformed operations JSON in `llm_providers.py`
+- System now handles cases where metadata (`continue`, `chunk_index`) ends up in operations array
+- Preserves `continue` flag value when repairing malformed responses
 
 **Test Suite Reorganization (August 2025):**
 - Reorganized all test files into proper Python project structure
@@ -658,3 +687,9 @@ Based on the Appwrite schema analysis (see `docs/database.md` for complete detai
 - **Solution**: Support multiple output formats from same extraction
 - **Formats**: Hierarchical (legacy), 4-bucket relational (enhanced), operations-based (modern)
 - **Flexibility**: Transform between formats via dedicated endpoints
+
+**UPDATE Operation Design:**
+- **Additive merging**: Never replaces existing content, only extends
+- **Smart text merging**: Handles punctuation intelligently when appending descriptions
+- **Title stability**: Titles cannot be changed via UPDATE operations
+- **Confidence thresholds**: Higher confidence required for UPDATE (0.8) than CREATE (0.7)
