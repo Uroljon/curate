@@ -90,3 +90,4 @@ sonar-report.json
 GEMINI.md
 AGENTS.md
 .coverage
+*.md
