@@ -76,18 +76,6 @@ class TerminalVisualizer:
         header = f"{emoji} {title}" if emoji else title
         print(self._colorize(header, "bold"))
 
-    def _display_metric_list(
-        self, items: list, color: str, max_items: int = 5, indent: str = "  "
-    ) -> None:
-        """Display a list of items with consistent formatting."""
-        shown_items = items[:max_items]
-        for item in shown_items:
-            print(f"{indent}{self._colorize(item, color)}")
-
-        if len(items) > max_items:
-            remaining = len(items) - max_items
-            print(f"{indent}... and {remaining} more")
-
     def _display_issue_examples(
         self,
         items: list,

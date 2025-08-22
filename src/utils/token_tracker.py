@@ -95,19 +95,3 @@ def calculate_json_tokens(data: Any, label: str = "JSON") -> tuple[int, str]:
     print(f"📋 {label}: {tokens:,} tokens ({len(json_str):,} chars)")
     
     return tokens, json_str
-
-
-def calculate_json_tokens_quiet(data: Any) -> tuple[int, str]:
-    """
-    Calculate tokens for JSON data without logging (for internal use).
-    
-    Args:
-        data: Data to serialize to JSON
-        
-    Returns:
-        Tuple of (token_count, json_string)
-    """
-    json_str = json.dumps(data, ensure_ascii=False)
-    tokens = estimate_tokens(json_str)
-    
-    return tokens, json_str

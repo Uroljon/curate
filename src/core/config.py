@@ -153,10 +153,6 @@ FAST_EXTRACTION_MAX_CHUNKS = int(os.getenv("FAST_EXTRACTION_MAX_CHUNKS", "50")) 
 # Two-Pass Operations Extraction Configuration
 OPERATIONS_TWO_PASS_ENABLED = True  # Enable two-pass mode (nodes first, then connections)
 OPERATIONS_CONNECTION_SWEEP_ENABLED = False  # Optional final pass for cross-chunk connections
-OPERATIONS_CONFIDENCE_CREATE = 0.7  # Minimum confidence for CREATE operations
-OPERATIONS_CONFIDENCE_UPDATE = 0.6  # Minimum confidence for UPDATE operations
-OPERATIONS_CONFIDENCE_CONNECT = 0.6  # Minimum confidence for CONNECT operations
-OPERATIONS_MAX_OPS_PER_CHUNK = 50  # Maximum operations per chunk (guardrails)
 
 # Source Attribution Configuration
 

@@ -373,12 +373,6 @@ def filter_operations_by_mode(operations: list, mode: str) -> list:
         raise ValueError(error_msg)
 
 
-def should_run_connections_pass(entities_ops: list) -> bool:
-    """Check if connections pass should run based on entities operations."""
-    # Skip connections pass if no entities were created/updated
-    return len(entities_ops) > 0
-
-
 def add_page_attribution_to_enhanced_result(result, page_numbers: list[int]) -> None:
     """Add page attribution to all entities in enhanced result."""
     page_str = f"Seiten {', '.join(map(str, sorted(page_numbers)))}"
@@ -1444,7 +1438,6 @@ def _process_two_pass_extraction(
                 )
 
                 if connect_ops:
-                    prev_edges_applied = 0
                     current_state, connect_ops, operation_log = _apply_validated_operations(
                         current_state, connect_ops, executor, i, "connections"
                     )
