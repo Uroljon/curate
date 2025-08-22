@@ -30,8 +30,8 @@ def test_context_awareness_fix():
     tests_passed = 0
     tests_total = 5
 
-    # Test 1: format_entity_registry function exists
-    if "def format_entity_registry(current_state) -> str:" in content:
+    # Test 1: format_entity_registry function exists (with optional parameter)
+    if "def format_entity_registry(current_state" in content:
         print("✅ format_entity_registry function exists")
         tests_passed += 1
     else:

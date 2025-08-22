@@ -171,7 +171,8 @@ class TestPromptLoader:
         assert len(rules) > 50
         assert "KRITISCHE REGELN:" in rules
         assert "IMMER prüfen ob Entity schon im REGISTRY existiert" in rules
-        assert "Bei ähnlichen Namen" in rules
+        # Updated to match current prompt text
+        assert "Bei EXAKT gleichen Namen" in rules
         assert "NUR CREATE wenn wirklich neu" in rules
 
     def test_list_available_prompts_single_config(self):

@@ -139,7 +139,8 @@ def test_build_operations_prompt_nodes_mode_populated_state(populated_state):
     
     # Should guide toward UPDATE over CREATE
     assert "IMMER prüfen ob Entity schon im REGISTRY existiert" in prompt
-    assert "Bei ähnlichen Namen → UPDATE statt CREATE" in prompt
+    # The prompt now uses more specific rules instead of the simplified text
+    assert "Bei EXAKT gleichen Namen" in prompt  # Updated text in prompt
 
 
 def test_build_operations_prompt_connections_mode_populated_state(populated_state):
@@ -166,7 +167,7 @@ def test_build_operations_prompt_connections_mode_populated_state(populated_stat
 
 def test_context_propagation_entity_registry_completeness(populated_state):
     """Test that entity registry shows ALL entities without truncation."""
-    registry = format_entity_registry(populated_state)
+    registry = format_entity_registry(populated_state, include_descriptions=False)
     
     # Should show counts for each entity type
     assert "ACTION FIELDS (2 total)" in registry
