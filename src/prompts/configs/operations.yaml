@@ -139,6 +139,8 @@ templates:
     - Konfidenz-Richtwerte: CREATE ≥ 0.7, UPDATE ≥ 0.6
     - Ziel: Maximale Entität-Vollständigkeit ohne Verbindungskomplexität
 
+    {update_merge_rules}
+
     TEXTABSCHNITT (Seiten {page_list}):
     {chunk_text}
 
@@ -173,15 +175,19 @@ templates:
 
     VERBINDUNGS-CHECKLISTE (aktiv prüfen):
     - action_field → project (Projekt gehört zu Handlungsfeld)
-    - project → measure (Maßnahme gehört zu Projekt) 
+    - project → measure (Maßnahme gehört zu Projekt)
     - project/measure → indicator (Indikator misst Erfolg)
+    - action_field → action_field (Hierarchie: Ober-/Unterthema; nur bei expliziter Evidenz)
+    - project → project (Hierarchie: Projekt → Teilprojekt; nur bei expliziter Evidenz)
 
     KRITISCHE VERBINDUNGSREGELN:
     - NUR exakte IDs aus ID-MAPPING-TABELLE verwenden (af_1, proj_2, etc.)
     - NIEMALS Entity-Namen/Titel verwenden
     - NIEMALS temporäre IDs (temp_, placeholder_)
+    - Bestehende Verbindungen sind unten aufgelistet – keine Duplikate erzeugen
     - Konfidenz-Richtwert: CONNECT ≥ 0.6
-    - Klarer thematischer Zusammenhang erforderlich
+    - Klarer thematischer/Hierarchie-Zusammenhang erforderlich (z. B. „Unterthema“, „Teilprojekt“)
+    - Richtung für Hierarchie-Kanten: parent → child (AF→AF, project→project)
 
     TEXTABSCHNITT (Seiten {page_list}):
     {chunk_text}
@@ -200,13 +206,18 @@ templates:
       "confidence": 0.7
     }}
 
+    WEITERE BEISPIELE (OPTIONAL, NUR BEI KLARER EVIDENZ):
+    - AF→AF (Hierarchie): {{"operation":"CONNECT","entity_type":"action_field","connections":[{{"from_id":"af_1","to_id":"af_4","confidence":0.7}}]}}
+    - Projekt→Projekt (Teilprojekt): {{"operation":"CONNECT","entity_type":"project","connections":[{{"from_id":"proj_2","to_id":"proj_5","confidence":0.7}}]}}
+
     QUALITÄTSKONTROLLE:
     - ⚠️  from_id/to_id: NUR IDs aus ID-MAPPING verwenden
+    - Doppelte Kanten vermeiden: Prüfen Sie „EXISTING CONNECTIONS“ und schlagen Sie nur fehlende Kanten vor
+    - Optionalität: AF→AF und project→project nur bei eindeutiger Text-Evidenz (z. B. „Unterthema“, „Teilprojekt“)
     - FALSCH: "to_id": "Mobilität und Verkehr" ❌
     - FALSCH: "from_id": "temp_af_1" ❌  
     - RICHTIG: "to_id": "af_1" (aus ID-MAPPING) ✅
-    - Bestehende Verbindungen sind unten aufgelistet – keine Duplikate erzeugen
-    - Suchen Sie aktiv nach allen sinnvollen Verbindungen im Text
+    - Fortsetzung: Setzen Sie "continue": false, wenn in diesem Chunk < 3 neue, nicht-duplizierte Verbindungen verbleiben
 
     Falls keine validen CONNECT-Operationen ableitbar sind: Antworten Sie mit {{"operations": [], "continue": false}}.
 
@@ -280,3 +291,31 @@ fragments:
        - "Radwegeausbau" = "Ausbau Radwege" = "Radverkehrsnetz"
        - "CO2-Reduktion" = "CO₂-Reduktion" = "Kohlendioxid-Reduktion"
     4. NUR CREATE wenn wirklich neu und einzigartig
+  update_merge_rules: |
+    KRITISCHE UPDATE-MERGE-REGELN (additiv, nicht-destruktiv):
+    - ADDITIV: Keine Felder entfernen oder leeren. UPDATE ergänzt nur.
+    - STRING-FELDER: Vorhandenen Text NICHT ersetzen; neuen Text nur anfügen, wenn er nicht redundant ist (kurzer Zusatzsatz). Keine Paraphrasen.
+    - TITEL-STABILITÄT: Titel/Name in UPDATE NIEMALS ändern (nur setzen, wenn bisher leer). Offizielle Umbenennungen nicht im UPDATE durchführen.
+    - LISTEN: Nur neue, eindeutige Einträge hinzufügen (genaue Duplikate vermeiden). Keine leeren/Null-Items hinzufügen.
+    - OBJEKTE: Flaches Update vorhandener Keys (Key-bezogene Ergänzung). Keine Strukturänderungen.
+    - KONFLIKTE: Bei konkurrierenden Werten die inhaltlich längere/ausführlichere Fassung bevorzugen.
+    - MINIMIEREN: Nur wirklich neue/ergänzende Felder liefern; nichts erneut senden, was bereits vorhanden ist.
+    - QUELLEN: Für Maßnahmen/Indikatoren immer source_pages UND source_quote angeben, wenn im Text vorhanden.
+    - TABU-FELDER: content darf KEIN "id" enthalten; "connections" werden in CONNECT-Pass behandelt.
+
+    KORREKTES UPDATE-BEISPIEL (Projekt):
+    {
+      "operation": "UPDATE",
+      "entity_type": "project",
+      "entity_id": "proj_2",
+      "content": {
+        "description": "Ergänzung: barrierefreie Knoten werden umgesetzt.",
+        "tags": ["ÖPNV"]
+      },
+      "confidence": 0.78
+    }
+
+    FALSCHE UPDATE-BEISPIELE (vermeiden):
+    - Titeländerung im UPDATE: {"content": {"title": "Neuer Titel"}} ❌
+    - Ersetzen statt Ergänzen: {"content": {"description": "Neue Kurzfassung"}} ❌ (bestehenden Text nicht überschreiben)
+    - Doppelte Listenelemente: {"content": {"tags": ["ÖPNV", "ÖPNV"]}} ❌
