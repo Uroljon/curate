@@ -739,6 +739,49 @@ def test_apply_operations_update_merge_strings():
     # Should merge, not replace
     assert "Nachhaltige Verkehrslösungen" in updated_af.content["description"]
     assert "Additional description" in updated_af.content["description"]
+    # Should NOT have double periods
+    assert ".." not in updated_af.content["description"]
+
+
+def test_apply_operations_no_double_periods():
+    """Test that merging descriptions with periods doesn't create double periods."""
+    executor = OperationExecutor()
+    
+    # Create a project with a description ending in a period
+    sample_state = EnrichedReviewJSON(
+        action_fields=[],
+        projects=[
+            EnhancedProject(
+                id="proj_1",
+                content={"title": "Test Project", "description": "First description with period."},
+                connections=[]
+            )
+        ],
+        measures=[],
+        indicators=[]
+    )
+    
+    # Update with another description
+    operations = [
+        EntityOperation(
+            operation=OperationType.UPDATE,
+            entity_type="project",
+            entity_id="proj_1",
+            content={"description": "Second description part."},
+            confidence=0.8
+        )
+    ]
+    
+    new_state, log = executor.apply_operations(sample_state, operations)
+    
+    updated_proj = next(p for p in new_state.projects if p.id == "proj_1")
+    # Should have both parts
+    assert "First description" in updated_proj.content["description"]
+    assert "Second description" in updated_proj.content["description"]
+    # Should NOT have double periods
+    assert ".." not in updated_proj.content["description"]
+    # Should be properly formatted
+    assert updated_proj.content["description"] == "First description with period. Second description part."
 
 
 # =============================================================================
@@ -790,6 +833,7 @@ def run_all_tests():
     runner.run_test(test_apply_operations_invalid_entity_id, "apply_operations_invalid_entity_id")
     runner.run_test(test_apply_operations_empty_list, "apply_operations_empty_list")
     runner.run_test(test_apply_operations_update_merge_strings, "apply_operations_update_merge_strings")
+    runner.run_test(test_apply_operations_no_double_periods, "apply_operations_no_double_periods")
 
     runner.summary()
     return runner

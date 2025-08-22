@@ -441,9 +441,25 @@ class OperationExecutor:
     def _merge_string_fields(
         self, target_entity: Any, key: str, existing: str, new: str
     ) -> None:
-        """Merge string fields by appending if different."""
+        """Merge string fields by appending if different, avoiding double punctuation."""
         if new not in existing:
-            target_entity.content[key] = f"{existing}. {new}"
+            # Strip whitespace from both strings
+            existing = existing.strip()
+            new = new.strip()
+            
+            # Skip if either string is empty
+            if not existing:
+                target_entity.content[key] = new
+            elif not new:
+                target_entity.content[key] = existing
+            else:
+                # Check if existing string ends with punctuation
+                if existing[-1] in '.!?:;':
+                    # Just add space, no extra period
+                    target_entity.content[key] = f"{existing} {new}"
+                else:
+                    # Add period and space
+                    target_entity.content[key] = f"{existing}. {new}"
 
     def _merge_list_fields(self, existing_list: list[Any], new_list: list[Any]) -> None:
         """Merge list fields by extending with unique items."""
