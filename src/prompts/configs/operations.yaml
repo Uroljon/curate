@@ -93,10 +93,13 @@ system_messages:
         "entity_type": "indicator",
         "content": {
           "title": "ÖPNV-Anteil",
-          "description": "Steigerung des Modal Split zugunsten des ÖPNV auf 30% bis 2030."
+          "description": "Steigerung des Modal Split zugunsten des ÖPNV auf 30% bis 2030.",
+          "unit": "Prozent",
+          "target_values": "30% bis 2030",
+          "actual_values": "18% (Stand 2023)"
         },
         "source_pages": [18],
-        "source_quote": "Erhöhung des ÖPNV-Anteils auf 30% bis 2030",
+        "source_quote": "Erhöhung des ÖPNV-Anteils von derzeit 18% auf 30% bis 2030",
         "confidence": 0.75
       }
 
@@ -146,7 +149,7 @@ templates:
 
     QUALITÄTSKONTROLLE:
     - CONTENT-VOLLSTÄNDIGKEIT: Aussagekräftige Beschreibungen (1-2 Sätze, textbasiert)
-    - Entity-Felder: action_field (title, description), project (title, description), measure (title, description), indicator (title, description, unit, target_values)
+    - Entity-Felder: action_field (title, description), project (title, description), measure (title, description), indicator (title, description, unit, target_values, actual_values)
     - Bevorzugen Sie UPDATE über CREATE bei semantischer Nähe
     - Extrahieren Sie alle klar benannten Projekte, Maßnahmen und Indikatoren
 
@@ -283,7 +286,7 @@ templates:
       • action_field: title, description
       • project: title, description (ggf. full_description), optionale tags
       • measure: title, description
-      • indicator: title, description (und ggf. unit, target_values)
+      • indicator: title, description, unit, target_values, actual_values (alle optional außer title/description)
     - Quellenangaben (source_pages, source_quote) sind PFLICHT für Maßnahmen/Indikatoren; optional für andere Typen (im content-Feld).
     - Konfidenz-Richtwerte: CONNECT ≥ 0.6, CREATE ≥ 0.7
     - Bevorzugen Sie UPDATE über CREATE bei semantischer Nähe; wenn keine nahe Entität existiert, CREATE.
