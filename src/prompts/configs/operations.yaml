@@ -15,10 +15,11 @@ system_messages:
 
     DUPLIKAT-VERMEIDUNG (HÖCHSTE PRIORITÄT):
     - ALLE Entity-Typen im ENTITY REGISTRY prüfen (nicht nur Handlungsfelder!)
-    - Semantisch ähnliche Entities → UPDATE verwenden
-    - Verschiedene Schreibweisen des gleichen Konzepts → UPDATE verwenden
-    - Teilweise Überlappungen → UPDATE verwenden
-    - NUR CREATE wenn absolut sicher dass Entity neu ist
+    - Exakt gleiche oder sehr ähnliche Namen → UPDATE verwenden
+    - Verschiedene Schreibweisen des EXAKT gleichen Konzepts → UPDATE verwenden
+    - NUR UPDATE wenn Sie NEUE, ZUSÄTZLICHE Informationen haben
+    - KEIN UPDATE für Informationen die bereits in der Beschreibung stehen
+    - Bei Unsicherheit → CREATE neuer Entity statt UPDATE
 
     HIERARCHISCHE STRUKTUR:
     - Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE
@@ -37,11 +38,12 @@ system_messages:
     - CONNECT-Operationen erfordern klaren thematischen Zusammenhang und ausreichende Evidenz.
 
     ENTSCHEIDUNGSLOGIK (STRENG BEFOLGEN):
-    1. Entity bereits im REGISTRY? → UPDATE verwenden
-    2. Ähnlicher Name im REGISTRY? → UPDATE verwenden
-    3. Teilweise Überlappung? → UPDATE verwenden
-    4. Wirklich neu? → Erst dann CREATE
-    5. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
+    1. Exakt gleiche Entity im REGISTRY? → Prüfen Sie die vorhandene Beschreibung
+    2. Haben Sie NEUE Information die noch NICHT in der Beschreibung steht? → UPDATE
+    3. Information bereits vorhanden? → KEIN UPDATE notwendig
+    4. Ähnlicher aber nicht identischer Name? → Wahrscheinlich CREATE neuer Entity
+    5. Wirklich neu und einzigartig? → CREATE verwenden
+    6. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
 
     QUALITÄTSPRINZIPIEN:
     - ⚠️  KRITISCH: In from_id/to_id NUR IDs verwenden (af_1, proj_2), NIEMALS Titel ("Mobilität").
@@ -103,13 +105,14 @@ system_messages:
         "confidence": 0.75
       }
 
-    - UPDATE (Projekt):
+    - UPDATE (Projekt) - NUR wenn neue Information:
       {
         "operation": "UPDATE",
         "entity_type": "project",
         "entity_id": "proj_2",
         "content": {
-          "description": "Ergänzung: Einbindung regionaler Linien und barrierefreier Knoten.",
+          "budget": "5.2 Millionen Euro",
+          "timeline": "2025-2028",
           "tags": ["ÖPNV", "Mobilität"]
         },
         "confidence": 0.8
@@ -137,10 +140,12 @@ templates:
     - ❌ CONNECT: VERBOTEN in diesem Pass - wird in separatem Schritt erledigt
 
     VOLLSTÄNDIGKEITS-FOKUS:
-    - Bei CREATE/UPDATE immer vollständige, textbasierte Beschreibungen liefern
+    - Bei CREATE immer vollständige, textbasierte Beschreibungen liefern
+    - Bei UPDATE nur NEUE Felder/Informationen hinzufügen die noch NICHT existieren
+    - KEIN UPDATE nur um bestehende Beschreibungen zu paraphrasieren
     - Quellenangaben (source_pages, source_quote) sind PFLICHT für Maßnahmen/Indikatoren
-    - Konfidenz-Richtwerte: CREATE ≥ 0.7, UPDATE ≥ 0.6
-    - Ziel: Maximale Entität-Vollständigkeit ohne Verbindungskomplexität
+    - Konfidenz-Richtwerte: CREATE ≥ 0.7, UPDATE ≥ 0.8 (höher für UPDATE!)
+    - Ziel: Maximale Entität-Vollständigkeit ohne redundante UPDATEs
 
     {update_merge_rules}
 
@@ -155,8 +160,22 @@ templates:
 
     Falls keine validen CREATE/UPDATE-Operationen ableitbar sind: Antworten Sie mit {{"operations": [], "continue": false}}.
 
-    Antworten Sie NUR mit genau EINEM JSON-Objekt:
-    {{"operations": [...], "continue": true|false}}
+    KRITISCHE JSON-STRUKTUR (EXAKT BEFOLGEN):
+    {{
+      "operations": [
+        /* EntityOperation-Objekte hier */
+      ],
+      "continue": false  /* MUSS am Root-Level sein, NICHT im operations-Array! */
+    }}
+
+    BEISPIEL ANTWORT:
+    {{
+      "operations": [
+        {{"operation": "CREATE", "entity_type": "action_field", "content": {{"title": "...", "description": "..."}}, "confidence": 0.8}},
+        {{"operation": "UPDATE", "entity_type": "project", "entity_id": "proj_1", "content": {{"budget": "..."}}, "confidence": 0.7}}
+      ],
+      "continue": false
+    }}
 
   operations_connections_chunk: |
     Analysieren Sie diesen Textabschnitt und erstellen Sie NUR VERBINDUNGS-OPERATIONEN (CONNECT).
@@ -241,8 +260,21 @@ templates:
 
     Falls keine validen CONNECT-Operationen ableitbar sind: Antworten Sie mit {{"operations": [], "continue": false}}.
 
-    Antworten Sie NUR mit genau EINEM JSON-Objekt:
-    {{"operations": [...], "continue": true|false}}
+    KRITISCHE JSON-STRUKTUR (EXAKT BEFOLGEN):
+    {{
+      "operations": [
+        /* CONNECT-Operationen hier */
+      ],
+      "continue": false  /* MUSS am Root-Level sein, NICHT im operations-Array! */
+    }}
+
+    BEISPIEL ANTWORT:
+    {{
+      "operations": [
+        {{"operation": "CONNECT", "entity_type": "action_field", "connections": [{{"from_id": "af_1", "to_id": "proj_2", "confidence": 0.8}}], "confidence": 0.7}}
+      ],
+      "continue": false
+    }}
 
   operations_chunk: |
     Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.
@@ -304,13 +336,17 @@ templates:
 fragments:
   context_rules: |
     KRITISCHE REGELN:
-    1. IMMER prüfen ob Entity schon im REGISTRY existiert
-    2. Bei ähnlichen Namen → UPDATE statt CREATE
-    3. Beispiele für Duplikate:
-       - "Mobilität und Verkehr" = "Mobilität & Verkehr" = "Verkehrswesen"
-       - "Radwegeausbau" = "Ausbau Radwege" = "Radverkehrsnetz"
-       - "CO2-Reduktion" = "CO₂-Reduktion" = "Kohlendioxid-Reduktion"
-    4. NUR CREATE wenn wirklich neu und einzigartig
+    1. IMMER prüfen ob Entity schon im REGISTRY existiert (schauen Sie auf ID und Beschreibung!)
+    2. Bei EXAKT gleichen Namen → Prüfen ob neue Information vorhanden
+    3. NUR UPDATE wenn Sie Information haben die NICHT in der vorhandenen Beschreibung steht
+    4. Beispiele für echte Duplikate (UPDATE sinnvoll):
+       - "Mobilität und Verkehr" = "Mobilität & Verkehr" (nur Schreibweise)
+       - "CO2-Reduktion" = "CO₂-Reduktion" (nur Schreibweise)
+    5. Beispiele für VERSCHIEDENE Entities (CREATE neuer Entity):
+       - "Radwegeausbau Innenstadt" ≠ "Radwegeausbau Außenbezirke" 
+       - "Verkehrswesen" ≠ "Mobilität und Verkehr" (unterschiedlicher Fokus)
+    6. NUR CREATE wenn wirklich neu und einzigartig
+    7. Im Zweifel → CREATE statt UPDATE um Information nicht zu verlieren
   update_merge_rules: |
     KRITISCHE UPDATE-MERGE-REGELN (additiv, nicht-destruktiv):
     - ADDITIV: Keine Felder entfernen oder leeren. UPDATE ergänzt nur.

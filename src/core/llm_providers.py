@@ -86,6 +86,41 @@ class LLMProvider(ABC):
                 from json_repair import repair_json
 
                 repaired = repair_json(content)
+                
+                # Special handling for ExtractionOperations malformation
+                if response_model.__name__ == "ExtractionOperations" and isinstance(repaired, dict):
+                    # Check if operations array contains malformed metadata strings or dicts
+                    if "operations" in repaired and isinstance(repaired["operations"], list):
+                        clean_ops = []
+                        metadata_found = False
+                        continue_value = False
+                        
+                        for item in repaired["operations"]:
+                            # Filter out string items that look like metadata
+                            if isinstance(item, str):
+                                # These are likely malformed metadata fields
+                                if '"continue"' in item or '"chunk_index"' in item or '"source_pages"' in item:
+                                    metadata_found = True
+                                    continue
+                            elif isinstance(item, dict):
+                                # Check if this is a valid operation or misplaced metadata
+                                if "operation" in item:
+                                    # Valid operation object
+                                    clean_ops.append(item)
+                                elif "continue" in item or "chunk_index" in item or "source_pages" in item:
+                                    # This is metadata that ended up in operations array
+                                    metadata_found = True
+                                    if "continue" in item:
+                                        continue_value = item.get("continue", False)
+                                    continue
+                        
+                        if metadata_found:
+                            print("⚠️ Detected and cleaned malformed metadata in operations array")
+                            repaired["operations"] = clean_ops
+                            # Use extracted continue value or default to false
+                            if "continue" not in repaired:
+                                repaired["continue"] = continue_value
+                
                 return response_model.model_validate(repaired)
             except Exception as repair_error:
                 print(f"❌ JSON repair failed: {repair_error!s}")

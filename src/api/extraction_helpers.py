@@ -135,16 +135,22 @@ def create_unique_entity_id(
     return candidate_id
 
 
-def format_entity_registry(current_state) -> str:
-    """Create a complete, searchable entity registry showing ALL entities."""
-    # List ALL entity titles (no truncation) with safe handling of None values
-    action_fields = [af.content.get("title", "") or "" for af in current_state.action_fields]
-    projects = [p.content.get("title", "") or "" for p in current_state.projects]
-    measures = [m.content.get("title", "") or "" for m in current_state.measures]
-    indicators = [i.content.get("title", "") or "" for i in current_state.indicators]
+def format_entity_registry(current_state, include_descriptions: bool = False) -> str:
+    """Create a complete, searchable entity registry showing ALL entities.
+    
+    Args:
+        current_state: The current extraction state
+        include_descriptions: If True, show existing descriptions to prevent redundant UPDATEs
+    """
+    if not include_descriptions:
+        # Original behavior - just titles
+        action_fields = [af.content.get("title", "") or "" for af in current_state.action_fields]
+        projects = [p.content.get("title", "") or "" for p in current_state.projects]
+        measures = [m.content.get("title", "") or "" for m in current_state.measures]
+        indicators = [i.content.get("title", "") or "" for i in current_state.indicators]
 
-    # Format as readable lists
-    registry = f"""
+        # Format as readable lists
+        registry = f"""
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║ ENTITY REGISTRY - CHECK BEFORE ANY CREATE OPERATION                         ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
@@ -162,6 +168,48 @@ INDICATORS ({len(indicators)} total):
 {', '.join(indicators) if indicators else '[None yet]'}
 
 ═══════════════════════════════════════════════════════════════════════════════
+"""
+        return registry
+    
+    # Enhanced mode with descriptions - helps LLM avoid redundant UPDATEs
+    def format_entity_list(entities, entity_type: str) -> str:
+        if not entities:
+            return "[None yet]"
+        
+        lines = []
+        for e in entities:
+            title = e.content.get("title", "") or "[Untitled]"
+            desc = e.content.get("description", "")
+            # Truncate long descriptions to 150 chars
+            if desc and len(desc) > 150:
+                desc = desc[:147] + "..."
+            
+            if desc:
+                lines.append(f"  • {e.id}: {title}\n    └─ {desc}")
+            else:
+                lines.append(f"  • {e.id}: {title} [no description yet]")
+        
+        return "\n".join(lines)
+    
+    registry = f"""
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ ENTITY REGISTRY WITH CONTENT - CHECK BEFORE CREATE/UPDATE OPERATIONS        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+ACTION FIELDS ({len(current_state.action_fields)} total):
+{format_entity_list(current_state.action_fields, 'action_field')}
+
+PROJECTS ({len(current_state.projects)} total):
+{format_entity_list(current_state.projects, 'project')}
+
+MEASURES ({len(current_state.measures)} total):
+{format_entity_list(current_state.measures, 'measure')}
+
+INDICATORS ({len(current_state.indicators)} total):
+{format_entity_list(current_state.indicators, 'indicator')}
+
+═══════════════════════════════════════════════════════════════════════════════
+IMPORTANT: Only UPDATE if you have NEW information not already in the description!
 """
     return registry
 
@@ -268,12 +316,19 @@ def _format_existing_connections(state) -> str:
     return "\n".join(lines)
 
 
-def format_context_json(context_data, include_connections: bool = False) -> str:
-    """Format context as registry + ID mappings and optionally existing connections."""
+def format_context_json(context_data, include_connections: bool = False, include_descriptions: bool = True) -> str:
+    """Format context as registry + ID mappings and optionally existing connections.
+    
+    Args:
+        context_data: Current extraction state
+        include_connections: Whether to show existing connections
+        include_descriptions: Whether to show entity descriptions (prevents redundant UPDATEs)
+    """
     if not context_data:
         return "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
 
-    registry = format_entity_registry(context_data)
+    # Use enhanced registry with descriptions to prevent redundant UPDATEs
+    registry = format_entity_registry(context_data, include_descriptions=include_descriptions)
     id_mapping = format_entity_id_mapping(context_data)
     connections = _format_existing_connections(context_data) if include_connections else ""
 
@@ -325,8 +380,13 @@ def build_operations_prompt(
     iteration: int | None = None,
 ) -> str:
     """Build mode-aware operations prompt (nodes or connections)."""
+    # For nodes mode, include descriptions to prevent redundant UPDATEs
     context_text = (
-        format_context_json(state, include_connections=(mode == "connections"))
+        format_context_json(
+            state, 
+            include_connections=(mode == "connections"),
+            include_descriptions=(mode == "nodes")  # Show descriptions when extracting nodes
+        )
         if state and (state.action_fields or state.projects or state.measures or state.indicators)
         else "ERSTER CHUNK: Noch keine Entities extrahiert. Beginnen Sie mit CREATE-Operationen."
     )
