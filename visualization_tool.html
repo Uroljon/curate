@@ -7,10 +7,11 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', Arial, sans-serif;
             margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
+            padding: 16px;
+            background-color: #f7f7f7;
+            color: #222;
         }
         
         .container {
@@ -18,20 +19,20 @@
             margin: 0 auto;
             background: white;
             border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
         }
         
         .header {
-            padding: 20px;
-            border-bottom: 1px solid #e0e0e0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            padding: 16px 20px;
+            border-bottom: 1px solid #e5e5e5;
+            background: #ffffff;
+            color: #222;
             border-radius: 8px 8px 0 0;
         }
         
         .header h1 {
             margin: 0;
-            font-size: 24px;
+            font-size: 20px;
         }
         
         .content {
@@ -41,10 +42,10 @@
         
         .sidebar {
             width: 300px;
-            padding: 20px;
-            border-right: 1px solid #e0e0e0;
+            padding: 16px;
+            border-right: 1px solid #e5e5e5;
             overflow-y: auto;
-            background-color: #fafafa;
+            background-color: #ffffff;
         }
         
         .main-view {
@@ -61,8 +62,8 @@
         
         .details-panel {
             width: 350px;
-            border-left: 1px solid #e0e0e0;
-            background: white;
+            border-left: 1px solid #e5e5e5;
+            background: #ffffff;
             overflow-y: auto;
             transform: translateX(100%);
             transition: transform 0.3s ease;
@@ -78,9 +79,9 @@
         }
         
         .details-header {
-            padding: 20px;
-            border-bottom: 1px solid #e0e0e0;
-            background: #f8f9fa;
+            padding: 16px;
+            border-bottom: 1px solid #e5e5e5;
+            background: #fafafa;
             position: sticky;
             top: 0;
             z-index: 100;
@@ -131,12 +132,10 @@
         
         .detail-section h4 {
             margin: 0 0 10px 0;
-            color: #333;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border-bottom: 2px solid #e0e0e0;
-            padding-bottom: 5px;
+            color: #111;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.2px;
         }
         
         .detail-section p {
@@ -298,8 +297,7 @@
         .node {
             cursor: pointer;
             stroke-width: 2px;
-            transition: all 0.2s ease;
-            filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.2));
+            transition: all 0.15s ease;
             pointer-events: all;
             transform-origin: center center;
         }
@@ -332,25 +330,26 @@
         }
         
         .link {
-            stroke: #999;
-            stroke-opacity: 0.6;
-            transition: stroke-opacity 0.2s ease;
+            stroke: #bdbdbd;
+            stroke-opacity: 0.7;
+            transition: stroke-opacity 0.15s ease;
         }
         
         .link:hover {
             stroke-opacity: 0.9;
         }
         
-        .link-high-confidence { stroke: #4caf50; }
-        .link-medium-confidence { stroke: #ff9800; }
-        .link-low-confidence { stroke: #f44336; }
+        .link-high-confidence { stroke: #2e7d32; }
+        .link-medium-confidence { stroke: #ef6c00; }
+        .link-low-confidence { stroke: #c62828; }
+        .link-derived { stroke-dasharray: 3 3; }
         
         .node-label {
             font-size: 10px;
-            font-weight: bold;
+            font-weight: 600;
             text-anchor: middle;
             pointer-events: none;
-            fill: black;
+            fill: #222;
         }
         
         .tooltip {
@@ -378,8 +377,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔍 CURATE Structure Visualizer</h1>
-            <p style="margin: 5px 0 0 0; opacity: 0.9;">Interactive visualization of enhance_structure JSON output</p>
+            <h1>CURATE Graph Visualizer</h1>
+            <p style="margin: 4px 0 0 0; color:#666; font-size:12px;">Explore entities and relationships from JSON</p>
         </div>
         
         <div class="content">
@@ -436,6 +435,13 @@
                             <label><input type="checkbox" id="show-ind" checked> Indicators</label>
                         </div>
                     </div>
+
+                    <div class="filter-group">
+                        <label>Hierarchy Links</label>
+                        <div class="entity-type-filters">
+                            <label><input type="checkbox" id="show-derived-af" checked> AF hierarchy links (derived)</label>
+                        </div>
+                    </div>
                     
                     <div class="filter-group">
                         <label>Connection Confidence</label>
@@ -477,20 +483,7 @@
                         </div>
                     </div>
                     
-                    <div class="filter-group" id="exportSection" style="display: none;">
-                        <label>Export</label>
-                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                            <button onclick="exportAsSVG()" style="padding: 8px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
-                                📊 Export as SVG
-                            </button>
-                            <button onclick="exportAsCSV()" style="padding: 8px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
-                                📋 Export as CSV
-                            </button>
-                            <button onclick="exportSummary()" style="padding: 8px; background: #ff9800; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
-                                📄 Export Summary
-                            </button>
-                        </div>
-                    </div>
+                    
                 </div>
             </div>
             
@@ -519,6 +512,8 @@
         let data = null;
         let nodes = [];
         let links = [];
+        let afParentMap = new Map(); // childId -> parentId (for AFs)
+        let afRootMap = new Map();   // nodeId -> root AF id
         let simulation = null;
         
         // SVG setup
@@ -622,11 +617,11 @@
                 
                 if (totalConnections === 0) {
                     warning.style.cssText = 'background: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin-top: 10px; border-radius: 4px; font-size: 11px; color: #856404;';
-                    warning.innerHTML = '⚠️ <strong>No connections found</strong><br>Entities exist but are not connected. The extraction may need improvement.';
+                    warning.innerHTML = '<strong>No connections found</strong><br>Entities exist but are not connected. The extraction may need improvement.';
                 } else {
                     // This will be updated by processData() after links are created
                     warning.id = 'connectionStatus';
-                    warning.innerHTML = `✅ <strong>Connections found</strong><br>${totalConnections} total connections in data. Processing...`;
+                    warning.innerHTML = `<strong>Connections found</strong><br>${totalConnections} total connections in data. Processing...`;
                 }
                 statsDiv.appendChild(warning);
                 
@@ -684,21 +679,65 @@
                     sources: item.sources
                 });
             });
-            
+
             data.indicators.forEach(item => {
                 nodes.push({
                     id: item.id,
                     type: 'ind',
                     name: item.content.title,
                     content: item.content,
-                    connections: item.connections
+                    connections: item.connections,
+                    sources: item.sources
                 });
             });
-            
+
             // Create node ID lookup map for validation
             const nodeMap = new Set(nodes.map(n => n.id));
             console.log('Created', nodes.length, 'nodes with IDs:', Array.from(nodeMap).slice(0, 5), '...');
+
+            // Derive parent-child Action Field links using parent_action_field_name
+            try {
+                const afTitleIndex = new Map();
+                nodes.filter(n => n.type === 'af').forEach(n => {
+                    const key = (n.name || '').trim().toLowerCase();
+                    if (key) afTitleIndex.set(key, n.id);
+                });
+
+                nodes.filter(n => n.type === 'af').forEach(n => {
+                    const parentName = n.content && n.content.parent_action_field_name ? n.content.parent_action_field_name : null;
+                    if (!parentName) return;
+                    const parentId = afTitleIndex.get(parentName.trim().toLowerCase());
+                    if (!parentId || parentId === n.id) return;
+
+                    if (!n.connections) n.connections = [];
+                    const alreadyLinked = n.connections.some(c => c.target_id === parentId);
+                    if (!alreadyLinked) {
+                        n.connections.push({
+                            target_id: parentId,
+                            confidence_score: 0.75,
+                            justification: 'Derived from parent_action_field_name',
+                            derived: true
+                        });
+                    }
+                    // Track parent mapping for grouping
+                    n.parent_af_id = parentId;
+                    afParentMap.set(n.id, parentId);
+                });
+            } catch (e) {
+                console.warn('AF parent derivation failed:', e);
+            }
             
+            // Mark AF parent/child roles for visual distinction
+            try {
+                const parentSet = new Set(Array.from(afParentMap.values()));
+                nodes.filter(n => n.type === 'af').forEach(n => {
+                    if (parentSet.has(n.id)) n.afRole = 'parent';
+                    else if (afParentMap.has(n.id)) n.afRole = 'child';
+                    else n.afRole = 'root';
+                });
+            } catch (e) {
+                console.warn('AF role marking failed:', e);
+            }
             // Create links from connections with validation
             let totalConnections = 0;
             let validConnections = 0;
@@ -708,14 +747,15 @@
                 if (node.connections) {
                     node.connections.forEach(conn => {
                         totalConnections++;
-                        
+
                         // Validate that target exists
                         if (nodeMap.has(conn.target_id)) {
                             links.push({
                                 source: node.id,
                                 target: conn.target_id,
                                 confidence: conn.confidence_score,
-                                justification: conn.justification
+                                justification: conn.justification,
+                                derived: !!conn.derived
                             });
                             validConnections++;
                         } else {
@@ -728,6 +768,25 @@
                     });
                 }
             });
+
+            // Compute AF root map for clustering
+            try {
+                const getRoot = (id) => {
+                    let current = id;
+                    const visited = new Set();
+                    while (afParentMap.has(current) && !visited.has(current)) {
+                        visited.add(current);
+                        current = afParentMap.get(current);
+                    }
+                    return current;
+                };
+                nodes.filter(n => n.type === 'af').forEach(n => {
+                    const root = getRoot(n.id);
+                    afRootMap.set(n.id, root);
+                });
+            } catch (e) {
+                console.warn('AF root computation failed:', e);
+            }
             
             console.log('Connection processing complete:', {
                 totalConnections,
@@ -745,12 +804,12 @@
             if (statusDiv) {
                 if (validConnections > 0) {
                     statusDiv.style.cssText = 'background: #e8f5e8; border: 1px solid #4caf50; padding: 10px; margin-top: 10px; border-radius: 4px; font-size: 11px; color: #2e7d32;';
-                    statusDiv.innerHTML = `✅ <strong>${validConnections} connections mapped successfully</strong><br>
+                    statusDiv.innerHTML = `<strong>${validConnections} connections mapped successfully</strong><br>
                         ${totalConnections} total connections in data (${((validConnections / totalConnections) * 100).toFixed(1)}% success rate)<br>
                         ${invalidConnections.length > 0 ? `<span style="color: #ff9800;">${invalidConnections.length} connections to missing entities</span>` : 'All connections valid'}`;
                 } else if (totalConnections > 0) {
                     statusDiv.style.cssText = 'background: #ffebee; border: 1px solid #f44336; padding: 10px; margin-top: 10px; border-radius: 4px; font-size: 11px; color: #c62828;';
-                    statusDiv.innerHTML = `❌ <strong>Connection mapping failed</strong><br>
+                    statusDiv.innerHTML = `<strong>Connection mapping failed</strong><br>
                         ${totalConnections} connections found but none could be mapped to existing nodes<br>
                         Check console for details about missing target IDs`;
                 }
@@ -764,7 +823,7 @@
             // Resize SVG
             svg.attr("width", width()).attr("height", height());
             
-            // Create simple bubble simulation
+            // Create simple bubble simulation (reverted)
             simulation = d3.forceSimulation(nodes)
                 .force("link", d3.forceLink(links).id(d => d.id)
                     .distance(100)
@@ -788,10 +847,12 @@
                 .data(links)
                 .join("line")
                 .attr("class", d => {
-                    const baseClass = "link";
-                    if (d.confidence >= 0.8) return baseClass + " link-high-confidence";
-                    if (d.confidence >= 0.6) return baseClass + " link-medium-confidence";
-                    return baseClass + " link-low-confidence";
+                    const classes = ["link"];
+                    if (d.confidence >= 0.8) classes.push("link-high-confidence");
+                    else if (d.confidence >= 0.6) classes.push("link-medium-confidence");
+                    else classes.push("link-low-confidence");
+                    if (d.derived) classes.push("link-derived");
+                    return classes.join(' ');
                 })
                 .attr("stroke-width", d => Math.sqrt(d.confidence * 3));
             
@@ -802,7 +863,16 @@
                 .join("path")
                 .attr("class", d => `node node-${d.type}`)
                 .attr("d", d => {
-                    const size = d.type === 'af' ? 400 : d.type === 'proj' ? 300 : d.type === 'msr' ? 200 : 150;
+                    let size;
+                    if (d.type === 'af') {
+                        size = d.afRole === 'parent' ? 500 : d.afRole === 'child' ? 350 : 400;
+                    } else if (d.type === 'proj') {
+                        size = 300;
+                    } else if (d.type === 'msr') {
+                        size = 200;
+                    } else {
+                        size = 150;
+                    }
                     let symbolType;
                     switch(d.type) {
                         case 'af': symbolType = d3.symbolSquare; break;    // Action Fields as squares
@@ -812,6 +882,12 @@
                         default: symbolType = d3.symbolCircle; break;
                     }
                     return d3.symbol().type(symbolType).size(size)();
+                })
+                .style("stroke-width", d => {
+                    const c = d.content && typeof d.content.confidence === 'number' ? d.content.confidence : null;
+                    let w = c != null ? (2 + c * 2) : 2;
+                    if (d.type === 'af' && d.afRole === 'parent') w += 1;
+                    return w;
                 })
                 .style("opacity", 0)  // Start invisible
                 .call(d3.drag()  // Add drag behavior immediately
@@ -876,12 +952,20 @@
             ['af', 'proj', 'msr', 'ind'].forEach(type => {
                 document.getElementById(`show-${type}`).addEventListener('change', updateVisualization);
             });
+
+            const derivedToggle = document.getElementById('show-derived-af');
+            if (derivedToggle) {
+                derivedToggle.addEventListener('change', updateVisualization);
+            }
             
             // Search functionality
             const searchInput = document.getElementById('searchInput');
             searchInput.addEventListener('input', function() {
                 performSearch(this.value);
             });
+
+                        // (layout controls removed)
+
         }
         
         function performSearch(searchTerm) {
@@ -933,53 +1017,29 @@
                 msr: document.getElementById('show-msr').checked,
                 ind: document.getElementById('show-ind').checked
             };
-            
-            // Filter nodes and links
-            const filteredNodes = nodes.filter(n => showTypes[n.type]);
-            const filteredLinks = links.filter(l => 
-                l.confidence >= minConfidence &&
-                showTypes[nodes.find(n => n.id === l.source.id || n.id === l.source).type] &&
-                showTypes[nodes.find(n => n.id === l.target.id || n.id === l.target).type]
-            );
-            
-            // Update visualization with confidence-based styling
-            g.selectAll(".link").data(filteredLinks, d => `${d.source.id}-${d.target.id}`)
-                .join("line")
-                .attr("class", d => {
-                    const baseClass = "link";
-                    if (d.confidence >= 0.8) return baseClass + " link-high-confidence";
-                    if (d.confidence >= 0.6) return baseClass + " link-medium-confidence";
-                    return baseClass + " link-low-confidence";
+            const showDerived = document.getElementById('show-derived-af') ? document.getElementById('show-derived-af').checked : true;
+
+            // Show/hide nodes by type
+            g.selectAll('.node')
+                .style('display', d => showTypes[d.type] ? '' : 'none')
+                .style('opacity', d => showTypes[d.type] ? 1 : 0);
+
+            // Show/hide labels
+            g.selectAll('.node-label')
+                .style('display', d => showTypes[d.type] ? '' : 'none')
+                .style('opacity', d => showTypes[d.type] ? 1 : 0);
+
+            // Show/hide links based on confidence and type filters
+            g.selectAll('.link')
+                .style('display', l => {
+                    if (l.derived && !showDerived) return 'none';
+                    if (l.confidence < minConfidence) return 'none';
+                    const sType = (l.source.type) ? l.source.type : (nodes.find(n => n.id === l.source)?.type);
+                    const tType = (l.target.type) ? l.target.type : (nodes.find(n => n.id === l.target)?.type);
+                    if (!sType || !tType) return 'none';
+                    return (showTypes[sType] && showTypes[tType]) ? '' : 'none';
                 })
-                .attr("stroke-width", d => Math.sqrt(d.confidence * 3))
-                .style("opacity", d => showTypes[d.source.type] && showTypes[d.target.type] ? 1 : 0);
-            
-            g.selectAll(".node").data(filteredNodes, d => d.id)
-                .join("path")
-                .attr("class", d => `node node-${d.type}`)
-                .attr("d", d => {
-                    const size = d.type === 'af' ? 600 : d.type === 'proj' ? 400 : d.type === 'msr' ? 200 : 150;
-                    let symbolType;
-                    switch(d.type) {
-                        case 'af': symbolType = d3.symbolSquare; break;
-                        case 'proj': symbolType = d3.symbolCircle; break;
-                        case 'msr': symbolType = d3.symbolTriangle; break;
-                        case 'ind': symbolType = d3.symbolDiamond; break;
-                        default: symbolType = d3.symbolCircle; break;
-                    }
-                    return d3.symbol().type(symbolType).size(size)();
-                })
-                .style("opacity", d => showTypes[d.type] ? 1 : 0);
-            
-            g.selectAll(".node-label").data(filteredNodes, d => d.id)
-                .join("text")
-                .attr("class", "node-label")
-                .style("opacity", d => showTypes[d.type] ? 1 : 0);
-            
-            // Update simulation
-            simulation.nodes(filteredNodes);
-            simulation.force("link").links(filteredLinks);
-            simulation.alpha(0.3).restart();
+                .style('opacity', l => (l.confidence >= minConfidence ? 1 : 0));
         }
         
         // Enhanced tooltip functions
@@ -1014,12 +1074,26 @@
                 if (d.content.unit) {
                     content += `<strong>Einheit:</strong> ${d.content.unit}<br>`;
                 }
-                if (d.content.calculation) {
-                    content += `<strong>Berechnung:</strong> ${d.content.calculation}<br>`;
+                const dataSource = d.content.data_source || d.content.valuesSource;
+                if (dataSource) {
+                    content += `<strong>Datenquelle:</strong> ${dataSource}<br>`;
                 }
-                if (d.content.valuesSource) {
-                    content += `<strong>Datenquelle:</strong> ${d.content.valuesSource}<br>`;
+                if (d.content.measurement_frequency) {
+                    content += `<strong>Messfrequenz:</strong> ${d.content.measurement_frequency}<br>`;
                 }
+                if (Array.isArray(d.content.target_values) && d.content.target_values.length > 0) {
+                    const tv = d.content.target_values.slice(0, 2).map(v => `${v.year || ''}: ${v.value}`).join(', ');
+                    content += `<strong>Zielwerte:</strong> ${tv}${d.content.target_values.length > 2 ? ' ...' : ''}<br>`;
+                }
+                if (Array.isArray(d.content.actual_values) && d.content.actual_values.length > 0) {
+                    const av = d.content.actual_values.slice(0, 2).map(v => `${v.year || ''}: ${v.value}`).join(', ');
+                    content += `<strong>Istwerte:</strong> ${av}${d.content.actual_values.length > 2 ? ' ...' : ''}<br>`;
+                }
+            }
+
+            // Show entity-level confidence if present
+            if (d.content && typeof d.content.confidence === 'number') {
+                content += `<br><strong>Entitäts-Confidence:</strong> ${(d.content.confidence * 100).toFixed(0)}%<br>`;
             }
             
             // Show source information
@@ -1040,8 +1114,10 @@
             
             // Show connections with confidence scores
             if (d.connections && d.connections.length > 0) {
-                content += `<br><strong>Verbindungen (${d.connections.length}):</strong><br>`;
-                d.connections.slice(0, 3).forEach(conn => {
+                const showDerived = document.getElementById('show-derived-af') ? document.getElementById('show-derived-af').checked : true;
+                const visibleConns = d.connections.filter(c => !(c.derived && !showDerived));
+                content += `<br><strong>Verbindungen (${visibleConns.length}):</strong><br>`;
+                visibleConns.slice(0, 3).forEach(conn => {
                     const targetNode = nodes.find(n => n.id === conn.target_id);
                     const targetName = targetNode ? targetNode.name : conn.target_id;
                     const confidenceColor = getConfidenceColor(conn.confidence_score);
@@ -1050,8 +1126,8 @@
                     content += `<span style="color: ${confidenceColor}; font-weight: bold;">${(conn.confidence_score * 100).toFixed(0)}%</span>`;
                     content += `</span><br>`;
                 });
-                if (d.connections.length > 3) {
-                    content += `<span style="font-size: 10px; color: #999;">...und ${d.connections.length - 3} weitere</span>`;
+                if (visibleConns.length > 3) {
+                    content += `<span style="font-size: 10px; color: #999;">...und ${visibleConns.length - 3} weitere</span>`;
                 }
             }
             
@@ -1132,14 +1208,36 @@
             if (entity.type === 'ind' && entity.content) {
                 let indicatorDetails = '';
                 if (entity.content.unit) indicatorDetails += `<p><strong>Einheit:</strong> ${entity.content.unit}</p>`;
-                if (entity.content.calculation) indicatorDetails += `<p><strong>Berechnung:</strong> ${entity.content.calculation}</p>`;
-                if (entity.content.valuesSource) indicatorDetails += `<p><strong>Datenquelle:</strong> ${entity.content.valuesSource}</p>`;
-                
-                if (indicatorDetails) {
+                const dataSource = entity.content.data_source || entity.content.valuesSource;
+                if (dataSource) indicatorDetails += `<p><strong>Datenquelle:</strong> ${dataSource}</p>`;
+                if (entity.content.measurement_frequency) indicatorDetails += `<p><strong>Messfrequenz:</strong> ${entity.content.measurement_frequency}</p>`;
+
+                // Render tables for target and actual values
+                const renderTable = (rows, title) => {
+                    if (!Array.isArray(rows) || rows.length === 0) return '';
+                    const header = `<tr><th style="text-align:left;padding:4px 8px;">Jahr</th><th style="text-align:left;padding:4px 8px;">Wert</th></tr>`;
+                    const body = rows.map(r => `<tr><td style="padding:4px 8px;">${r.year ?? ''}</td><td style="padding:4px 8px;">${r.value ?? ''}</td></tr>`).join('');
+                    return `
+                        <div style="margin:8px 0;">
+                            <div style="font-weight:bold; margin-bottom:4px;">${title}</div>
+                            <table style="border-collapse:collapse; font-size:12px; width:100%;">
+                                <thead style="background:#f5f5f5;">${header}</thead>
+                                <tbody>${body}</tbody>
+                            </table>
+                        </div>
+                    `;
+                };
+
+                const targetsTable = renderTable(entity.content.target_values, 'Zielwerte');
+                const actualsTable = renderTable(entity.content.actual_values, 'Istwerte');
+
+                if (indicatorDetails || targetsTable || actualsTable) {
                     html += `
                         <div class="detail-section">
                             <h4>Indikator-Details</h4>
                             ${indicatorDetails}
+                            ${targetsTable}
+                            ${actualsTable}
                         </div>
                     `;
                 }
@@ -1162,13 +1260,25 @@
                 html += '</div>';
             }
             
-            // Connections section
-            if (entity.connections && entity.connections.length > 0) {
+            // Entity-level confidence
+            if (entity.content && typeof entity.content.confidence === 'number') {
                 html += `
                     <div class="detail-section">
-                        <h4>Verbindungen (${entity.connections.length})</h4>
+                        <h4>Qualität</h4>
+                        <p><strong>Entitäts-Confidence:</strong> ${(entity.content.confidence * 100).toFixed(0)}%</p>
+                    </div>
                 `;
-                entity.connections.forEach(conn => {
+            }
+            
+            // Connections section
+            if (entity.connections && entity.connections.length > 0) {
+                const showDerived = document.getElementById('show-derived-af') ? document.getElementById('show-derived-af').checked : true;
+                const visibleConns = entity.connections.filter(conn => !(conn.derived && !showDerived));
+                html += `
+                    <div class="detail-section">
+                        <h4>Verbindungen (${visibleConns.length})</h4>
+                `;
+                visibleConns.forEach(conn => {
                     const targetNode = nodes.find(n => n.id === conn.target_id);
                     const targetName = targetNode ? targetNode.name : conn.target_id;
                     const confidenceColor = getConfidenceColor(conn.confidence_score);
@@ -1232,137 +1342,9 @@
         }
         
         // Export functions
-        function exportAsSVG() {
-            if (!data) {
-                alert('No data loaded to export');
-                return;
-            }
-            
-            // Clone the SVG
-            const svgElement = document.getElementById('visualization');
-            const svgClone = svgElement.cloneNode(true);
-            
-            // Set proper dimensions
-            svgClone.setAttribute('width', width());
-            svgClone.setAttribute('height', height());
-            
-            // Create a standalone SVG
-            const svgData = new XMLSerializer().serializeToString(svgClone);
-            const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
-            
-            // Download the file
-            const url = URL.createObjectURL(svgBlob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'curate_visualization.svg';
-            link.click();
-            URL.revokeObjectURL(url);
-        }
         
-        function exportAsCSV() {
-            if (!data) {
-                alert('No data loaded to export');
-                return;
-            }
-            
-            let csvContent = 'Type,ID,Name,Description,Connections\n';
-            
-            // Add all entities to CSV
-            [...data.action_fields, ...data.projects, ...data.measures, ...data.indicators].forEach(entity => {
-                const type = entity.id.startsWith('af_') ? 'Action Field' : 
-                           entity.id.startsWith('proj_') ? 'Project' : 
-                           entity.id.startsWith('msr_') ? 'Measure' : 'Indicator';
-                
-                const name = entity.content.title || entity.content.name || 'N/A';
-                const description = entity.content.description || 'N/A';
-                const connections = entity.connections ? entity.connections.length : 0;
-                
-                // Escape CSV values
-                const escapeCsv = str => `"${str.toString().replace(/"/g, '""')}"`;
-                
-                csvContent += `${escapeCsv(type)},${escapeCsv(entity.id)},${escapeCsv(name)},${escapeCsv(description)},${connections}\n`;
-            });
-            
-            // Download the CSV
-            const csvBlob = new Blob([csvContent], {type: 'text/csv;charset=utf-8'});
-            const url = URL.createObjectURL(csvBlob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'curate_entities.csv';
-            link.click();
-            URL.revokeObjectURL(url);
-        }
-        
-        function exportSummary() {
-            if (!data) {
-                alert('No data loaded to export');
-                return;
-            }
-            
-            const totalConnections = [...data.action_fields, ...data.projects, ...data.measures, ...data.indicators]
-                .reduce((sum, entity) => sum + (entity.connections ? entity.connections.length : 0), 0);
-            
-            const highConfConnections = links.filter(l => l.confidence >= 0.8).length;
-            const mediumConfConnections = links.filter(l => l.confidence >= 0.6 && l.confidence < 0.8).length;
-            const lowConfConnections = links.filter(l => l.confidence < 0.6).length;
-            
-            const summary = `CURATE Structure Analysis Summary
-Generated: ${new Date().toLocaleString()}
-
-=== ENTITY OVERVIEW ===
-Action Fields: ${data.action_fields.length}
-Projects: ${data.projects.length}
-Measures: ${data.measures.length}
-Indicators: ${data.indicators.length}
-Total Entities: ${data.action_fields.length + data.projects.length + data.measures.length + data.indicators.length}
-
-=== CONNECTION OVERVIEW ===
-Total Connections: ${totalConnections}
-High Confidence (80%+): ${highConfConnections}
-Medium Confidence (60-79%): ${mediumConfConnections}
-Low Confidence (<60%): ${lowConfConnections}
-
-=== QUALITY METRICS ===
-Average Connections per Entity: ${(totalConnections / (data.action_fields.length + data.projects.length + data.measures.length + data.indicators.length)).toFixed(2)}
-High Confidence Rate: ${((highConfConnections / totalConnections) * 100).toFixed(1)}%
-
-=== TOP ENTITIES BY CONNECTIONS ===
-Action Fields:
-${data.action_fields
-    .sort((a, b) => (b.connections?.length || 0) - (a.connections?.length || 0))
-    .slice(0, 3)
-    .map(af => `- ${af.content.title || af.id}: ${af.connections?.length || 0} connections`)
-    .join('\n')}
-
-Projects:
-${data.projects
-    .sort((a, b) => (b.connections?.length || 0) - (a.connections?.length || 0))
-    .slice(0, 3)
-    .map(proj => `- ${proj.content.title || proj.id}: ${proj.connections?.length || 0} connections`)
-    .join('\n')}
-
-=== ENTITY DETAILS WITH DESCRIPTIONS ===
-${data.action_fields.map(af => 
-    `Action Field: ${af.content.title || af.id}\nDescription: ${af.content.description || 'N/A'}\nConnections: ${af.connections?.length || 0}\n`
-).join('\n')}
-
-${data.projects.map(proj => 
-    `Project: ${proj.content.title || proj.id}\nType: ${proj.content.type || 'N/A'}\nDescription: ${proj.content.description || 'N/A'}\nConnections: ${proj.connections?.length || 0}\n`
-).join('\n')}
-`;
-            
-            // Download the summary
-            const summaryBlob = new Blob([summary], {type: 'text/plain;charset=utf-8'});
-            const url = URL.createObjectURL(summaryBlob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'curate_summary.txt';
-            link.click();
-            URL.revokeObjectURL(url);
-        }
-        
-        // Handle window resize
-        window.addEventListener('resize', () => {
+        // Export functions removed on request
+window.addEventListener('resize', () => {
             if (simulation) {
                 svg.attr("width", width()).attr("height", height());
                 simulation.force("center", d3.forceCenter(width() / 2, height() / 2));
