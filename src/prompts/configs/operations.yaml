@@ -17,9 +17,12 @@ system_messages:
     - HANDLUNGSFELDER: Breite strategische Bereiche (z.B. "Klimaschutz & Energie", "Nachhaltige Mobilität")
       → Können hierarchisch strukturiert sein (Eltern-Kind-Beziehungen)
     - PROJEKTE: Größere Initiativen/Vorhaben mit mehreren Maßnahmen (z.B. "Radverkehrskonzept 2030")
-      → Gehören zu Handlungsfeldern, enthalten Maßnahmen
+      → PRIMÄRE ORGANISATIONSEINHEIT für Maßnahmen
+      → Gehören zu Handlungsfeldern, enthalten verwandte Maßnahmen
+      → Haben eigene Budgets, Zeitpläne, Verantwortliche
     - MAßNAHMEN: Konkrete Einzelaktionen (z.B. "Bau Radweg Hauptstraße")
-      → Können zu Projekten ODER direkt zu Handlungsfeldern gehören
+      → Gehören PRIMÄR zu Projekten (Standard-Fall)
+      → NUR eigenständige Policy-Maßnahmen direkt zu Handlungsfeldern (Ausnahme)
       → NIEMALS "(Maßnahme)" im Titel hinzufügen - das ist redundant!
     - INDIKATOREN: Messbare Kennzahlen mit Zeitreihen (z.B. "CO2-Emissionen pro Kopf")
       → PRIORITÄT: Suchen Sie AKTIV nach Zahlen, Prozenten, Zielen, Metriken!
@@ -38,9 +41,18 @@ system_messages:
     - Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE
       → Können übergeordnete Handlungsfelder haben (parent_action_field_id)
       → Können untergeordnete Handlungsfelder haben
-      → Projekte: Größere Vorhaben/Initiativen innerhalb der Handlungsfelder
-        → Maßnahmen: Konkrete Aktionen (können zu Projekten ODER direkt zu Handlungsfeldern gehören)
+      → Projekte: PRIMÄRE UMSETZUNGSEINHEITEN innerhalb der Handlungsfelder
+        → Maßnahmen: Konkrete Aktionen (gehören STANDARD zu Projekten)
       → Indikatoren: Messbare Kennzahlen (können mehrere Handlungsfelder/Projekte betreffen)
+    
+    ORGANISATORISCHE LOGIK:
+    - Projekte sind die primären Implementierungscontainer in kommunalen Strategien
+    - Maßnahmen sollten zu Projekten gruppiert werden wenn sie:
+      * Gemeinsame Ziele verfolgen
+      * Ähnliche Ressourcen/Abteilungen betreffen
+      * Teil einer größeren Initiative sind
+      * Zeitlich oder thematisch zusammenhängen
+    - NUR eigenständige Policy-Maßnahmen gehören direkt zu Handlungsfeldern
 
     KRITISCHE VERBINDUNGSREGELN:
     - CONNECT darf NUR bereits existierende Entities aus der ID-MAPPING-TABELLE verbinden.
@@ -55,9 +67,10 @@ system_messages:
     PARENT-REFERENZEN (AUTOMATISCH AUFGELÖST):
     - Bei CREATE können Sie parent_*_name Felder verwenden:
       → parent_action_field_name: Für untergeordnete Handlungsfelder
-      → parent_project_name: Für Maßnahmen die zu Projekten gehören
-      → parent_action_field_name: Für Maßnahmen direkt unter Handlungsfeldern
+      → parent_project_name: Für Maßnahmen die zu Projekten gehören (STANDARD)
+      → parent_action_field_name: Für Maßnahmen direkt unter Handlungsfeldern (NUR Ausnahmen)
     - Diese werden AUTOMATISCH zu Verbindungen aufgelöst - kein CONNECT nötig!
+    - WICHTIG: Suchen Sie AKTIV nach Projekten für Maßnahmen-Gruppierung!
     
     ENTSCHEIDUNGSLOGIK (STRENG BEFOLGEN):
     1. Exakt gleiche Entity im REGISTRY? → Prüfen Sie die vorhandene Beschreibung
@@ -124,17 +137,28 @@ system_messages:
         "confidence": 0.75
       }
     
-    - CREATE (Maßnahme direkt unter Handlungsfeld, ohne Projekt):
+    - CREATE (Maßnahme direkt unter Handlungsfeld - NUR für eigenständige Policy-Maßnahmen):
       {
         "operation": "CREATE",
         "entity_type": "measure",
         "content": {
-          "title": "Energieberatung für Haushalte",
-          "description": "Kostenlose Energieberatung für private Haushalte zur Reduzierung des Energieverbrauchs.",
-          "parent_action_field_name": "Klimaschutz & Energie"
+          "title": "Tempo-30-Zonen in Wohngebieten",
+          "description": "Flächendeckende Einführung von Tempo-30-Zonen als eigenständige verkehrspolitische Maßnahme.",
+          "parent_action_field_name": "Nachhaltige Mobilität"
         },
         "source_pages": [45],
-        "source_quote": "Einführung kostenloser Energieberatungen",
+        "source_quote": "Generelle Geschwindigkeitsreduzierung in allen Wohngebieten",
+        "confidence": 0.8
+      }
+    
+    - BEVORZUGT - CREATE (Projekt als Container für verwandte Maßnahmen):
+      {
+        "operation": "CREATE",
+        "entity_type": "project",
+        "content": {
+          "title": "Energieeffizienz-Kampagne 2030",
+          "description": "Umfassendes Programm zur Steigerung der Energieeffizienz mit Beratungsangeboten und Förderungen."
+        },
         "confidence": 0.8
       }
 
@@ -186,7 +210,7 @@ templates:
     - Geben Sie höchstens 30 vollständige CREATE/UPDATE-Operationen pro Antwort zurück.
     - Wenn nach dieser Antwort weitere gültige Operationen verbleiben, MUSS das Top-Level-Feld "continue": true gesetzt werden.
     - Schneiden Sie niemals Items, um das Limit zu treffen – liefern Sie vollständige Items und setzen Sie "continue": true, wenn noch mehr valide Items verbleiben.
-    - IMMER genau EIN JSON-Objekt ohne Erklärtext zurückgeben: {{"operations": [...], "continue": true|false}} ("continue" ist verpflichtend und am Root-Level).
+    - IMMER genau EIN JSON-Objekt ohne Erklärtext zurückgeben: {{"operations": [...], "continue": true oder false}} ("continue" ist verpflichtend und am Root-Level).
 
     WICHTIG: Nur CREATE und UPDATE Operationen erlaubt - KEINE CONNECT Operationen!
     
@@ -198,12 +222,16 @@ templates:
     - CONNECT: VERBOTEN in diesem Pass - wird in separatem Schritt erledigt
 
     VOLLSTÄNDIGKEITS-FOKUS:
+    - PROJEKT-PRÜFUNG: Bevor Sie Maßnahmen erstellen, prüfen Sie:
+      * Gibt es ein übergeordnetes Projekt/Programm/Initiative?
+      * Gehören mehrere Maßnahmen thematisch zusammen?
+      * Sollten verwandte Maßnahmen unter einem Projekt gruppiert werden?
     - Bei CREATE immer vollständige, textbasierte Beschreibungen liefern
     - Bei UPDATE nur NEUE Felder/Informationen hinzufügen die noch NICHT existieren
     - KEIN UPDATE nur um bestehende Beschreibungen zu paraphrasieren
     - Quellenangaben (source_pages, source_quote) sind PFLICHT für Maßnahmen/Indikatoren
     - Konfidenz-Richtwerte: CREATE ≥ 0.7, UPDATE ≥ 0.8 (höher für UPDATE!)
-    - Ziel: Maximale Entität-Vollständigkeit ohne redundante UPDATEs
+    - Ziel: Maximale Entität-Vollständigkeit mit sinnvoller Projekt-Organisation
 
     {update_merge_rules}
 
@@ -219,7 +247,12 @@ templates:
 
     Falls keine validen CREATE/UPDATE-Operationen ableitbar sind: Antworten Sie mit {{"operations": [], "continue": false}}.
 
-    
+    ANTWORTFORMAT (EXAKT):
+    {{"operations": [...], "continue": true oder false}}
+
+    MINIMALE BEISPIELE:
+    {{"operations": [{{"operation": "CREATE", "entity_type": "action_field", "content": {{"title": "...", "description": "..."}}, "confidence": 0.8}}], "continue": true}}
+    {{"operations": [{{"operation": "UPDATE", "entity_type": "project", "entity_id": "proj_1", "content": {{"budget": "..."}}, "confidence": 0.8}}], "continue": false}}
 
   operations_connections_chunk: |
     Analysieren Sie diesen Textabschnitt und erstellen Sie NUR VERBINDUNGS-OPERATIONEN (CONNECT).
@@ -228,7 +261,7 @@ templates:
     - Geben Sie höchstens 30 Verbindungen gesamt pro Antwort zurück (Summe aller connections-Arrays).
     - Wenn nach dieser Antwort weitere valide Verbindungen verbleiben, MUSS das Top-Level-Feld "continue": true gesetzt werden.
     - Schneiden Sie niemals Items, um das Limit zu treffen – liefern Sie vollständige Items und setzen Sie "continue": true, wenn noch mehr valide Items verbleiben.
-    - IMMER genau EIN JSON-Objekt ohne Erklärtext zurückgeben: {{"operations": [...], "continue": true|false}} ("continue" ist verpflichtend und am Root-Level).
+    - IMMER genau EIN JSON-Objekt ohne Erklärtext zurückgeben: {{"operations": [...], "continue": true oder false}} ("continue" ist verpflichtend und am Root-Level).
 
     WICHTIG: Nur CONNECT Operationen erlaubt - KEINE CREATE/UPDATE Operationen!
     
@@ -261,11 +294,15 @@ templates:
        - Handlungsfeld enthält Projekt
        - Richtung: af_X → proj_Y
     
-    3. Dimensions → Measures (Handlungsfeld enthält direkte Maßnahmen)
-       - Handlungsfeld enthält Maßnahme (ohne Projekt)
-       - Richtung: af_X → msr_Y
+    3. Projects → Measures (PRIMÄRE VERBINDUNG - Projekt enthält Maßnahmen)
+       - Projekt enthält verwandte Maßnahmen
+       - Richtung: proj_X → msr_Y
+       - STANDARD-MUSTER für Maßnahmen-Organisation
     
-    4. Projects → Measures (Projekt enthält Maßnahmen)
+    4. Dimensions → Measures (NUR für eigenständige Policy-Maßnahmen)
+       - Handlungsfeld enthält direkte Maßnahme (Ausnahmefall)
+       - Richtung: af_X → msr_Y
+       - NUR wenn kein übergeordnetes Projekt identifizierbar
        - Projekt enthält Maßnahme
        - Richtung: proj_X → msr_Y
     
@@ -320,14 +357,19 @@ templates:
     - ⚠️  from_id/to_id: NUR IDs aus ID-MAPPING verwenden
     - Doppelte Kanten vermeiden: Prüfen Sie „EXISTING CONNECTIONS“ und schlagen Sie nur fehlende Kanten vor
     - Optionalität: AF→AF und project→project nur bei eindeutiger Text-Evidenz (z. B. „Unterthema“, „Teilprojekt“)
-    - FALSCH: "to_id": "Mobilität und Verkehr" ❌
-    - FALSCH: "from_id": "temp_af_1" ❌  
-    - RICHTIG: "to_id": "af_1" (aus ID-MAPPING) ✅
+    - FALSCH: "to_id": "Mobilität und Verkehr" (FALSCH)
+    - FALSCH: "from_id": "temp_af_1" (FALSCH)  
+    - RICHTIG: "to_id": "af_1" (aus ID-MAPPING)
     - Setzen Sie "continue": false NUR wenn in diesem Chunk kaum noch neue, nicht-duplizierte Verbindungen verbleiben.
 
     Falls keine validen CONNECT-Operationen ableitbar sind: Antworten Sie mit {{"operations": [], "continue": false}}.
 
-    
+    ANTWORTFORMAT (EXAKT):
+    {{"operations": [...], "continue": true oder false}}
+
+    MINIMALE BEISPIELE:
+    {{"operations": [{{"operation": "CONNECT", "entity_type": "action_field", "connections": [{{"from_id": "af_1", "to_id": "proj_2", "confidence": 0.8}}], "confidence": 0.7}}], "continue": true}}
+    {{"operations": [], "continue": false}}
 
   operations_chunk: |
     Analysieren Sie diesen Textabschnitt und erstellen Sie OPERATIONEN zur Strukturerweiterung.
@@ -377,8 +419,10 @@ templates:
     - Bevorzugen Sie UPDATE über CREATE bei semantischer Nähe; wenn keine nahe Entität existiert, CREATE.
     - VERBINDUNGS-ABDECKUNG: Prüfen Sie aktiv alle sinnvollen Kanten:
       • action_field → project (Projekt gehört zu Handlungsfeld)
-      • project → measure (Maßnahme gehört zu Projekt)
+      • project → measure (PRIMÄRE VERBINDUNG - Maßnahme gehört zu Projekt)
       • project/measure → indicator (Indikator misst Erfolg)
+      • action_field → measure (NUR für eigenständige Policy-Maßnahmen)
+    - PROJEKT-FOKUS: Identifizieren Sie aktiv Projekte als Container für Maßnahmen
     - Ziel ist hohe Vollständigkeit: Extrahieren Sie alle klar benannten Projekte, Maßnahmen und Indikatoren.
 
     Falls keine validen Operationen ableitbar sind: Antworten Sie mit {{"operations": []}}.
@@ -413,18 +457,18 @@ fragments:
     - TABU-FELDER: content darf KEIN "id" enthalten; "connections" werden in CONNECT-Pass behandelt.
 
     KORREKTES UPDATE-BEISPIEL (Projekt):
-    {
+    {{
       "operation": "UPDATE",
       "entity_type": "project",
       "entity_id": "proj_2",
-      "content": {
+      "content": {{
         "description": "Ergänzung: barrierefreie Knoten werden umgesetzt.",
         "tags": ["ÖPNV"]
-      },
+      }},
       "confidence": 0.78
-    }
+    }}
 
     FALSCHE UPDATE-BEISPIELE (vermeiden):
-    - Titeländerung im UPDATE: {"content": {"title": "Neuer Titel"}} ❌
-    - Ersetzen statt Ergänzen: {"content": {"description": "Neue Kurzfassung"}} ❌ (bestehenden Text nicht überschreiben)
-    - Doppelte Listenelemente: {"content": {"tags": ["ÖPNV", "ÖPNV"]}} ❌
+    - Titeländerung im UPDATE: {{"content": {{"title": "Neuer Titel"}}}} (FALSCH)
+    - Ersetzen statt Ergänzen: {{"content": {{"description": "Neue Kurzfassung"}}}} (FALSCH - bestehenden Text nicht überschreiben)
+    - Doppelte Listenelemente: {{"content": {{"tags": ["ÖPNV", "ÖPNV"]}}}} (FALSCH)
