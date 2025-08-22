@@ -86,21 +86,23 @@ class OperationExecutor:
                 operation_results.append(result)
 
                 if result.success:
-                    # Improve CONNECT logging to avoid confusing "- None"
                     if operation.operation == OperationType.CONNECT:
-                        # entities_affected contains [from_id, to_id, ...] pairs
-                        edge_count = (
-                            max(1, len(result.entities_affected) // 2)
-                            if result.entities_affected
-                            else 0
-                        )
-                        print(
-                            f"   ✅ {operation.operation}: {operation.entity_type} - {edge_count} connection(s)"
-                        )
+                        # Show actual connections with arrows and entity names
+                        connections_str = self._format_connections(new_state, operation, result)
+                        print(f"   ✅ {operation.operation}: {connections_str}")
+                    elif operation.operation == OperationType.CREATE:
+                        # Show entity name being created
+                        entity_name = self._get_entity_name(operation.content)
+                        entity_id = result.new_entity_id or operation.entity_id
+                        print(f"   ✅ {operation.operation}: {operation.entity_type} - {entity_id} \"{entity_name}\"")
+                    elif operation.operation == OperationType.UPDATE:
+                        # Show entity name and what fields were updated
+                        entity = self._find_entity_by_id(new_state, operation.entity_id)
+                        entity_name = self._get_entity_name(entity.content if entity else {})
+                        updated_fields = self._get_updated_fields(operation.content)
+                        print(f"   ✅ {operation.operation}: {operation.entity_type} - {operation.entity_id} \"{entity_name}\" ({updated_fields})")
                     else:
-                        print(
-                            f"   ✅ {operation.operation}: {operation.entity_type} - {result.new_entity_id or operation.entity_id}"
-                        )
+                        print(f"   ✅ {operation.operation}: {operation.entity_type} - {result.new_entity_id or operation.entity_id}")
                 else:
                     print(
                         f"   ❌ {operation.operation}: {operation.entity_type} - {result.error_message}"
@@ -478,6 +480,64 @@ class OperationExecutor:
         
         entity_id_lower = entity_id.lower()
         return any(entity_id_lower.startswith(pattern) for pattern in temporary_patterns)
+
+    def _get_entity_name(self, content: dict[str, Any] | None) -> str:
+        """Extract entity name from content for display."""
+        if not content:
+            return "Untitled"
+        
+        # Try common name fields
+        for field in ["title", "name"]:
+            if field in content and content[field]:
+                return str(content[field])
+        
+        return "Untitled"
+
+    def _get_updated_fields(self, content: dict[str, Any] | None) -> str:
+        """Format list of field names being updated."""
+        if not content:
+            return "no fields"
+        
+        # Get all field names from the update content
+        field_names = list(content.keys())
+        
+        if not field_names:
+            return "no fields"
+        
+        return ", ".join(field_names)
+
+    def _format_connections(self, state: EnrichedReviewJSON, operation: EntityOperation, result: OperationResult) -> str:
+        """Format connections with entity names and arrows."""
+        if not operation.connections or not result.entities_affected:
+            return f"{operation.entity_type} - no connections"
+        
+        # Get the source entity name (first entity affected)
+        source_id = None
+        source_name = "Unknown"
+        
+        # For CONNECT operations, we need to look at the operation connections to find the source
+        if operation.connections and len(operation.connections) > 0:
+            source_id = operation.connections[0].get("from_id")
+            if source_id:
+                source_entity = self._find_entity_by_id(state, source_id)
+                if source_entity:
+                    source_name = self._get_entity_name(source_entity.content)
+        
+        # Collect all target connections
+        targets = []
+        for conn_data in operation.connections:
+            to_id = conn_data.get("to_id")
+            if to_id:
+                target_entity = self._find_entity_by_id(state, to_id)
+                if target_entity:
+                    target_name = self._get_entity_name(target_entity.content)
+                    targets.append(f'{to_id} "{target_name}"')
+        
+        if not targets:
+            return f'{source_id} "{source_name}" → no valid targets'
+        
+        targets_str = ", ".join(targets)
+        return f'{source_id} "{source_name}" → {targets_str}'
 
     def get_operation_summary(self) -> dict[str, Any]:
         """Get a summary of all operations applied."""
