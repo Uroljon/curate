@@ -464,6 +464,82 @@ When using vLLM, the system automatically maps Ollama model names to vLLM equiva
 - Check logs for "⚠️ Detected and cleaned malformed metadata in operations array"
 - Prompts explicitly instruct LLM about correct JSON structure with `continue` at root level
 
+## Critical Updates: Operations-Based Extraction & Entity Structure (August 2025)
+
+### Two-Pass Extraction Strategy
+The system now uses a sophisticated two-pass approach for operations-based extraction:
+
+**Pass 1: Entity Extraction (CREATE/UPDATE)**
+- Processes chunks sequentially to extract entities
+- LLM returns operations (not full JSON state) to avoid degradation
+- CREATE generates unique IDs (af_1, proj_2, msr_3, ind_4)
+- UPDATE enriches existing entities (additive only, never replaces)
+- Global entity registry maintains cross-chunk consistency
+
+**Pass 2: Connection Creation (CONNECT)**
+- Establishes relationships between entities from Pass 1
+- Only connects entities with existing IDs
+- Enforces thematic coherence (prevents cross-domain connections)
+- Deduplicates connections within and across operations
+
+**Pass 3: Parent Resolution (Post-processing)**
+- NEW: Automatic parent reference resolution
+- Converts name-based references to ID connections
+- Located in `src/processing/parent_resolver.py`
+- Creates hierarchical structures automatically
+
+### Entity Structure Aligned with Comuneo Platform
+
+**Critical Change: 4-Bucket Model with Hierarchies**
+1. **Action Fields** (Handlungsfelder): Can now be hierarchical
+   - Support parent-child relationships
+   - Example: "Klimaschutz & Energie" → "Kommunale Wärmeplanung"
+
+2. **Projects vs Measures Distinction**:
+   - **Projects**: Large initiatives containing multiple measures
+   - **Measures**: Concrete actions that can belong to:
+     - Projects (traditional hierarchy)
+     - Action fields directly (new flexibility)
+   - Never add "(Maßnahme)" suffix - it's redundant
+
+3. **Indicators with Temporal Data**:
+   - Now support time-series: `actual_values: [{year: 2021, value: 100}, ...]`
+   - Include target arrays and measurement frequencies
+   - Actively extracted with priority
+
+### Parent Reference Resolution System
+Entities can specify parent relationships via name fields:
+- `parent_action_field_name`: For hierarchical action fields  
+- `parent_project_name`: For measures under projects
+- `parent_action_field_name` (on measures): For direct AF→Measure
+
+These are automatically resolved to connections in post-processing.
+
+### Connection Rules & Deduplication
+
+**Allowed Connection Patterns:**
+- AF → AF (hierarchy)
+- AF → Project (ownership)
+- AF → Measure (direct, without project)
+- Project → Measure (contains)
+- Project/Measure → Indicator (tracks)
+
+**Deduplication Levels:**
+1. Entity level: Registry prevents duplicate entities
+2. Connection level: Checks before adding
+3. Within-operation: Must deduplicate connections array
+
+**Thematic Coherence:**
+- STRICT: No cross-domain connections
+- Example: Urban planning shouldn't connect to education measures
+- Confidence thresholds: 0.7 CREATE, 0.8 UPDATE, 0.9 parent refs
+
+### Critical Implementation Files
+- `src/api/extraction_helpers.py`: Main orchestrator with `extract_direct_to_enhanced_with_operations()`
+- `src/extraction/operations_executor.py`: `OperationExecutor` applies operations
+- `src/processing/parent_resolver.py`: NEW - Resolves parent references
+- `src/prompts/configs/operations.yaml`: Updated with hierarchy support and coherence rules
+
 ## Recent Updates (August 2025)
 
 **JSON Malformation Fix (August 2025):**

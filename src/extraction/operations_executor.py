@@ -590,14 +590,21 @@ class OperationExecutor:
                 target_entity = self._find_entity_by_id(state, to_id)
                 
                 if source_entity and target_entity:
-                    # Check if connection actually exists in source entity
+                    # Check if connection exists (was created or already existed)
                     existing_connections = [c.target_id for c in source_entity.connections]
                     if to_id in existing_connections:
-                        target_name = self._get_entity_name(target_entity.content)
-                        # Truncate long names for cleaner display
-                        if len(target_name) > 50:
-                            target_name = target_name[:47] + "..."
-                        successful_targets.append(f"{to_id} \"{target_name}\"")
+                        # Only display if this is the FIRST occurrence in the operation's connections
+                        # This prevents showing duplicates in the display
+                        already_shown = any(
+                            prev_conn.get("to_id") == to_id 
+                            for prev_conn in operation.connections[:operation.connections.index(conn_data)]
+                        )
+                        if not already_shown:
+                            target_name = self._get_entity_name(target_entity.content)
+                            # Truncate long names for cleaner display
+                            if len(target_name) > 50:
+                                target_name = target_name[:47] + "..."
+                            successful_targets.append(f"{to_id} \"{target_name}\"")
         
         if not successful_targets:
             return f'{source_id} "{source_name}" → no valid targets'

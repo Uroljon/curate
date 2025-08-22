@@ -1343,6 +1343,10 @@ def extract_direct_to_enhanced_with_operations(
             chunks_with_pages, current_state, executor, llm_provider, source_id, log_file_path
         )
 
+    # Step 3.5: Resolve parent references to create connections
+    from src.processing.parent_resolver import resolve_parent_references
+    current_state = resolve_parent_references(current_state)
+    
     # Step 4: Final statistics and return
     extraction_time = time.time() - start_time
     operation_summary = executor.get_operation_summary()

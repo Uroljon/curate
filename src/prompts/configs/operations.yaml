@@ -13,6 +13,19 @@ system_messages:
     - UPDATE: Bestehende Entity anreichern (neue Felder hinzufügen, Texte erweitern, Listen ergänzen) - entity_id erforderlich
     - CONNECT: Verbindungen zwischen Entities erstellen (auch bestehende Entities können neue Verbindungen erhalten) - connections erforderlich
 
+    ENTITY-TYPEN DEFINITIONEN:
+    - HANDLUNGSFELDER: Breite strategische Bereiche (z.B. "Klimaschutz & Energie", "Nachhaltige Mobilität")
+      → Können hierarchisch strukturiert sein (Eltern-Kind-Beziehungen)
+    - PROJEKTE: Größere Initiativen/Vorhaben mit mehreren Maßnahmen (z.B. "Radverkehrskonzept 2030")
+      → Gehören zu Handlungsfeldern, enthalten Maßnahmen
+    - MAßNAHMEN: Konkrete Einzelaktionen (z.B. "Bau Radweg Hauptstraße")
+      → Können zu Projekten ODER direkt zu Handlungsfeldern gehören
+      → NIEMALS "(Maßnahme)" im Titel hinzufügen - das ist redundant!
+    - INDIKATOREN: Messbare Kennzahlen mit Zeitreihen (z.B. "CO2-Emissionen pro Kopf")
+      → PRIORITÄT: Suchen Sie AKTIV nach Zahlen, Prozenten, Zielen, Metriken!
+      → Beispiele: "30% Modal Split", "500 neue Wohnungen", "25% CO2-Reduktion"
+      → Temporal: Wenn möglich mit Jahresangaben erfassen
+
     DUPLIKAT-VERMEIDUNG (HÖCHSTE PRIORITÄT):
     - ALLE Entity-Typen im ENTITY REGISTRY prüfen (nicht nur Handlungsfelder!)
     - Exakt gleiche oder sehr ähnliche Namen → UPDATE verwenden
@@ -23,9 +36,11 @@ system_messages:
 
     HIERARCHISCHE STRUKTUR:
     - Handlungsfelder (action_field): BREITE STRATEGISCHE BEREICHE
-      → Projekte: Konkrete Vorhaben innerhalb der Handlungsfelder
-        → Maßnahmen: Spezifische Aktionen innerhalb der Projekte
-          → Indikatoren: Messbare Kennzahlen für Projekte/Maßnahmen
+      → Können übergeordnete Handlungsfelder haben (parent_action_field_id)
+      → Können untergeordnete Handlungsfelder haben
+      → Projekte: Größere Vorhaben/Initiativen innerhalb der Handlungsfelder
+        → Maßnahmen: Konkrete Aktionen (können zu Projekten ODER direkt zu Handlungsfeldern gehören)
+      → Indikatoren: Messbare Kennzahlen (können mehrere Handlungsfelder/Projekte betreffen)
 
     KRITISCHE VERBINDUNGSREGELN:
     - CONNECT darf NUR bereits existierende Entities aus der ID-MAPPING-TABELLE verbinden.
@@ -37,6 +52,13 @@ system_messages:
     - Beispiel FALSCH: "from_id": "temp_af_1" (existiert nicht im System)
     - CONNECT-Operationen erfordern klaren thematischen Zusammenhang und ausreichende Evidenz.
 
+    PARENT-REFERENZEN (AUTOMATISCH AUFGELÖST):
+    - Bei CREATE können Sie parent_*_name Felder verwenden:
+      → parent_action_field_name: Für untergeordnete Handlungsfelder
+      → parent_project_name: Für Maßnahmen die zu Projekten gehören
+      → parent_action_field_name: Für Maßnahmen direkt unter Handlungsfeldern
+    - Diese werden AUTOMATISCH zu Verbindungen aufgelöst - kein CONNECT nötig!
+    
     ENTSCHEIDUNGSLOGIK (STRENG BEFOLGEN):
     1. Exakt gleiche Entity im REGISTRY? → Prüfen Sie die vorhandene Beschreibung
     2. Haben Sie NEUE Information die noch NICHT in der Beschreibung steht? → UPDATE
@@ -46,7 +68,7 @@ system_messages:
     6. AKTIV nach Verbindungsmöglichkeiten suchen: CONNECT zwischen thematisch verwandten Entities
 
     QUALITÄTSPRINZIPIEN:
-    - ⚠️  KRITISCH: In from_id/to_id NUR IDs verwenden (af_1, proj_2), NIEMALS Titel ("Mobilität").
+    - KRITISCH: In from_id/to_id NUR IDs verwenden (af_1, proj_2), NIEMALS Titel ("Mobilität").
     - Kopieren Sie IDs EXAKT aus der ID-MAPPING-TABELLE oben.
     - Quellenangaben (source_pages, source_quote) sind PFLICHT für Maßnahmen und Indikatoren; für Handlungsfelder/Projekte optional in content.
     - Seien Sie konservativ bei neuen Handlungsfeldern; für Projekte/Maßnahmen/Indikatoren höhere Vollständigkeit anstreben.
@@ -54,13 +76,25 @@ system_messages:
     - Erstellen Sie CONNECT-Operationen zwischen bestehenden Entities, wann immer klare Zusammenhänge erkennbar sind.
 
     BEISPIELE:
-    - CREATE (Handlungsfeld):
+    - CREATE (Übergeordnetes Handlungsfeld):
       {
         "operation": "CREATE",
         "entity_type": "action_field",
         "content": {
-          "title": "Mobilität und Verkehr",
-          "description": "Nachhaltige Verkehrslösungen und Mobilitätskonzepte für die Stadt."
+          "title": "Klimaschutz & Energie",
+          "description": "Strategischer Bereich für Klimaschutz und nachhaltige Energieversorgung."
+        },
+        "confidence": 0.75
+      }
+    
+    - CREATE (Untergeordnetes Handlungsfeld mit Verweis auf Eltern):
+      {
+        "operation": "CREATE",
+        "entity_type": "action_field",
+        "content": {
+          "title": "Kommunale Wärmeplanung",
+          "description": "Spezifische Wärmeplanungsstrategien als Teil des Klimaschutz-Handlungsfeldes.",
+          "parent_action_field_name": "Klimaschutz & Energie"
         },
         "confidence": 0.75
       }
@@ -76,20 +110,35 @@ system_messages:
         "confidence": 0.75
       }
 
-    - CREATE (Maßnahme) mit Quellenangabe:
+    - CREATE (Maßnahme innerhalb eines Projekts):
       {
         "operation": "CREATE",
         "entity_type": "measure",
         "content": {
-          "title": "Ausbau Radwegenetz",
-          "description": "Lückenschluss und Qualitätsverbesserung zentraler Radachsen."
+          "title": "Ausbau Radwegenetz Phase 1",
+          "description": "Lückenschluss und Qualitätsverbesserung zentraler Radachsen im Rahmen des Radverkehrskonzepts.",
+          "parent_project_name": "Radverkehrskonzept 2030"
         },
         "source_pages": [23],
         "source_quote": "Ausbau des städtischen Radwegenetzes entlang der Hauptachsen bis 2028",
         "confidence": 0.75
       }
+    
+    - CREATE (Maßnahme direkt unter Handlungsfeld, ohne Projekt):
+      {
+        "operation": "CREATE",
+        "entity_type": "measure",
+        "content": {
+          "title": "Energieberatung für Haushalte",
+          "description": "Kostenlose Energieberatung für private Haushalte zur Reduzierung des Energieverbrauchs.",
+          "parent_action_field_name": "Klimaschutz & Energie"
+        },
+        "source_pages": [45],
+        "source_quote": "Einführung kostenloser Energieberatungen",
+        "confidence": 0.8
+      }
 
-    - CREATE (Indikator) mit Quellenangabe:
+    - CREATE (Indikator mit zeitlichen Daten):
       {
         "operation": "CREATE",
         "entity_type": "indicator",
@@ -97,8 +146,17 @@ system_messages:
           "title": "ÖPNV-Anteil",
           "description": "Steigerung des Modal Split zugunsten des ÖPNV auf 30% bis 2030.",
           "unit": "Prozent",
-          "target_values": "30% bis 2030",
-          "actual_values": "18% (Stand 2023)"
+          "target_values": [
+            {"year": 2025, "value": 22},
+            {"year": 2030, "value": 30}
+          ],
+          "actual_values": [
+            {"year": 2021, "value": 15},
+            {"year": 2022, "value": 17},
+            {"year": 2023, "value": 18}
+          ],
+          "measurement_frequency": "jährlich",
+          "data_source": "Verkehrsamt"
         },
         "source_pages": [18],
         "source_quote": "Erhöhung des ÖPNV-Anteils von derzeit 18% auf 30% bis 2030",
@@ -135,9 +193,9 @@ templates:
     {context_text}
 
     MODUS: NUR ENTITY-EXTRAKTION
-    - ✅ CREATE: Neue Entities erstellen (wenn eindeutig neu)
-    - ✅ UPDATE: Bestehende Entities anreichern/erweitern
-    - ❌ CONNECT: VERBOTEN in diesem Pass - wird in separatem Schritt erledigt
+    - CREATE: Neue Entities erstellen (wenn eindeutig neu)
+    - UPDATE: Bestehende Entities anreichern/erweitern
+    - CONNECT: VERBOTEN in diesem Pass - wird in separatem Schritt erledigt
 
     VOLLSTÄNDIGKEITS-FOKUS:
     - Bei CREATE immer vollständige, textbasierte Beschreibungen liefern
@@ -191,27 +249,51 @@ templates:
     {context_text}
 
     MODUS: NUR VERBINDUNGS-EXTRAKTION  
-    - ❌ CREATE: VERBOTEN in diesem Pass - Entities bereits erstellt
-    - ❌ UPDATE: VERBOTEN in diesem Pass - Entities bereits vollständig
-    - ✅ CONNECT: Verbindungen zwischen bestehenden Entities aus ID-MAPPING-TABELLE
+    - CREATE: VERBOTEN in diesem Pass - Entities bereits erstellt
+    - UPDATE: VERBOTEN in diesem Pass - Entities bereits vollständig
+    - CONNECT: Verbindungen zwischen bestehenden Entities aus ID-MAPPING-TABELLE
 
     VERBINDUNGSREGELN BASIEREND AUF DATENBANKSCHEMA:
+    
+    KRITISCHE REGELN FÜR VERBINDUNGEN:
+    - KEINE DUPLIKATE: Prüfen Sie in der ID-MAPPING-TABELLE ob Verbindung bereits existiert!
+      → Wenn "connections" bereits af_3→msr_8 zeigt, NICHT nochmal verbinden!
+    - THEMATISCHE KOHÄRENZ: NUR thematisch zusammenhängende Entities verbinden
+      FALSCH: Städtebau → Bildungsmaßnahme (verschiedene Themen!)
+      RICHTIG: Bildung → Bildungsmaßnahme (gleiches Thema)
+      FALSCH: Wohnen → Digitalisierung (unzusammenhängend!)
+      RICHTIG: Mobilität → Radwegeausbau (thematisch passend)
+    - Bei Unsicherheit: KEINE Verbindung erstellen (besser zu wenig als falsch)
+    - Maximal 1 Verbindung pro Paar (from→to) - keine Mehrfachverbindungen!
 
     ERLAUBTE VERBINDUNGEN (NUR DIESE!):
-    1. Dimensions → Measures (via dimensionIds in MeasuresExtended)
-       - Handlungsfeld enthält Projekt/Maßnahme
+    1. Dimensions → Dimensions (Hierarchie innerhalb Handlungsfelder)
+       - Übergeordnetes → Untergeordnetes Handlungsfeld
+       - Richtung: af_X → af_Y (parent → child)
+    
+    2. Dimensions → Projects (Handlungsfeld enthält Projekte)
+       - Handlungsfeld enthält Projekt
        - Richtung: af_X → proj_Y
     
-    2. Measures → Indicators (via indicatorIds in MeasuresExtended)
-       - Projekt/Maßnahme hat zugehörige Indikatoren
-       - Richtung: proj_X → ind_Y oder msr_X → ind_Y
+    3. Dimensions → Measures (Handlungsfeld enthält direkte Maßnahmen)
+       - Handlungsfeld enthält Maßnahme (ohne Projekt)
+       - Richtung: af_X → msr_Y
     
-    3. Dimensions → Indicators (via dimensionIds in Indicators)
-       - Handlungsfeld hat direkte Indikatoren
+    4. Projects → Measures (Projekt enthält Maßnahmen)
+       - Projekt enthält Maßnahme
+       - Richtung: proj_X → msr_Y
+    
+    5. Projects → Indicators (Projekt hat Indikatoren)
+       - Projekt wird durch Indikator gemessen
+       - Richtung: proj_X → ind_Y
+    
+    6. Measures → Indicators (Maßnahme hat Indikatoren)
+       - Maßnahme wird durch Indikator gemessen
+       - Richtung: msr_X → ind_Y
+    
+    7. Dimensions → Indicators (Handlungsfeld hat direkte Indikatoren)
+       - Handlungsfeld hat übergreifende Indikatoren
        - Richtung: af_X → ind_Y
-    
-    4. Hierarchien (nur bei expliziter Evidenz):
-       - Dimensions → Dimensions (via parentDimensionId)
        - Measures → Measures (via parentMeasure)
        - Richtung: parent → child
 
