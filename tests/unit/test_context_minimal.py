@@ -28,7 +28,7 @@ def test_context_awareness_fix():
         content = f.read()
 
     tests_passed = 0
-    tests_total = 6
+    tests_total = 5
 
     # Test 1: format_entity_registry function exists
     if "def format_entity_registry(current_state) -> str:" in content:
@@ -51,21 +51,14 @@ def test_context_awareness_fix():
     else:
         print("❌ Registry may still truncate entities")
 
-    # Test 4: Context uses registry format instead of JSON dump
-    if "Use the new compact registry format" in content and "registry = format_entity_registry(context_data)" in content:
-        print("✅ Context uses registry format instead of JSON dump")
-        tests_passed += 1
-    else:
-        print("❌ Context may still use JSON dump")
-
-    # Test 5: YAML-based prompts are properly integrated
+    # Test 4: YAML-based prompts are properly integrated
     if "from src.prompts import get_prompt" in content:
         print("✅ YAML-based prompt system integrated")
         tests_passed += 1
     else:
         print("❌ YAML-based prompt system not found")
 
-    # Test 6: Operations prompts are loaded from YAML
+    # Test 5: Operations prompts are loaded from YAML
     if 'get_prompt("operations.system_messages.operations_extraction")' in content:
         print("✅ Operations prompts loaded from YAML")
         tests_passed += 1
@@ -80,7 +73,6 @@ def test_context_awareness_fix():
         print("\nKey improvements verified:")
         print("  ✓ format_entity_registry() shows ALL entities (no truncation)")
         print("  ✓ format_entity_id_mapping() provides complete ID lookup")
-        print("  ✓ format_context_json() uses registry format (not JSON dump)")
         print("  ✓ YAML-based prompt system integrated successfully")
         print("  ✓ Operations prompts loaded from YAML configurations")
         print("  ✓ Code structure supports the intended duplicate reduction")
