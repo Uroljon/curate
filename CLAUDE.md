@@ -12,9 +12,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Database Schema & Entity Relationships**: See `docs/database.md` for Appwrite schema analysis and understanding of how extraction targets map to the production database structure.
 
+**DEFINITIVE Entity Structure**: See `docs/entity_structure.md` for the correct understanding of entity relationships - this is the authoritative reference.
+
 ## Project Overview
 
-CURATE is a PDF Strategy Extractor that processes German municipal strategy documents using advanced LLMs via OpenRouter (default) or local providers. It extracts structured data (action fields, projects, measures, indicators) from PDFs through a multi-stage extraction pipeline. The system uses intelligent text extraction with OCR fallback, structure-aware chunking, and progressive LLM-based extraction with Pydantic schemas.
+CURATE is a PDF Strategy Extractor that processes German municipal strategy documents using advanced LLMs via OpenRouter (default) or local providers. It extracts structured data from PDFs through a multi-stage extraction pipeline. The system uses intelligent text extraction with OCR fallback, structure-aware chunking, and progressive LLM-based extraction with Pydantic schemas.
+
+**Extracted Entities (as per `docs/entity_structure.md`):**
+- **Dimensions** (Action Fields) - Strategic areas with hierarchical support
+- **Measures** - Implementation initiatives (Projects are just parent Measures with `isParent: true`)
+- **Indicators** - Quantitative metrics
+- **Connections** - Via `Measure2indicator` junction and `MeasuresExtended` relationships
 
 ## Development Commands
 
@@ -488,24 +496,30 @@ The system now uses a sophisticated two-pass approach for operations-based extra
 - Located in `src/processing/parent_resolver.py`
 - Creates hierarchical structures automatically
 
-### Entity Structure Aligned with Comuneo Platform
+### Entity Structure (Per `docs/entity_structure.md`)
 
-**Critical Change: 4-Bucket Model with Hierarchies**
-1. **Action Fields** (Handlungsfelder): Can now be hierarchical
-   - Support parent-child relationships
-   - Example: "Klimaschutz & Energie" → "Kommunale Wärmeplanung"
+**The Correct 4-Entity Model:**
+1. **Dimensions** (Action Fields/Handlungsfelder):
+   - Strategic areas with hierarchical support via `parentDimensionId`
+   - Connect to Measures via `dimensionIds` in `MeasuresExtended`
 
-2. **Projects vs Measures Distinction**:
-   - **Projects**: Large initiatives containing multiple measures
-   - **Measures**: Concrete actions that can belong to:
-     - Projects (traditional hierarchy)
-     - Action fields directly (new flexibility)
-   - Never add "(Maßnahme)" suffix - it's redundant
+2. **Measures** (Projects AND Measures combined):
+   - In Appwrite, there's only `Measures` entity
+   - Projects are parent Measures with `isParent: true`
+   - Hierarchical via `parentMeasure` field
+   - Connect to Dimensions via `MeasuresExtended.dimensionIds`
+   - Connect to Indicators via `Measure2indicator` junction
 
-3. **Indicators with Temporal Data**:
-   - Now support time-series: `actual_values: [{year: 2021, value: 100}, ...]`
-   - Include target arrays and measurement frequencies
-   - Actively extracted with priority
+3. **Indicators**:
+   - Quantitative metrics
+   - Connect to Dimensions via `dimensionId`/`dimensionIds`
+   - Connect to Measures via `Measure2indicator` junction
+   - Support time-series: `actual_values: [{year: 2021, value: 100}, ...]`
+
+4. **MeasuresExtended**:
+   - Supplements Measures with relationship metadata
+   - Contains `dimensionIds` (Measures→Dimensions connection)
+   - Contains `indicatorIds` for indicator relationships
 
 ### Parent Reference Resolution System
 Entities can specify parent relationships via name fields:
@@ -517,12 +531,12 @@ These are automatically resolved to connections in post-processing.
 
 ### Connection Rules & Deduplication
 
-**Allowed Connection Patterns:**
-- AF → AF (hierarchy)
-- AF → Project (ownership)
-- AF → Measure (direct, without project)
-- Project → Measure (contains)
-- Project/Measure → Indicator (tracks)
+**Allowed Connection Patterns (Per `docs/entity_structure.md`):**
+- Dimensions → Dimensions (via `parentDimensionId`)
+- Dimensions → Measures (via `dimensionIds` in `MeasuresExtended`)
+- Indicators → Dimensions (via `dimensionId`/`dimensionIds`)
+- Measures → Indicators (via `Measure2indicator` junction table)
+- Measures → Measures (via `parentMeasure` array)
 
 **Deduplication Levels:**
 1. Entity level: Registry prevents duplicate entities
@@ -655,16 +669,22 @@ The codebase underwent systematic dead code removal using `vulture` and `dead` t
 
 Based on the Appwrite schema analysis (see `docs/database.md` for complete details), our extraction targets these core entities with their relationships:
 
-**Entity Mapping:**
-- **Action Fields** ↔ Strategic sustainability areas (`Dimensions` in Appwrite schema)
-- **Projects** ↔ Implementation initiatives (`Measures` in Appwrite schema)  
-- **Measures** ↔ Concrete actions within projects (sub-entities, part of project implementation)
-- **Indicators** ↔ Quantitative metrics (`Indicators` in Appwrite schema)
+**Entity Mapping (Per `docs/entity_structure.md`):**
+- **Dimensions** ↔ Strategic sustainability areas (Action Fields)
+- **Measures** ↔ ALL implementation initiatives (Projects are parent Measures with `isParent: true`)
+- **Indicators** ↔ Quantitative metrics
+- **MeasuresExtended** ↔ Relationship metadata connecting Measures to Dimensions and Indicators
 
-**Core Operational Hierarchy:**
-- **Dimensions/Action Fields**: Broad strategic areas (`Dimensions` entity) - the foundational building blocks
-- **Measures/Projects**: Concrete implementation projects (`Measures` + `MeasuresExtended` entities) - can belong to multiple Dimensions
-- **Indicators**: Quantitative metrics (`Indicators` entity) - can span multiple Dimensions and connect to multiple Measures
+**Core Operational Hierarchy (Per `docs/entity_structure.md`):**
+```
+Dimensions (Action Fields)
+    ↓ (via dimensionIds in MeasuresExtended)
+Measures (Projects/Measures combined)
+    ↓ (via parentMeasure)
+Child Measures
+    ↓ (via Measure2indicator junction)
+Indicators
+```
 
 **Strategy as Contextual Layer:**
 - **Strategies**: Named strategic plans/documents (`Strategies` entity) - NOT hierarchical parents
@@ -672,10 +692,11 @@ Based on the Appwrite schema analysis (see `docs/database.md` for complete detai
 - Think: "Climate Action Plan 2030" strategy references various existing action fields and projects
 - Same Dimension/Measure/Indicator can be part of multiple strategic documents
 
-**Two-Table Structure for Projects:**
-- **Measures**: Core project data (title, description, timeline, budget, responsible parties)
+**Two-Table Structure for Measures (Including Projects):**
+- **Measures**: Core data (title, description, timeline, budget, responsible parties, `isParent` flag)
 - **MeasuresExtended**: Relationship metadata (`indicatorIds`, `dimensionIds`, `relatedUrls`, `milestones`, publication status)
 - Connected via `measureId` foreign key in `MeasuresExtended`
+- Projects are just Measures with `isParent: true`
 
 **Schema Evolution:**
 - `ExtractionResult`: Hierarchical structure (action_fields → projects → measures/indicators)
@@ -693,7 +714,7 @@ Based on the Appwrite schema analysis (see `docs/database.md` for complete detai
 
 **Expected Rich Metadata Structure per Entity:**
 
-**Action Fields** (Strategic Areas):
+**Dimensions** (Action Fields/Strategic Areas):
 ```python
 {
   "name": "Mobilität und Verkehr",           # Primary identifier
@@ -701,25 +722,25 @@ Based on the Appwrite schema analysis (see `docs/database.md` for complete detai
   "sustainability_type": "Environmental",     # Classification
   "strategic_goals": ["CO2-Reduktion"],      # High-level objectives
   "sdgs": ["SDG 11", "SDG 13"],             # UN alignment
-  "parent_id": None,                         # Hierarchical structure
+  "parentDimensionId": None,                 # Hierarchical structure
 }
 ```
 
-**Projects** (Implementation Initiatives):
+**Measures** (Both Projects and sub-Measures):
 ```python
 {
-  "title": "Radverkehrsnetz Ausbau",         # Project name
+  "title": "Radverkehrsnetz Ausbau",         # Name
   "description": "Ausbau des Radwegnetzes", # Brief overview
-  "full_description": "Detailierte Beschreibung...", # Complete details
-  "type": "Infrastructure",                  # Project category
+  "fullDescription": "Detailierte Beschreibung...", # Complete details
+  "type": "Infrastructure",                  # Category
   "status": "In Planung",                   # Current state
-  "start_date": "2024-01-01",              # Timeline
-  "end_date": "2026-12-31",
+  "measureStart": "2024-01-01",            # Timeline
+  "measureEnd": "2026-12-31",
   "budget": 2500000,                        # Financial data
   "department": "Tiefbauamt",               # Organizational responsibility
-  "responsible_persons": ["Max Mustermann"], # Key contacts
-  "parent_project": None,                    # Sub-project relationships
-  "is_parent": True,                        # Has child projects
+  "responsiblePreson": ["Max Mustermann"],  # Key contacts (note typo in schema)
+  "parentMeasure": [],                      # Parent measure IDs (array)
+  "isParent": True,                        # If true, this is a "Project"
 }
 ```
 
