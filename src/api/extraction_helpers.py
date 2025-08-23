@@ -143,29 +143,34 @@ def format_entity_registry(current_state, include_descriptions: bool = False) ->
         include_descriptions: If True, show existing descriptions to prevent redundant UPDATEs
     """
     if not include_descriptions:
-        # Original behavior - just titles
+        # Compact behavior - show titles only, one per line for readability
+        def format_titles_list(items: list[str]) -> str:
+            if not items:
+                return "[None yet]"
+            return "\n".join(f"  • {t or '[Untitled]'}" for t in items)
+
         action_fields = [af.content.get("title", "") or "" for af in current_state.action_fields]
         projects = [p.content.get("title", "") or "" for p in current_state.projects]
         measures = [m.content.get("title", "") or "" for m in current_state.measures]
         indicators = [i.content.get("title", "") or "" for i in current_state.indicators]
 
-        # Format as readable lists
+        # Format as readable bulleted lists
         registry = f"""
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║ ENTITY REGISTRY - CHECK BEFORE ANY CREATE OPERATION                         ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 ACTION FIELDS ({len(action_fields)} total):
-{', '.join(action_fields) if action_fields else '[None yet]'}
+{format_titles_list(action_fields)}
 
 PROJECTS ({len(projects)} total):
-{', '.join(projects) if projects else '[None yet]'}
+{format_titles_list(projects)}
 
 MEASURES ({len(measures)} total):
-{', '.join(measures) if measures else '[None yet]'}
+{format_titles_list(measures)}
 
 INDICATORS ({len(indicators)} total):
-{', '.join(indicators) if indicators else '[None yet]'}
+{format_titles_list(indicators)}
 
 ═══════════════════════════════════════════════════════════════════════════════
 """
