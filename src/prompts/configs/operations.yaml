@@ -286,6 +286,7 @@ templates:
       RICHTIG: Mobilität → Radwegeausbau (thematisch passend)
     - Bei Unsicherheit: KEINE Verbindung erstellen (besser zu wenig als falsch)
     - Maximal 1 Verbindung pro Paar (from→to) - keine Mehrfachverbindungen!
+    - EIN URSPRUNG PRO OPERATION: Alle Einträge in „connections“ müssen den gleichen „from_id“ haben. Für unterschiedliche „from_id“ jeweils separate CONNECT-Operationen erstellen.
 
     ERLAUBTE VERBINDUNGEN (NUR DIESE!):
     1. Dimensions → Dimensions (Hierarchie innerhalb Handlungsfelder)
