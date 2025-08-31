@@ -1,0 +1,180 @@
+graph TB
+    %% Upload Endpoint Flow
+    subgraph Upload["/upload Endpoint"]
+        A[PDF Upload] --> B[Generate Unique Filename]
+        B --> C[Save PDF to Upload Folder]
+
+        C --> D[Text Extraction with OCR Fallback]
+        D --> D1[PyMuPDF Native Text Extraction]
+        D --> D2[Pytesseract OCR for Scanned Pages]
+        D --> D3[Enhanced Table Detection with PyMuPDF 1.23.0+]
+        D1 --> E[Page-Aware Text List]
+        D2 --> E
+        D3 --> E
+
+        E --> F[Text Cleaning & Processing]
+        F --> F1[Clean Text]
+        F --> F2[Identify Headers/Footers]
+        F --> F3[Remove Structural Noise]
+
+        F --> G[Save Page-Aware Text File]
+        G --> G1[Format: _pages.txt]
+        G --> G2[Page-by-Page Text Storage]
+        G --> G3[Preserves Page Numbers]
+
+        G --> K[Return Response]
+        K --> K1[Pages Extracted Count]
+        K --> K2[Extraction Metadata]
+        K --> K3[Source ID for Next Step]
+    end
+
+    %% Extract Enhanced Endpoint Flow (Direct 4-Bucket Extraction)
+    subgraph ExtractEnhanced["/extract_enhanced Endpoint - Direct 4-Bucket Extraction"]
+        L[Request with Source ID] --> M[Load Pages from File]
+        M --> M1[Read _pages.txt]
+        M --> M2[Parse Page Format]
+        M --> M3[Extract Page-Aware Text]
+
+        M --> N[Create LLM Chunks]
+        N --> N1[chunk_for_llm_with_pages]
+        N --> N2[8K-12K chars per chunk]
+        N --> N3[10% overlap between chunks]
+
+        N --> O[Enhanced Extraction Loop]
+        O --> O1[Process Each Chunk with extract_structures_with_retry]
+        O1 --> O2[Query LLM Provider with Simplified Prompts]
+        O2 --> O3[Focus on Descriptions vs Actions]
+        O3 --> O4[Return 4-Bucket Structure per Chunk]
+        O4 --> O1
+
+        O --> P[Aggregate and Process Results]
+        P --> P1[Conservative Entity Resolution]
+        P --> P2[Deduplicate Similar Entities]
+        P --> P3[Build Relationships Matrix]
+        P --> P4[Apply Confidence Scoring]
+
+        P --> Q[Create Enhanced Structure]
+        Q --> Q1[4 Separate Entity Lists]
+        Q --> Q2[Bidirectional Connections]
+        Q --> Q3[Source Attribution]
+        Q --> Q4[EnrichedReviewJSON Format]
+
+        Q --> S[Save Enhanced Structure]
+        S --> S1[_enhanced_extraction.jsonl - Dialog Log]
+        S --> S2[_enhanced_structure.json - Final Output]
+    end
+
+    %% Extract Enhanced Operations Endpoint Flow (RECOMMENDED - Operations-Based)
+    subgraph ExtractOps["/extract_enhanced_operations Endpoint - Operations-Based Extraction"]
+        T[Request with Source ID] --> U[Load Pages from File]
+        U --> U1[Read _pages.txt]
+        U --> U2[Parse Page Format]
+        U --> U3[Extract Page-Aware Text]
+
+        U --> V[Create LLM Chunks]
+        V --> V1[chunk_for_llm_with_pages]
+        V --> V2[8K-12K chars per chunk]
+        V --> V3[10% overlap between chunks]
+
+        V --> W[Operations Extraction Loop]
+        W --> W1[Process Each Chunk with extract_structures_with_retry]
+        W --> W2[Query LLM Provider with Operations Schema]
+        W --> W3[Return CREATE/UPDATE/CONNECT Operations]
+        W --> W4[Global Entity Registry for Consistency]
+        W --> W1
+
+        W --> X[Operations Processing]
+        X --> X1[OperationExecutor.apply_operations]
+        X --> X2[CREATE: Add new entities to registry]
+        X --> X3[UPDATE: Modify existing entities]
+        X --> X4[CONNECT: Build relationships]
+
+        X --> Y[Build Final State]
+        Y --> Y1[Deterministic State Building]
+        Y --> Y2[No Context Degradation]
+        Y --> Y3[Clear Audit Trail]
+        Y --> Y4[Cross-Chunk Consistency]
+
+        Y --> Z[Create Results Structure]
+        Z --> Z1[4 Separate Entity Lists]
+        Z --> Z2[Relationship Connections]
+        Z --> Z3[Source Attribution]
+        Z --> Z4[Operations History Log]
+
+        Z --> AA[Save Operations Results]
+        AA --> AA1[_operations_extraction.jsonl - Dialog Log]
+        AA --> AA2[_operations_result.json - Final Output]
+    end
+
+    %% File Storage
+    subgraph FileStorage["File Storage (data/uploads/)"]
+        FS[(Upload Folder)]
+        FS --> FS1["Original PDFs with Safe Filenames"]
+        FS --> FS2["Page-Aware Text<br/>source_id_pages.txt"]
+        FS --> FS3["Enhanced Extraction Dialog<br/>source_id_enhanced_extraction.jsonl"]
+        FS --> FS4["Enhanced Results<br/>source_id_enhanced_structure.json"]
+        FS --> FS5["Operations Dialog<br/>source_id_operations_extraction.jsonl"]
+        FS --> FS6["Operations Results<br/>source_id_operations_result.json"]
+        FS --> FS7["Legacy Files<br/>source_id_llm_dialog.txt<br/>source_id_intermediate_extraction.json"]
+    end
+
+    %% LLM Backend Integration
+    subgraph LLMBackend["Multi-Provider LLM Backend"]
+        LLM[LLM Provider Abstraction]
+        LLM --> LLM1[OpenRouter - Default: openai/o4-mini-high]
+        LLM --> LLM2[Ollama - Local Models with Structured Output]
+        LLM --> LLM3[vLLM - High-Performance Serving]
+        LLM --> LLM4[OpenAI - Direct API]
+        LLM --> LLM5[Gemini - Google Models]
+        
+        LLM --> LLM6[Unified Features:]
+        LLM6 --> LLM7[200K+ Context Windows]
+        LLM6 --> LLM8[65536 Max Output Tokens]
+        LLM6 --> LLM9[Structured Output with Pydantic]
+        LLM6 --> LLM10[German Language Processing]
+        LLM6 --> LLM11[JSON Repair & Validation]
+    end
+
+    %% Extraction Strategy Comparison
+    subgraph Pipeline["Extraction Strategy Comparison"]
+        Strategy1[Enhanced Extraction<br/>Direct 4-Bucket Structure]
+        Strategy2[Operations-Based Extraction<br/>CREATE/UPDATE/CONNECT Operations]
+        
+        Strategy1 --> PL1[Single-Pass Extraction]
+        Strategy1 --> PL2[Conservative Entity Resolution]
+        Strategy1 --> PL3[Simplified Prompts]
+        
+        Strategy2 --> PL4[Global Entity Registry]
+        Strategy2 --> PL5[Deterministic State Building]
+        Strategy2 --> PL6[No Context Degradation]
+        Strategy2 --> PL7[RECOMMENDED APPROACH]
+    end
+
+    %% Connect the flows
+    K --> L
+    K --> T
+    G -.-> FS
+    M -.-> FS
+    U1 -.-> FS
+    S2 -.-> FS
+    AA2 -.-> FS
+    O2 -.-> LLM
+    W2 -.-> LLM
+    S --> Strategy1
+    AA --> Strategy2
+
+    %% Styling
+    classDef endpoint fill:#e1f5fe,stroke:#01579b,stroke-width:3px
+    classDef process fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef storage fill:#c8e6c9,stroke:#1b5e20,stroke-width:2px
+    classDef external fill:#ffccbc,stroke:#bf360c,stroke-width:2px
+    classDef pipeline fill:#f3e5f5,stroke:#4a148c,stroke-width:3px
+    classDef enhancement fill:#e8f5e8,stroke:#2e7d32,stroke-width:3px
+    classDef operations fill:#fff3e0,stroke:#e65100,stroke-width:3px
+
+    class A,L,T endpoint
+    class FS storage
+    class LLM external
+    class B,C,D,E,F,G,K,M,N,O,P,Q,S process
+    class U,V,W,X,Y,Z,AA operations
+    class Strategy1,Strategy2,PL1,PL2,PL3,PL4,PL5,PL6,PL7 pipeline

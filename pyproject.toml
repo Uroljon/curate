@@ -1,0 +1,76 @@
+[tool.ruff]
+line-length = 160
+target-version = "py310"
+
+# Exclude directories
+exclude = [
+    "venv",
+    "__pycache__",
+    ".git",
+    "chroma_store",
+]
+
+[tool.ruff.lint]
+# Enable specific rule sets
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez
+    "T10",  # flake8-debugger
+    "EM",   # flake8-errmsg
+    "RUF",  # Ruff-specific rules
+]
+
+# Ignore specific rules
+ignore = [
+    "E722", # bare except (you have several, can fix later)
+    "F401", # unused imports (temporary while fixing)
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  venv
+  | __pycache__
+  | chroma_store
+)/
+'''
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Start permissive
+ignore_missing_imports = true  # Many libraries lack stubs
+exclude = [
+    "venv",
+    "chroma_store",
+    "archive",
+    "test_*.py",
+]
+
+# Per-module options for gradual typing
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "test_structure_chunking",
+    "test_structure_simple", 
+    "test_structure_v2",
+]
+ignore_errors = true
+
+[tool.isort]
+profile = "black"
+line_length = 88

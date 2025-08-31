@@ -1,0 +1,143 @@
+flowchart TD
+    %% Upload Endpoint (Entry Point)
+    subgraph Upload["/upload - Document Ingestion"]
+        A["PDF Upload"]
+        B["Text Extraction + OCR"]
+        C["Page-Aware Text Processing"]
+        D["Save: source_id_pages.txt"]
+        E["Return Source ID"]
+        
+        A --> B
+        B --> C
+        C --> D
+        D --> E
+    end
+
+    %% Initial Chunking (Only Truly Shared Step)
+    subgraph InitialChunk["Initial Chunking (Shared)"]
+        F["Load source_id_pages.txt"]
+        G["Create 8K-12K char chunks with 10% overlap"]
+        
+        F --> G
+    end
+
+    %% Enhanced Extraction Pipeline
+    subgraph Enhanced["/extract_enhanced Pipeline"]
+        H1["extract_direct_to_enhanced()"]
+        I1["create_simplified_system_message_with_context()"]
+        J1["Prompts: 4-bucket JSON with accumulated context"]
+        K1["LLM Query: EnrichedReviewJSON schema"]
+        L1["Conservative entity resolution"]
+        M1["Output: _enhanced_structure.json"]
+        
+        H1 --> I1
+        I1 --> J1
+        J1 --> K1
+        K1 --> L1
+        L1 --> M1
+    end
+
+    %% Operations Extraction Pipeline
+    subgraph Operations["/extract_enhanced_operations Pipeline"]
+        H2["extract_direct_to_enhanced_with_operations()"]
+        I2["create_operations_system_message()"]
+        J2["Prompts: CREATE/UPDATE/CONNECT operations"]
+        K2["LLM Query: ExtractionOperations schema"]
+        L2["OperationExecutor + Global registry"]
+        M2["Output: _operations_result.json"]
+        
+        H2 --> I2
+        I2 --> J2
+        J2 --> K2
+        K2 --> L2
+        L2 --> M2
+    end
+
+    %% Configuration Layer
+    subgraph Config["Environment Configuration"]
+        CFG1["LLM_BACKEND=openrouter"]
+        CFG2["OPENROUTER_MODEL_NAME=google/gemini-2.5-pro"]
+        CFG3["OPENROUTER_MAX_TOKENS=400000"]
+        
+        CFG1 --> CFG2
+        CFG2 --> CFG3
+    end
+
+    %% LLM Provider Factory
+    subgraph Factory["LLM Provider Factory"]
+        FACT1["get_llm_provider()"]
+        FACT2["Reads LLM_BACKEND environment variable"]
+        FACT3["Returns single provider instance"]
+        
+        FACT1 --> FACT2
+        FACT2 --> FACT3
+    end
+
+    %% Active Provider (Single Selection)
+    subgraph ActiveLLM["Active LLM Provider (Runtime)"]
+        ACTIVE1["OpenRouterProvider"]
+        ACTIVE2["Model: google/gemini-2.5-pro"]
+        ACTIVE3["400K context, German support"]
+        ACTIVE4["No failover - single provider only"]
+        
+        ACTIVE1 --> ACTIVE2
+        ACTIVE2 --> ACTIVE3
+        ACTIVE3 --> ACTIVE4
+    end
+
+    %% Available Providers (Configuration Options)
+    subgraph AvailableProviders["Available Provider Options"]
+        PROV1["openrouter: OpenRouter API"]
+        PROV2["ollama: Local Ollama server"]
+        PROV3["vllm: High-performance vLLM"]
+        PROV4["openai: Direct OpenAI API"]
+        PROV5["gemini: Direct Gemini API"]
+    end
+
+    %% File Storage
+    subgraph Storage["File Storage (data/uploads/)"]
+        N["source_id_pages.txt - Always created"]
+        O["Dialog logs: .jsonl files"]
+        P["Extraction results: .json files"]
+    end
+
+    %% Main Flow Connections
+    E --> F
+    G --> H1
+    G --> H2
+    
+    %% LLM Configuration Flow
+    CFG1 --> FACT1
+    FACT3 --> ACTIVE1
+    
+    %% Extraction to LLM Provider
+    K1 --> ACTIVE1
+    K2 --> ACTIVE1
+    
+    %% File Storage Connections (dotted lines)
+    D -.-> N
+    M1 -.-> P
+    M2 -.-> P
+    J1 -.-> O
+    J2 -.-> O
+
+    %% Styling
+    classDef upload fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef shared fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef enhanced fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef operations fill:#fff3e0,stroke:#ff6f00,stroke-width:2px
+    classDef config fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef factory fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef activeLLM fill:#ffccbc,stroke:#f57c00,stroke-width:3px
+    classDef availableProviders fill:#f3e5f5,stroke:#9c27b0,stroke-width:1px,stroke-dasharray: 5 5
+    classDef storage fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
+
+    class A,B,C,D,E upload
+    class F,G shared
+    class H1,I1,J1,K1,L1,M1 enhanced
+    class H2,I2,J2,K2,L2,M2 operations
+    class CFG1,CFG2,CFG3 config
+    class FACT1,FACT2,FACT3 factory
+    class ACTIVE1,ACTIVE2,ACTIVE3,ACTIVE4 activeLLM
+    class PROV1,PROV2,PROV3,PROV4,PROV5 availableProviders
+    class N,O,P storage

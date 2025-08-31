@@ -1,0 +1,8 @@
+# Development dependencies
+ruff>=0.5.0
+black>=24.0.0
+mypy>=1.10.0
+pre-commit>=3.7.0
+
+# Type stubs for better mypy support
+types-requests>=2.31.0

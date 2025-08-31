@@ -1,0 +1,53 @@
+# Utility prompts (deduplication, helper functions)
+system_messages:
+  deduplication: |
+    Sie sind ein Experte für die KONSERVATIVE Deduplizierung von Handlungsfeldern aus deutschen kommunalen Strategiedokumenten.
+    Ihre Hauptaufgabe ist es, DUPLIKATE zu entfernen und die GRANULARITÄT zu erhalten.
+    Konsolidieren Sie NUR offensichtliche Duplikate oder fast identische Felder.
+    Behalten Sie die meisten Handlungsfelder bei - Reduzierung um maximal 30-40%.
+    Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das der vorgegebenen Struktur entspricht.
+    KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON.
+
+templates:
+  deduplication_chunk: |
+    Sie erhalten {action_field_count} Handlungsfelder zur Konsolidierung.
+
+    KRITISCH: Sie MÜSSEN mindestens {min_target} bis {max_target} Handlungsfelder in Ihrer Antwort zurückgeben!
+
+    Ihre Aufgabe:
+    1. Entfernen Sie NUR exakte Duplikate (identischer Name)
+    2. Konsolidieren Sie NUR fast identische Felder (>90% Überlappung)
+    3. ALLE anderen Felder müssen SEPARAT bleiben
+
+    STRENGE VORGABE:
+    - Input: {action_field_count} Felder
+    - Output: MINDESTENS {min_target} Felder (besser {max_target})
+    - Wenn Sie weniger als {min_target} Felder zurückgeben, ist die Aufgabe NICHT erfüllt!
+
+    {not_consolidate_examples}
+
+    {consolidate_examples}
+
+    Hier sind die Handlungsfelder zur Konsolidierung:
+    {chunk_data}
+
+    Antworten Sie AUSSCHLIESSLICH mit einem JSON-Objekt, das die konsolidierten Handlungsfelder enthält. KEIN zusätzlicher Text, KEINE Erklärungen, NUR JSON.
+
+variables:
+  not_consolidate_examples: |
+    DIESE FÄLLE NICHT konsolidieren:
+    ❌ "Klimaschutz" und "Energie" → Bleiben getrennt (verschiedene Schwerpunkte)
+    ❌ "Umwelt" und "Nachhaltigkeit" → Bleiben getrennt (unterschiedliche Aspekte)
+    ❌ "Mobilität" und "ÖPNV" → Bleiben getrennt (allgemein vs. spezifisch)
+    ❌ "Verkehr" und "Radverkehr" → Bleiben getrennt (allgemein vs. spezifisch)
+    ❌ "Wirtschaft" und "Innovation" → Bleiben getrennt (verschiedene Bereiche)
+    ❌ "Kultur" und "Bildung" → Bleiben getrennt (verschiedene Ressorts)
+    ❌ "Wohnen" und "Stadtentwicklung" → Bleiben getrennt (verschiedene Planungsebenen)
+    ❌ "Soziales" und "Gesundheit" → Bleiben getrennt (verschiedene Zuständigkeiten)
+    ❌ "Integration" und "Teilhabe" → Bleiben getrennt (verschiedene Konzepte)
+
+  consolidate_examples: |
+    NUR DIESE FÄLLE konsolidieren:
+    ✅ "Mobilität" + "Mobilität" → "Mobilität" (exaktes Duplikat)
+    ✅ "Verkehr und Mobilität" + "Mobilität und Verkehr" → "Mobilität und Verkehr" (fast identisch)
+    ✅ "Klimaschutz" + "Klimaschutz und Energie" → "Klimaschutz und Energie" (eines ist Teilmenge)
