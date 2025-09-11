@@ -38,6 +38,37 @@ class OperationExecutor:
         self.entity_counters = {"af": 0, "proj": 0, "msr": 0, "ind": 0}
         self.operation_logs: list[OperationLog] = []
 
+    def initialize_counters_from_state(self, state: EnrichedReviewJSON | None) -> None:
+        """Initialize ID counters using the max numeric suffix from an existing state.
+
+        Ensures newly created IDs continue from existing ones (e.g., af_5 -> af_6).
+        """
+        if not state:
+            return
+
+        def update_max(prefix: str, current_max: int, entity_id: str) -> int:
+            try:
+                if not entity_id.startswith(prefix + "_"):
+                    return current_max
+                suffix = int(entity_id.split("_", 1)[1])
+                return max(current_max, suffix)
+            except Exception:
+                return current_max
+
+        max_vals = {"af": 0, "proj": 0, "msr": 0, "ind": 0}
+
+        for af in getattr(state, "action_fields", []) or []:
+            max_vals["af"] = update_max("af", max_vals["af"], getattr(af, "id", ""))
+        for proj in getattr(state, "projects", []) or []:
+            max_vals["proj"] = update_max("proj", max_vals["proj"], getattr(proj, "id", ""))
+        for msr in getattr(state, "measures", []) or []:
+            max_vals["msr"] = update_max("msr", max_vals["msr"], getattr(msr, "id", ""))
+        for ind in getattr(state, "indicators", []) or []:
+            max_vals["ind"] = update_max("ind", max_vals["ind"], getattr(ind, "id", ""))
+
+        # Set internal counters to max values so next create increments properly
+        self.entity_counters.update(max_vals)
+
     def apply_operations(
         self,
         current_state: EnrichedReviewJSON,

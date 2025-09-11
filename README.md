@@ -1,205 +1,107 @@
-# 📄 PDF Strategy Extractor with LLM (FastAPI + Ollama)
+# CURATE — Incremental Extraction and Diff Workflows
 
-This project extracts structured information (e.g. **action fields**, **projects**, **measures**, **indicators**) from long strategy PDF documents (often in German). It uses PDF parsing with OCR fallback and queries **LLMs** (local via Ollama/vLLM, or external via OpenAI/Gemini) for semantic understanding and structured extraction.
+This project extracts structured entities and connections from PDFs and now supports incremental extraction across multiple PDFs, plus a diff utility to visualize what changed between runs.
 
----
+Below is a concise guide to the new endpoints and the end‑to‑end workflow, including saving, filenames, and the bundled visualizer.
 
-## 🚀 What It Does
+## Endpoints
 
-- 📤 Upload PDF documents via FastAPI
-- 🧾 Extract text using PyMuPDF + OCR fallback (`pytesseract`)
-- 🧠 Query LLaMA3 (via Ollama) to summarize or extract structured content
-- 💬 Future-ready for chat interface and vector-based retrieval
+- `POST /upload`
+  - Upload a PDF and save a page‑aware text file for downstream extraction.
+  - Returns a `source_id` (safe filename) you will use with other endpoints.
 
----
+- `GET /extract_enhanced_operations?source_id=<PDF_ID>`
+  - Runs the operations‑based extractor (two‑pass: nodes → connections) on a single PDF.
+  - Saves: `data/uploads/<PDF_ID>_operations_result.json`
 
-## 🛠️ Technologies Used
+- `POST /extract_incremental?source_id=<NEW_PDF_ID>&base_source_id=<BASE_ID>`
+  - New. Runs the same operations‑based pipeline but initializes from an existing JSON state.
+  - Base can be any previously saved JSON (auto‑loaded in this order):
+    1. `data/uploads/<BASE_ID>_combined_result.json`
+    2. `data/uploads/<BASE_ID>_operations_result.json`
+    3. `data/uploads/<BASE_ID>_enhanced_structure.json`
+  - Alternative: provide the base directly in the request body: `{ "existing_json": <EnrichedReviewJSON> }`.
+  - Saves: `data/uploads/<NEW_PDF_ID>_combined_result.json`
 
-| Component      | Library / Tool            |
-|----------------|---------------------------|
-| API Server     | `FastAPI` + `Uvicorn`     |
-| PDF Parsing    | `PyMuPDF` (`fitz`)        |
-| OCR            | `pytesseract` + `pdf2image` |
-| LLM Access     | [`Ollama`](https://ollama.com), [`vLLM`](https://github.com/vllm-project/vllm), [OpenAI](https://openai.com), or [Google Gemini](https://ai.google.dev) |
-| File Uploads   | `python-multipart`        |
-| HTTP Requests  | `requests`                |
-| Embeddings     | `sentence-transformers`   |
-| Vector Store   | `chromadb`                |
-| Schemas        | `pydantic`                |
-| Code Quality   | `ruff`, `black`, `mypy`   |
+- `POST /compute_diff?json1_source_id=<BASE_ID>&json2_source_id=<NEW_ID>[&diff_filename=…][&save=false]`
+  - New. Computes a structured diff between two saved JSONs (IDs may be single‑PDF or combined results).
+  - Always saves by default to: `data/uploads/<NEW_ID>_diff_from_<BASE_ID>.json`
+  - You can pass `diff_filename` to override the output name, or `save=false` to skip saving.
+  - Returns the diff JSON in the HTTP response.
 
----
+Notes:
+- Always pass full `source_id` including the `.pdf` suffix (e.g., `20250911_141901_76384d7f_schlangen.pdf`).
+- Swagger (http://127.0.0.1:8000/docs) shows typed request bodies for endpoints that accept JSON payloads.
 
-## ⚙️ Environment set up
+## Typical Workflows
 
-✅ Step 1: Check Your Python Installation
-Open a terminal (or Command Prompt on Windows), and type:
-```
-python3 --version
-```
-You should see python version, otherwise install python:
-```
-🪟 Windows: Download Python
+### A) Two PDFs (build PDF2 on PDF1, then compute diff)
 
-🍎 Mac: Already included, or install via Homebrew: brew install python
+1. Upload both PDFs; note `pdf1_id` and `pdf2_id`.
+2. Extract PDF 1 to create the base JSON (either is fine):
+   - `GET /extract_enhanced_operations?source_id=<pdf1_id>`
+     - Saves `<pdf1_id>_operations_result.json`
+3. Incremental extraction for PDF 2 using PDF 1 as base:
+   - `POST /extract_incremental?source_id=<pdf2_id>&base_source_id=<pdf1_id>`
+     - Saves `<pdf2_id>_combined_result.json` (contains PDF1 + PDF2)
+4. Compute diff (what PDF 2 added/modified vs. PDF 1):
+   - `POST /compute_diff?json1_source_id=<pdf1_id>&json2_source_id=<pdf2_id>`
+     - Saves `<pdf2_id>_diff_from_<pdf1_id>.json`
 
-🐧 Linux: sudo apt install python3 python3-pip
-```
+Curl examples:
 
-✅ Step 2: Set Up a Virtual Environment
-Navigate to your project folder, create virtual environment:
-```
-python3 -m venv venv
-```
-Activate it:
-- On Mac/Linux: source venv/bin/activate
-- On Windows: venv\Scripts\activate
-
-✅ Step 3: Install Required Libraries
-```
-pip install -r requirements.txt
-pip install -r requirements-dev.txt  # For development tools
-```
-Or, you can also install libraries manually:
-```
-pip install fastapi uvicorn pymupdf python-multipart pytesseract pdf2image requests... (check full list in requirements.txt)
-```
-
-✅ Step 4: Configure Environment (Optional)
-CURATE uses environment variables for configuration. Copy the example configuration:
 ```bash
-cp example.env .env
-```
-Then edit `.env` to match your setup. Key settings:
-- `LLM_BACKEND`: Choose 'ollama' (default) or 'vllm' for high-performance
-- `OLLAMA_HOST`: Ollama server address (default: localhost:11434)
-- `VLLM_HOST`: vLLM server address if using vLLM
-- `MODEL_NAME`: Override default model (optional)
+# Step 2
+curl -s "http://127.0.0.1:8000/extract_enhanced_operations?source_id=<pdf1_id>"
 
-The `.env` file is automatically loaded when you start CURATE.
+# Step 3
+curl -s -X POST "http://127.0.0.1:8000/extract_incremental?source_id=<pdf2_id>&base_source_id=<pdf1_id>"
 
-**German Language Model for Structure-Aware Chunking**
-After installing the requirements, download the German spaCy model:
-```
-python -m spacy download de_core_news_lg
-```
-Note: This model is ~568MB and improves document structure detection for German texts.
-
-**Additional System Packages (macOS example)**
-Ollama -  a tool to easily run local LLMs like Mixtral
-```
-Go to https://ollama.com and download the installer for your OS.
-```
-qwen3:14b - Optimized for structured output and multilingual tasks
-```
-ollama pull qwen3:14b
-```
-tesseract - OCR engine for scanned pages
-poppler - Needed by pdf2image
-```
-brew install tesseract poppler
-```
-On Windows:
-- Install [Tesseract OCR for Windows](https://github.com/tesseract-ocr/tesseract)
-- Install [Poppler for Windows](https://blog.alivate.com.au/poppler-windows/) -
-Add both to your PATH environment variable
-
-✅ Step 5: Project Structure
-```
-curate/
-├── src/                      # Source code
-│   ├── api/                  # API routes and endpoints
-│   ├── core/                 # Core functionality (config, schemas, LLM)
-│   ├── extraction/           # Document extraction logic
-│   ├── processing/           # Document processing (parsing, chunking, embedding)
-│   └── utils/                # Utilities (monitoring, logging)
-├── data/                     # Data storage
-│   ├── uploads/              # Uploaded PDFs
-│   ├── chroma_store/         # Vector database
-│   └── outputs/              # Extraction results
-├── tests/                    # Test suite
-├── scripts/                  # Utility scripts
-├── docs/                     # Documentation
-├── main.py                   # FastAPI server entry point
-└── requirements.txt          # Python dependencies
+# Step 4
+curl -s -X POST "http://127.0.0.1:8000/compute_diff?json1_source_id=<pdf1_id>&json2_source_id=<pdf2_id>"
 ```
 
-✅ Step 6: Code Quality (Development)
-Format and lint your code:
-```bash
-black .              # Format code
-ruff check --fix .   # Fix linting issues
-mypy .              # Type checking
-```
+### B) Third PDF (build PDF3 on the combined result of PDF1+PDF2)
 
-✅ Step 7: Run the Servers
+1. Upload PDF 3; note `pdf3_id`.
+2. Incremental extraction using the combined JSON from PDF 2 as base:
+   - `POST /extract_incremental?source_id=<pdf3_id>&base_source_id=<pdf2_id>`
+     - Auto‑loads `<pdf2_id>_combined_result.json` as the base.
+     - Saves `<pdf3_id>_combined_result.json` (PDF1+PDF2+PDF3)
+3. Diff PDF3 vs. PDF1+PDF2:
+   - `POST /compute_diff?json1_source_id=<pdf2_id>&json2_source_id=<pdf3_id>`
+     - Saves `<pdf3_id>_diff_from_<pdf2_id>.json`
 
-### Option A: Using Ollama (Default)
-Manually run Ollama before starting FastAPI:
-(If you downloaded Ollama as a macOS app, just open the app, no need for the code)
-```
-ollama serve
-```
-Keep this running — this is your local LLM server. Confirm it works:
-```
-ollama run qwen3:14b "Say hello"
-```
+## Visualization
 
-### Option B: Using vLLM (High Performance)
-CURATE now supports vLLM as an alternative to Ollama for better performance. To use vLLM:
+Open `visualization_tool.html` in a browser and:
 
-1. Set up vLLM server (on a machine with GPU):
-```bash
-# Install vLLM
-pip install vllm
+- Load Combined JSON (the latest `<NEW_ID>_combined_result.json`).
+- Load Diff JSON (the saved `<NEW_ID>_diff_from_<BASE_ID>.json`).
+- Toggle “Diff View → Spotlight changes” to highlight:
+  - Added nodes/edges (green), Modified nodes (blue), Unchanged dimmed.
+- Legends:
+  - Dashed green = added connection from diff
+  - Dashed gray = derived AF hierarchy link (from `parent_action_field_name`)
+  - Solid colors = existing connections (color reflects confidence)
 
-# Run vLLM server with AWQ model
-python -m vllm.entrypoints.openai.api_server \
-    --model Qwen/Qwen3-14B-AWQ \
-    --host 0.0.0.0 \
-    --port 8001 \
-    --gpu-memory-utilization 0.95 \
-    --max-model-len 32768
-```
+## Configuration Tips
 
-2. Configure CURATE to use vLLM:
-```bash
-export LLM_BACKEND=vllm
-export VLLM_HOST=your-vllm-server:8001  # e.g., 10.67.142.34:8001
-```
+- Process more content per run:
+  - `.env`: `FAST_EXTRACTION_MAX_CHUNKS=0` (0 = all chunks)
+- Improve cross‑chunk edge recall (optional third pass):
+  - `src/core/config.py`: `OPERATIONS_CONNECTION_SWEEP_ENABLED = True`
+- The incremental run continues ID counters from the base (e.g., `af_5 → af_6`).
 
-### Start FastAPI Server
-Then in another terminal, start FastAPI:
-```
-# For Ollama (default)
-uvicorn main:app --reload
+## Saved File Naming
 
-# For vLLM
-LLM_BACKEND=vllm VLLM_HOST=your-server:8001 uvicorn main:app --reload
+- Pages: `data/uploads/<source_id>_pages.txt`
+- Single‑PDF result (operations): `data/uploads/<source_id>_operations_result.json`
+- Incremental combined result: `data/uploads/<new_source_id>_combined_result.json`
+- Diff: `data/uploads/<new_source_id>_diff_from_<base_source_id>.json`
 
-# For OpenAI GPT-4o
-export LLM_BACKEND=openai
-export EXTERNAL_API_KEY=your_openai_api_key
-export EXTERNAL_MODEL_NAME=gpt-4o
-uvicorn main:app --reload
+## Troubleshooting
 
-# For Google Gemini
-export LLM_BACKEND=gemini
-export EXTERNAL_API_KEY=your_gemini_api_key
-export EXTERNAL_MODEL_NAME=gemini-2.0-flash-exp
-pip install google-generativeai
-uvicorn main:app --reload
-```
-Url for local host: http://127.0.0.1:8000/docs
+- 400 “No saved JSON found …”: ensure `source_id` includes `.pdf` and has no stray characters (retype if copied from UI).
+- Swagger shows a request body: leave it empty when using `base_source_id`/`json*_source_id` query params, or provide full valid JSON structures (no placeholders).
 
-**Benefits of vLLM:**
-- **Higher throughput**: PagedAttention reduces GPU memory waste (<4% vs 60-80%)
-- **Continuous batching**: Better GPU utilization for multiple requests
-- **OpenAI-compatible API**: Easy integration
-- **Production-ready**: Built for high-performance serving
-
-**Model Name Mappings:**
-When using vLLM, Ollama model names are automatically mapped:
-- `qwen3:14b` → `RedHatAI/Qwen3-14B-quantized.w4a16`
-- `qwen3:7b` → `Qwen/Qwen3-7B-Instruct`
-- `qwen3:8b` → `Qwen/Qwen3-8B-Instruct`

@@ -384,7 +384,12 @@
         <div class="content">
             <div class="sidebar">
                 <div class="file-input">
+                    <label style="font-size:12px; color:#666;">Load Combined JSON</label>
                     <input type="file" id="jsonFile" accept=".json" placeholder="Load JSON file...">
+                </div>
+                <div class="file-input">
+                    <label style="font-size:12px; color:#666;">Load Diff JSON (optional)</label>
+                    <input type="file" id="diffFile" accept=".json" placeholder="Load diff.json...">
                 </div>
                 
                 <div class="search-section" id="searchSection" style="display: none;">
@@ -419,6 +424,22 @@
                 </div>
                 
                 <div class="filters" id="filters" style="display: none;">
+                    <div class="filter-group" id="diffControls" style="display:none;">
+                        <label>Diff View</label>
+                        <div class="entity-type-filters">
+                            <label><input type="checkbox" id="spotlight-diff"> Spotlight changes</label>
+                        </div>
+                        <div style="font-size: 11px; line-height: 1.4; margin-top:6px;">
+                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                                <span style="display:inline-block; width:12px; height:12px; background:#2ecc71; border:1px solid #27ae60;"></span>
+                                Added nodes/edges
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span style="display:inline-block; width:12px; height:12px; background:#3498db; border:1px solid #2c81ba;"></span>
+                                Modified nodes
+                            </div>
+                        </div>
+                    </div>
                     <div class="filter-group">
                         <label>Min Confidence Score</label>
                         <input type="range" class="confidence-slider" id="confidenceSlider" 
@@ -510,11 +531,16 @@
 
     <script>
         let data = null;
+        let diff = null;
         let nodes = [];
         let links = [];
         let afParentMap = new Map(); // childId -> parentId (for AFs)
         let afRootMap = new Map();   // nodeId -> root AF id
         let simulation = null;
+        // Diff indices
+        let diffAddedIds = new Set();
+        let diffModifiedIds = new Set();
+        let diffAddedEdges = new Set(); // key: from->to
         
         // SVG setup
         const svg = d3.select("#visualization");
@@ -556,6 +582,37 @@
                         console.error('JSON parsing error:', error);
                         console.log('Error occurred at character position:', error.message);
                         alert('Error parsing JSON file: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        // Diff input handler
+        document.getElementById('diffFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        diff = JSON.parse(e.target.result);
+                        // Build diff indices
+                        diffAddedIds = new Set([
+                            ...((diff.added?.action_fields)||[]),
+                            ...((diff.added?.projects)||[]),
+                            ...((diff.added?.measures)||[]),
+                            ...((diff.added?.indicators)||[])
+                        ]);
+                        diffModifiedIds = new Set(Object.keys(diff.modified || {}));
+                        diffAddedEdges = new Set((diff.connections_added||[]).map(p => `${p.from}->${p.to}`));
+                        // Show diff controls
+                        const dc = document.getElementById('diffControls');
+                        if (dc) dc.style.display = 'block';
+                        // Apply styling if graph is already drawn
+                        applyDiffStyling();
+                    } catch (err) {
+                        console.error('Diff JSON parse error:', err);
+                        alert('Error parsing diff JSON: ' + err.message);
                     }
                 };
                 reader.readAsText(file);
@@ -814,6 +871,9 @@
                         Check console for details about missing target IDs`;
                 }
             }
+
+            // If a diff is loaded, apply state and styling
+            applyDiffStyling();
         }
         
         function createVisualization() {
@@ -854,7 +914,16 @@
                     if (d.derived) classes.push("link-derived");
                     return classes.join(' ');
                 })
-                .attr("stroke-width", d => Math.sqrt(d.confidence * 3));
+                .attr("stroke-width", d => Math.sqrt(d.confidence * 3))
+                .each(function(d){
+                    // mark added edges if diff present
+                    d._isAddedEdge = diffAddedEdges.size ? diffAddedEdges.has(`${d.source.id || d.source}->${d.target.id || d.target}`) : false;
+                    if (d._isAddedEdge) {
+                        d3.select(this)
+                          .style('stroke', '#2ecc71')
+                          .style('stroke-dasharray', '6,3');
+                    }
+                });
             
             // Create node symbols with different shapes for different types
             const nodeSymbols = g.append("g")
@@ -957,6 +1026,12 @@
             if (derivedToggle) {
                 derivedToggle.addEventListener('change', updateVisualization);
             }
+
+            // Diff spotlight toggle
+            const spotlight = document.getElementById('spotlight-diff');
+            if (spotlight) {
+                spotlight.addEventListener('change', updateVisualization);
+            }
             
             // Search functionality
             const searchInput = document.getElementById('searchInput');
@@ -1018,16 +1093,31 @@
                 ind: document.getElementById('show-ind').checked
             };
             const showDerived = document.getElementById('show-derived-af') ? document.getElementById('show-derived-af').checked : true;
+            const spotlightDiff = document.getElementById('spotlight-diff') ? document.getElementById('spotlight-diff').checked : false;
 
             // Show/hide nodes by type
             g.selectAll('.node')
                 .style('display', d => showTypes[d.type] ? '' : 'none')
-                .style('opacity', d => showTypes[d.type] ? 1 : 0);
+                .style('opacity', d => {
+                    if (!showTypes[d.type]) return 0;
+                    if (spotlightDiff && diff) {
+                        const isChanged = diffAddedIds.has(d.id) || diffModifiedIds.has(d.id);
+                        return isChanged ? 1 : 0.15;
+                    }
+                    return 1;
+                });
 
             // Show/hide labels
             g.selectAll('.node-label')
                 .style('display', d => showTypes[d.type] ? '' : 'none')
-                .style('opacity', d => showTypes[d.type] ? 1 : 0);
+                .style('opacity', d => {
+                    if (!showTypes[d.type]) return 0;
+                    if (spotlightDiff && diff) {
+                        const isChanged = diffAddedIds.has(d.id) || diffModifiedIds.has(d.id);
+                        return isChanged ? 1 : 0.15;
+                    }
+                    return 1;
+                });
 
             // Show/hide links based on confidence and type filters
             g.selectAll('.link')
@@ -1039,7 +1129,40 @@
                     if (!sType || !tType) return 'none';
                     return (showTypes[sType] && showTypes[tType]) ? '' : 'none';
                 })
-                .style('opacity', l => (l.confidence >= minConfidence ? 1 : 0));
+                .style('opacity', l => {
+                    if (l.confidence < minConfidence) return 0;
+                    if (spotlightDiff && diff) {
+                        const key = `${l.source.id || l.source}->${l.target.id || l.target}`;
+                        return diffAddedEdges.has(key) ? 1 : 0.15;
+                    }
+                    return 1;
+                });
+        }
+
+        // Apply diff-based styling (colors) to nodes and edges
+        function applyDiffStyling() {
+            if (!diff) return;
+            // Adjust node coloring
+            g.selectAll('.node').each(function(d){
+                const sel = d3.select(this);
+                if (diffAddedIds.has(d.id)) {
+                    sel.style('fill', '#2ecc71').style('stroke', '#27ae60');
+                } else if (diffModifiedIds.has(d.id)) {
+                    sel.style('fill', '#3498db').style('stroke', '#2c81ba');
+                } else {
+                    // base: clear inline to fallback to type styles; spotlight handled in opacity
+                    sel.style('fill', null).style('stroke', null);
+                }
+            });
+            // Adjust links (added edges already colored in creation; re-apply here if diff loaded after)
+            g.selectAll('.link').each(function(l){
+                const key = `${l.source.id || l.source}->${l.target.id || l.target}`;
+                if (diffAddedEdges.has(key)) {
+                    d3.select(this).style('stroke', '#2ecc71').style('stroke-dasharray', '6,3');
+                }
+            });
+            // Ensure opacity reflects current toggles
+            updateVisualization();
         }
         
         // Enhanced tooltip functions
@@ -1111,7 +1234,23 @@
                     content += `<span style="font-size: 10px; color: #999;">...und ${d.sources.length - 2} weitere</span><br>`;
                 }
             }
-            
+            // Diff-pinned changes for modified nodes (show up to 3 changed fields)
+            if (diff && diff.modified && diff.modified[d.id]) {
+                const changes = diff.modified[d.id];
+                const keys = Object.keys(changes).slice(0,3);
+                if (keys.length) {
+                    content += `<br><strong>Geänderte Felder:</strong><br>`;
+                    keys.forEach(k => {
+                        const before = changes[k]?.before;
+                        const after = changes[k]?.after;
+                        content += `<span style="font-size:11px;">• ${k}: ` +
+                                   `<span style=\"color:#c0392b\">${String(before).substring(0,40)}${String(before).length>40?'...':''}</span>` +
+                                   ` → <span style=\"color:#27ae60\">${String(after).substring(0,40)}${String(after).length>40?'...':''}</span>` +
+                                   `</span><br>`;
+                    });
+                }
+            }
+
             // Show connections with confidence scores
             if (d.connections && d.connections.length > 0) {
                 const showDerived = document.getElementById('show-derived-af') ? document.getElementById('show-derived-af').checked : true;

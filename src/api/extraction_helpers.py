@@ -1263,6 +1263,7 @@ def extract_direct_to_enhanced_with_operations(
     page_aware_text: list[tuple[str, int]],
     source_id: str,
     log_file_path: str | None = None,
+    initial_state: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """
     Extract directly from PDF text using operations-based approach.
@@ -1312,18 +1313,30 @@ def extract_direct_to_enhanced_with_operations(
         FAST_EXTRACTION_MAX_CHUNKS,
     )
 
-    # Step 2: Initialize empty extraction state and operations executor
-    current_state = EnrichedReviewJSON(
-        action_fields=[], projects=[], measures=[], indicators=[]
-    )
+    # Step 2: Initialize extraction state (optionally from existing JSON) and operations executor
+    if initial_state:
+        try:
+            current_state = EnrichedReviewJSON.model_validate(initial_state)
+            print("🧩 Initialized operations state from existing JSON (incremental mode)")
+        except Exception as e:
+            print(f"⚠️ Failed to parse initial_state, falling back to empty: {e}")
+            current_state = EnrichedReviewJSON(
+                action_fields=[], projects=[], measures=[], indicators=[]
+            )
+    else:
+        current_state = EnrichedReviewJSON(
+            action_fields=[], projects=[], measures=[], indicators=[]
+        )
 
     executor = OperationExecutor()
+    # Ensure ID counters continue from existing IDs when initial_state provided
+    executor.initialize_counters_from_state(current_state)
     llm_provider = get_llm_provider()
     all_operation_logs = []
     
     # Initialize cumulative token tracking
     from src.utils.token_tracker import calculate_json_tokens
-    initial_tokens, _ = calculate_json_tokens(current_state.model_dump(), "Initial empty state")
+    initial_tokens, _ = calculate_json_tokens(current_state.model_dump(), "Initial state size")
     cumulative_token_growth = 0
 
     # Check if two-pass mode is enabled

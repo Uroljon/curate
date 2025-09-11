@@ -232,7 +232,7 @@ templates:
     - Bei UPDATE nur NEUE Felder/Informationen hinzufügen die noch NICHT existieren
     - KEIN UPDATE nur um bestehende Beschreibungen zu paraphrasieren
     - Maßnahmen/Indikatoren NUR erstellen, wenn source_pages UND source_quote angegeben sind (Pflicht)
-    - Indikatoren mit Zahlen: target_values/actual_values als Arrays von Objekten {"year": Zahl, "value": Zahl} kodieren
+    - Indikatoren mit Zahlen: target_values/actual_values als Arrays von Objekten {{"year": Zahl, "value": Zahl}} kodieren
     - Konfidenz-Richtwerte: CREATE ≥ 0.7, UPDATE ≥ 0.8 (höher für UPDATE!)
     - Ziel: Maximale Entität-Vollständigkeit mit sinnvoller Projekt-Organisation
 

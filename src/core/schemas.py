@@ -225,3 +225,23 @@ class EnrichedReviewJSON(BaseModel):
     indicators: list[EnhancedIndicator] = Field(
         ..., description="List of all indicators with connections"
     )
+
+
+# API request bodies
+
+
+class IncrementalExtractionRequest(BaseModel):
+    """Request body for /extract_incremental endpoint."""
+
+    existing_json: dict[str, Any] = Field(
+        ..., description="Base EnrichedReviewJSON to append to (from PDF 1)"
+    )
+
+
+class ComputeDiffRequest(BaseModel):
+    """Request body for /compute_diff endpoint."""
+
+    json1: dict[str, Any] = Field(..., description="Base JSON (PDF 1 only)")
+    json2: dict[str, Any] = Field(
+        ..., description="Combined JSON (PDF 1 + PDF 2)"
+    )
